@@ -63,6 +63,14 @@ def create_app(test_config=None):
         SECRET_KEY=os.environ.get("SECRET_KEY", "dev-secret-change-me"),
         SQLALCHEMY_DATABASE_URI=database_url,
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
+        # Only matters when this app shares a domain with other apps behind
+        # a reverse proxy (e.g. mounted at waveyvibe.dev/localarts alongside
+        # sibling apps) -- scopes the session cookie to this app's own path
+        # and gives it its own name so it can't collide with a same-named
+        # cookie set by something else on the same domain. Defaults are the
+        # normal Flask behavior for a single-app-per-domain deployment.
+        SESSION_COOKIE_PATH=os.environ.get("SESSION_COOKIE_PATH", "/"),
+        SESSION_COOKIE_NAME=os.environ.get("SESSION_COOKIE_NAME", "session"),
     )
     if test_config:
         app.config.update(test_config)

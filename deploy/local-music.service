@@ -3,13 +3,11 @@ Description=Local Music POC (gunicorn)
 After=network.target
 
 [Service]
-# Adjust User/Group and the two paths below if your app user or install
-# path differ from the DEPLOY.md walkthrough.
-User=localmusic
-Group=localmusic
-WorkingDirectory=/home/localmusic/local-music-poc
-EnvironmentFile=/home/localmusic/local-music-poc/deploy/local-music.env
-ExecStart=/home/localmusic/local-music-poc/.venv/bin/gunicorn \
+# Matches this droplet's existing convention (see yt-playlist-podcaster):
+# apps live under /var/www/<name> and run as root. Adjust if that changes.
+WorkingDirectory=/var/www/localarts
+EnvironmentFile=/var/www/localarts/deploy/local-music.env
+ExecStart=/var/www/localarts/.venv/bin/gunicorn \
     --workers 3 \
     --bind 127.0.0.1:8000 \
     --access-logfile - \

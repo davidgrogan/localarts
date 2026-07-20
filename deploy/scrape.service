@@ -4,8 +4,6 @@ After=network.target
 
 [Service]
 Type=oneshot
-User=localmusic
-Group=localmusic
-WorkingDirectory=/home/localmusic/local-music-poc
-EnvironmentFile=/home/localmusic/local-music-poc/deploy/local-music.env
-ExecStart=/home/localmusic/local-music-poc/.venv/bin/python3 scrape_all.py
+WorkingDirectory=/var/www/localarts
+EnvironmentFile=/var/www/localarts/deploy/local-music.env
+ExecStart=/var/www/localarts/.venv/bin/python3 scrape_all.py
