@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}{{ venue.name }}{% endblock %}
+{% block content %}
+  <h1>{{ venue.name }} <span class="source-tag">{{ venue.source_type }}</span></h1>
+  <p class="meta">
+    {% if venue.address %}{{ venue.address }}, {% endif %}{{ venue.city }}{% if venue.state %}, {{ venue.state }}{% endif %}
+    {% if venue.website_url %} &middot; <a href="{{ venue.website_url }}" target="_blank" rel="noopener">website</a>{% endif %}
+  </p>
+
+  <div class="page-actions">
+    <a class="btn btn-secondary" href="{{ url_for('venues.edit_venue', venue_id=venue.id) }}">Edit venue</a>
+    {% if venue.source_type != "manual" %}
+      <a class="btn btn-secondary" href="{{ url_for('venues.scrape_preview', venue_id=venue.id) }}">Test scrape (preview only)</a>
+    {% endif %}
+    <form method="post" action="{{ url_for('venues.delete_venue', venue_id=venue.id) }}" style="display:inline" onsubmit="return confirm('Delete this venue and all its shows?');">
+      <button class="btn btn-danger" type="submit">Delete venue</button>
+    </form>
+  </div>
+
+  {% if pending %}
+    <h2>Awaiting review ({{ pending | length }})</h2>
+    <table class="plain">
+      <tr><th>Date</th><th>Title</th><th></th></tr>
+      {% for e in pending %}
+        <tr>
+          <td>{{ e.start_datetime | dtfmt("%b %-d, %Y %-I:%M %p") }}</td>
+          <td>{{ e.title }}<span class="pending-tag">pending</span></td>
+          <td>
+            <form method="post" action="{{ url_for('events.approve_event', event_id=e.id) }}" style="display:inline">
+              <button class="btn btn-small" type="submit">Approve</button>
+            </form>
+            <form method="post" action="{{ url_for('events.delete_event', event_id=e.id) }}" style="display:inline" onsubmit="return confirm('Delete this show?');">
+              <button class="btn btn-small btn-danger" type="submit">Discard</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+    </table>
+  {% endif %}
+
+  <h2>Upcoming shows</h2>
+  {% if approved %}
+    <table class="plain">
+      <tr><th>Date</th><th>Title</th><th>Source</th><th></th></tr>
+      {% for e in approved %}
+        <tr>
+          <td>{{ e.start_datetime | dtfmt("%b %-d, %Y %-I:%M %p") }}</td>
+          <td>{{ e.title }}</td>
+          <td>{{ e.source }}</td>
+          <td>
+            <a href="{{ url_for('events.edit_event', event_id=e.id) }}">Edit</a>
+          </td>
+        </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <p class="empty-state">No shows yet for this venue.</p>
+  {% endif %}
+
+  {% if venue.source_type != "manual" %}
+    <h2>Run a scrape</h2>
+    <p class="meta">Fetches the venue's feed and imports events. New events land as "pending" unless you check the box below.</p>
+    <form method="post" action="{{ url_for('venues.scrape_run', venue_id=venue.id) }}">
+      <div class="checkbox-row">
+        <input type="checkbox" id="approve_new" name="approve_new">
+        <label for="approve_new">Auto-approve new events (skip review)</label>
+      </div>
+      <div class="actions">
+        <button class="btn" type="submit">Run scrape now</button>
+      </div>
+    </form>
+
+    {% if venue.scrape_runs %}
+      <h2>Recent scrape runs</h2>
+      <table class="plain">
+        <tr><th>When</th><th>Status</th><th>Found</th><th>New</th><th>Updated</th><th>Notes</th></tr>
+        {% for run in venue.scrape_runs[:5] %}
+          <tr>
+            <td>{{ run.run_at | dtfmt("%b %-d, %-I:%M %p") }}</td>
+            <td>{{ run.status }}</td>
+            <td>{{ run.events_found }}</td>
+            <td>{{ run.events_created }}</td>
+            <td>{{ run.events_updated }}</td>
+            <td>{{ run.message or "" }}</td>
+          </tr>
+        {% endfor %}
+      </table>
+    {% endif %}
+  {% endif %}
+{% endblock %}

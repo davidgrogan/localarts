@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Calendar{% endblock %}
+{% block content %}
+  <h1>Upcoming shows</h1>
+  <p class="meta">
+    Local venues, local and touring artists &mdash; Northampton, MA.
+    {% if view == 'week' %}
+      Showing {{ week_start | dtfmt("%b %-d") }}&ndash;{{ week_end | dtfmt("%b %-d") }}.
+    {% endif %}
+  </p>
+
+  <form class="filters" method="get">
+    <input type="hidden" name="view" value="{{ view }}">
+    <select name="venue" onchange="this.form.submit()">
+      <option value="">All venues</option>
+      {% for v in venues %}
+        <option value="{{ v.id }}" {% if v.id == selected_venue %}selected{% endif %}>{{ v.name }}</option>
+      {% endfor %}
+    </select>
+    <select name="artist" onchange="this.form.submit()">
+      <option value="">All local artists</option>
+      {% for a in artists %}
+        <option value="{{ a.id }}" {% if a.id == selected_artist %}selected{% endif %}>{{ a.name }}</option>
+      {% endfor %}
+    </select>
+    {% if selected_venue or selected_artist %}
+      <a class="clear" href="{{ url_for('main.calendar', view=view) }}">Clear filters</a>
+    {% endif %}
+  </form>
+
+  <div class="view-toggle">
+    <a class="btn btn-small {{ '' if view == 'week' else 'btn-secondary' }}" href="{{ url_for('main.calendar', view='week', venue=selected_venue, artist=selected_artist) }}">Next 7 Days</a>
+    <a class="btn btn-small {{ '' if view == 'month' else 'btn-secondary' }}" href="{{ url_for('main.calendar', view='month', venue=selected_venue, artist=selected_artist) }}">Month View</a>
+    <a class="btn btn-small {{ '' if view == 'list' else 'btn-secondary' }}" href="{{ url_for('main.calendar', view='list', venue=selected_venue, artist=selected_artist) }}">List View</a>
+  </div>
+
+  {% if view == 'month' %}
+    <div class="month-nav">
+      <a href="{{ url_for('main.calendar', view='month', month=grid.prev_month, venue=selected_venue, artist=selected_artist) }}">&larr; Prev</a>
+      <span class="month-label">{{ grid.month_name }}</span>
+      <a href="{{ url_for('main.calendar', view='month', month=grid.next_month, venue=selected_venue, artist=selected_artist) }}">Next &rarr;</a>
+    </div>
+
+    <table class="month-grid">
+      <thead>
+        <tr><th>Sun</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th></tr>
+      </thead>
+      <tbody>
+        {% for week in grid.weeks %}
+          <tr>
+            {% for day in week %}
+              {% if day == 0 %}
+                <td class="empty-day"></td>
+              {% else %}
+                <td class="{{ 'today' if day == grid.today_day else '' }}">
+                  <div class="day-number">{{ day }}</div>
+                  {% for e in grid.events_by_day.get(day, []) %}
+                    {% set local_artists = e.artists | selectattr("is_local") | list %}
+                    <div class="grid-event {{ 'grid-event-local' if local_artists else '' }}">
+                      {% if local_artists %}<span class="grid-local-star" title="Features local artist: {{ local_artists | map(attribute='name') | join(', ') }}">&#9733;</span>{% endif %}
+                      {% if e.genre %}<span class="grid-genre-dot" title="{{ e.genre }}"></span>{% endif %}
+                      <a href="{{ url_for('venues.detail', venue_id=e.venue.id) }}"
+                         {% if e.description %}title="{{ e.description }}" class="has-description"{% endif %}>{{ e.start_datetime | dtfmt("%-I:%M %p") }} {{ e.title }}</a>
+                    </div>
+                  {% endfor %}
+                </td>
+              {% endif %}
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    {% if events %}
+      <ul class="event-list">
+        {% set ns = namespace(current_day=None) %}
+        {% for e in events %}
+          {% set day_key = e.start_datetime.date() %}
+          {% if day_key != ns.current_day %}
+            {% set ns.current_day = day_key %}
+            <li class="day-header">
+              {% if today and day_key == today.date() %}
+                Today &mdash; {{ e.start_datetime | dtfmt("%A, %B %-d") }}
+              {% elif tomorrow and day_key == tomorrow %}
+                Tomorrow &mdash; {{ e.start_datetime | dtfmt("%A, %B %-d") }}
+              {% else %}
+                {{ e.start_datetime | dtfmt("%A, %B %-d") }}
+              {% endif %}
+            </li>
+          {% endif %}
+          {% set local_artists = e.artists | selectattr("is_local") | list %}
+          <li class="event-card {{ 'event-card-local' if local_artists else '' }}">
+            <div class="event-date">{{ e.start_datetime | dtfmt("%-I:%M %p") }}</div>
+            {% if e.image_url %}
+              <div class="event-thumb"><img src="{{ e.image_url }}" alt="" loading="lazy"></div>
+            {% endif %}
+            <div class="event-main">
+              <div class="event-title">
+                {% if e.ticket_url %}<a href="{{ e.ticket_url }}" target="_blank" rel="noopener" {% if e.description %}title="{{ e.description }}" class="has-description"{% endif %}>{{ e.title }}</a>{% else %}<span {% if e.description %}title="{{ e.description }}" class="has-description"{% endif %}>{{ e.title }}</span>{% endif %}
+                {% if local_artists %}<span class="local-artist-badge" title="Features {{ local_artists | map(attribute='name') | join(', ') }}">&#9733; Local Artist</span>{% endif %}
+                {% if e.genre %}<span class="genre-tag">{{ e.genre }}</span>{% endif %}
+              </div>
+              <div class="event-venue">
+                <a href="{{ url_for('venues.detail', venue_id=e.venue.id) }}">{{ e.venue.name }}</a>
+                {% if e.venue.city %} &middot; {{ e.venue.city }}, {{ e.venue.state }}{% endif %}
+              </div>
+              {% if e.artists %}
+                <div class="event-artists">
+                  Featuring:
+                  {% for a in e.artists %}
+                    <a href="{{ url_for('artists.detail', artist_id=a.id) }}">{{ a.name }}</a>{% if not loop.last %}, {% endif %}
+                  {% endfor %}
+                </div>
+              {% endif %}
+              {% if e.ticket_url %}
+                <div class="event-link"><a href="{{ e.ticket_url }}" target="_blank" rel="noopener">View on venue site &rarr;</a></div>
+              {% endif %}
+              <div class="event-actions">
+                {% if not e.artists %}
+                  <a href="{{ url_for('artists.new_artist', from_event=e.id) }}">+ Add as local artist</a>
+                {% endif %}
+                <a href="{{ url_for('events.edit_event', event_id=e.id) }}">Edit</a>
+                <form method="post" action="{{ url_for('events.delete_event', event_id=e.id) }}" onsubmit="return confirm('Delete this show?');">
+                  <button type="submit">Delete</button>
+                </form>
+              </div>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty-state">
+        {% if view == 'week' %}
+          No shows in the next 7 days. Try <a href="{{ url_for('main.calendar', view='list', venue=selected_venue, artist=selected_artist) }}">List View</a> or <a href="{{ url_for('main.calendar', view='month', venue=selected_venue, artist=selected_artist) }}">Month View</a> to see what's further out.
+        {% else %}
+          No upcoming shows yet. <a href="{{ url_for('events.new_event') }}">Add one</a>, or add a venue and try a scrape.
+        {% endif %}
+      </p>
+    {% endif %}
+  {% endif %}
+{% endblock %}

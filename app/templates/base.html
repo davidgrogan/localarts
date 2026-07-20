@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Local Music{% endblock %} · Northampton</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="{{ url_for('main.calendar') }}">&#9834; Local Music</a>
+    <nav>
+      <a href="{{ url_for('main.calendar') }}">Calendar</a>
+      <a href="{{ url_for('venues.list_venues') }}">Venues</a>
+      <a href="{{ url_for('artists.list_artists') }}">Artists</a>
+      <a href="{{ url_for('events.new_event') }}">+ Add show</a>
+      <a href="{{ url_for('events.review') }}" class="review-link">
+        Review{% if pending_count %} <span class="badge">{{ pending_count }}</span>{% endif %}
+      </a>
+    </nav>
+  </header>
+
+  <main class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flashes">
+          {% for category, message in messages %}
+            <div class="flash flash-{{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    Proof of concept &middot; local music listings for Northampton, MA
+  </footer>
+</body>
+</html>

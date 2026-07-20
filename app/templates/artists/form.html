@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit artist" if artist else "Add artist" }}{% endblock %}
+{% block content %}
+  <h1>{{ "Edit " + artist.name if artist else "Add an artist" }}</h1>
+
+  {% if source_event %}
+    <p class="meta">
+      {% if artist %}
+        “{{ artist.name }}” is already in the local artists list &mdash; saving
+        will link them to “{{ source_event.title }}” too, without creating a duplicate.
+      {% else %}
+        Adding from “{{ source_event.title }}” at {{ source_event.venue.name }},
+        {{ source_event.start_datetime | dtfmt("%a %b %-d, %Y") }} &mdash;
+        saving will link this artist to that show.
+      {% endif %}
+    </p>
+  {% endif %}
+
+  <form class="stacked" method="post">
+    {% if source_event %}
+      <input type="hidden" name="from_event_id" value="{{ source_event.id }}">
+    {% endif %}
+
+    <label for="name">Artist / band name</label>
+    <input type="text" id="name" name="name"
+           value="{{ artist.name if artist else (source_event.title if source_event else '') }}" required>
+
+    <label for="genre">Genre</label>
+    <input type="text" id="genre" name="genre" value="{{ artist.genre if artist else '' }}">
+
+    <label for="hometown">Hometown</label>
+    <input type="text" id="hometown" name="hometown" value="{{ artist.hometown if artist else '' }}" placeholder="e.g. Northampton, MA">
+
+    <label for="website_url">Bandcamp / website link</label>
+    <input type="url" id="website_url" name="website_url" value="{{ artist.website_url if artist else '' }}" placeholder="https://artistname.bandcamp.com">
+
+    <label for="embed_code">Bandcamp / YouTube embed code</label>
+    <textarea id="embed_code" name="embed_code" rows="4" placeholder="Paste the <iframe> embed snippet from Bandcamp's or YouTube's own &quot;Embed&quot; / &quot;Share&quot; button">{{ artist.embed_code if artist else '' }}</textarea>
+    <div class="hint">
+      Optional. Shows up as an embedded player on the artist's page.
+    </div>
+
+    <label for="bio">Bio</label>
+    <textarea id="bio" name="bio" rows="4">{{ artist.bio if artist else '' }}</textarea>
+
+    <div class="checkbox-row" style="margin-top:1rem;">
+      <input type="checkbox" id="is_local" name="is_local" {% if artist is none or artist.is_local %}checked{% endif %}>
+      <label for="is_local">Lives and works locally</label>
+    </div>
+
+    <div class="actions">
+      <button class="btn" type="submit">{{ "Save changes" if artist else "Add artist" }}</button>
+      {% if artist %}<a class="btn btn-secondary" href="{{ url_for('artists.detail', artist_id=artist.id) }}">Cancel</a>{% endif %}
+    </div>
+  </form>
+{% endblock %}

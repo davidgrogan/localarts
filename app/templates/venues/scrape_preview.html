@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Scrape preview -- {{ venue.name }}{% endblock %}
+{% block content %}
+  <h1>Scrape preview: {{ venue.name }}</h1>
+  <p class="meta">
+    Fetches and parses <code>{{ venue.events_url }}</code> ({{ venue.source_type }}) without writing anything
+    to the database. Use this to iterate on a venue's config before running a real import.
+  </p>
+
+  <div class="page-actions">
+    <a class="btn btn-secondary" href="{{ url_for('venues.edit_venue', venue_id=venue.id) }}">Edit venue config</a>
+    <a class="btn btn-secondary" href="{{ url_for('venues.scrape_preview', venue_id=venue.id) }}">Re-run preview</a>
+    <a class="btn btn-secondary" href="{{ url_for('venues.detail', venue_id=venue.id) }}">Back to venue</a>
+  </div>
+
+  {% if error %}
+    <div class="flash flash-error">{{ error }}</div>
+  {% endif %}
+
+  <h2>Parsed events ({{ result.events | length }})</h2>
+  {% if result.events %}
+    <table class="plain">
+      <tr><th>Start</th><th>Title</th><th>External ID</th><th>Ticket link</th></tr>
+      {% for e in result.events %}
+        <tr>
+          <td>{{ e.start_datetime | dtfmt("%b %-d, %Y %-I:%M %p") }}</td>
+          <td>{{ e.title }}</td>
+          <td>{{ e.external_id }}</td>
+          <td>{% if e.ticket_url %}<a href="{{ e.ticket_url }}" target="_blank" rel="noopener">link</a>{% endif %}</td>
+        </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <p class="empty-state">No events parsed out of the raw response. Check the raw sample below and adjust the venue's source type / scrape config.</p>
+  {% endif %}
+
+  <h2>Raw response sample</h2>
+  <div class="raw-sample">{{ result.raw_sample }}</div>
+{% endblock %}

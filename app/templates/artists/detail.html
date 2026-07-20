@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}{{ artist.name }}{% endblock %}
+{% block content %}
+  <h1>{{ artist.name }} {% if not artist.is_local %}<span class="source-tag">touring</span>{% endif %}</h1>
+  <p class="meta">
+    {% if artist.genre %}{{ artist.genre }}{% endif %}
+    {% if artist.hometown %} &middot; {{ artist.hometown }}{% endif %}
+    {% if artist.website_url %} &middot; <a href="{{ artist.website_url }}" target="_blank" rel="noopener">Bandcamp / website</a>{% endif %}
+  </p>
+  {% if artist.bio %}<p>{{ artist.bio }}</p>{% endif %}
+  {% if artist.embed_code %}
+    <div class="artist-embed">{{ artist.embed_code | safe }}</div>
+  {% endif %}
+
+  <div class="page-actions">
+    <a class="btn btn-secondary" href="{{ url_for('artists.edit_artist', artist_id=artist.id) }}">Edit artist</a>
+    <form method="post" action="{{ url_for('artists.delete_artist', artist_id=artist.id) }}" style="display:inline" onsubmit="return confirm('Delete this artist?');">
+      <button class="btn btn-danger" type="submit">Delete artist</button>
+    </form>
+  </div>
+
+  <h2>Upcoming shows</h2>
+  {% if artist.events %}
+    <table class="plain">
+      <tr><th>Date</th><th>Show</th><th>Venue</th></tr>
+      {% for e in artist.events | sort(attribute="start_datetime") %}
+        <tr>
+          <td>{{ e.start_datetime | dtfmt("%b %-d, %Y %-I:%M %p") }}</td>
+          <td>{{ e.title }}</td>
+          <td><a href="{{ url_for('venues.detail', venue_id=e.venue.id) }}">{{ e.venue.name }}</a></td>
+        </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <p class="empty-state">No shows linked yet.</p>
+  {% endif %}
+{% endblock %}

@@ -1,0 +1,11 @@
+[Unit]
+Description=Local Music POC - run all venue scrapes once
+After=network.target
+
+[Service]
+Type=oneshot
+User=localmusic
+Group=localmusic
+WorkingDirectory=/home/localmusic/local-music-poc
+EnvironmentFile=/home/localmusic/local-music-poc/deploy/local-music.env
+ExecStart=/home/localmusic/local-music-poc/.venv/bin/python3 scrape_all.py

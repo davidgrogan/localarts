@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit show" if event else "Add show" }}{% endblock %}
+{% block content %}
+  <h1>{{ "Edit show" if event else "Add a show" }}</h1>
+
+  {% if not venues %}
+    <p class="empty-state">You need at least one venue first. <a href="{{ url_for('venues.new_venue') }}">Add a venue</a>.</p>
+  {% else %}
+    <form class="stacked" method="post">
+      <label for="venue_id">Venue</label>
+      <select id="venue_id" name="venue_id" required>
+        {% for v in venues %}
+          <option value="{{ v.id }}" {% if event and event.venue_id == v.id %}selected{% endif %}>{{ v.name }}</option>
+        {% endfor %}
+      </select>
+
+      <label for="title">Show title</label>
+      <input type="text" id="title" name="title" value="{{ event.title if event else '' }}" placeholder="e.g. Album release show" required>
+
+      <label for="start_datetime">Date &amp; time</label>
+      <input type="datetime-local" id="start_datetime" name="start_datetime"
+             value="{{ event.start_datetime.strftime('%Y-%m-%dT%H:%M') if event else '' }}" required>
+
+      <label for="ticket_url">Ticket / info link</label>
+      <input type="url" id="ticket_url" name="ticket_url" value="{{ event.ticket_url if event and event.ticket_url else '' }}">
+
+      <label for="price_info">Price</label>
+      <input type="text" id="price_info" name="price_info" value="{{ event.price_info if event and event.price_info else '' }}" placeholder="e.g. $15 / $20 day of">
+
+      <label for="description">Description</label>
+      <textarea id="description" name="description" rows="4">{{ event.description if event else '' }}</textarea>
+
+      <label>Featured local artists</label>
+      <div class="artist-checks">
+        {% if artists %}
+          {% for a in artists %}
+            <label>
+              <input type="checkbox" name="artist_ids" value="{{ a.id }}"
+                {% if event and a in event.artists %}checked{% endif %}>
+              {{ a.name }}
+            </label>
+          {% endfor %}
+        {% else %}
+          <span class="hint">No artists yet -- add one below, or from the Artists page.</span>
+        {% endif %}
+      </div>
+
+      <label for="new_artist_name">Quick-add a new local artist (optional)</label>
+      <input type="text" id="new_artist_name" name="new_artist_name" placeholder="Name of an artist not listed above">
+
+      <div class="actions">
+        <button class="btn" type="submit">{{ "Save changes" if event else "Add show" }}</button>
+        <a class="btn btn-secondary" href="{{ url_for('main.calendar') }}">Cancel</a>
+      </div>
+    </form>
+  {% endif %}
+{% endblock %}

@@ -1,0 +1,13 @@
+[Unit]
+Description=Run local-music scrapes 4x/day
+
+[Timer]
+# Four times a day is plenty for venue calendars that change infrequently,
+# and keeps traffic to each venue's site low and unobtrusive -- see the
+# README note on why hammering a site from a datacenter IP is more likely
+# to get flagged than occasional, human-scale traffic.
+OnCalendar=*-*-* 00,06,12,18:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Artists{% endblock %}
+{% block content %}
+  <h1>Local artists</h1>
+  <div class="page-actions">
+    <a class="btn" href="{{ url_for('artists.new_artist') }}">+ Add artist</a>
+  </div>
+
+  {% if artists %}
+    {% for a in artists %}
+      <div class="artist-card">
+        <div>
+          <a href="{{ url_for('artists.detail', artist_id=a.id) }}"><strong>{{ a.name }}</strong></a>
+          {% if not a.is_local %}<span class="source-tag">touring</span>{% endif %}
+        </div>
+        <div class="meta">
+          {% if a.genre %}{{ a.genre }}{% endif %}
+          {% if a.hometown %} &middot; {{ a.hometown }}{% endif %}
+        </div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <p class="empty-state">No artists yet. <a href="{{ url_for('artists.new_artist') }}">Add the first one</a>.</p>
+  {% endif %}
+{% endblock %}

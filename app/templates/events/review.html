@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Review scraped shows{% endblock %}
+{% block content %}
+  <h1>Shows awaiting review</h1>
+  <p class="meta">Scraped events land here first so nothing bad gets onto the public calendar unreviewed.</p>
+
+  {% if events %}
+    <table class="plain">
+      <tr><th>Date</th><th>Title</th><th>Venue</th><th></th></tr>
+      {% for e in events %}
+        <tr>
+          <td>{{ e.start_datetime | dtfmt("%b %-d, %Y %-I:%M %p") }}</td>
+          <td>{{ e.title }}</td>
+          <td><a href="{{ url_for('venues.detail', venue_id=e.venue.id) }}">{{ e.venue.name }}</a></td>
+          <td>
+            <form method="post" action="{{ url_for('events.approve_event', event_id=e.id) }}" style="display:inline">
+              <button class="btn btn-small" type="submit">Approve</button>
+            </form>
+            <a class="btn btn-small btn-secondary" href="{{ url_for('events.edit_event', event_id=e.id) }}">Edit</a>
+            <form method="post" action="{{ url_for('events.delete_event', event_id=e.id) }}" style="display:inline" onsubmit="return confirm('Discard this show?');">
+              <button class="btn btn-small btn-danger" type="submit">Discard</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <p class="empty-state">Nothing waiting on review right now.</p>
+  {% endif %}
+{% endblock %}

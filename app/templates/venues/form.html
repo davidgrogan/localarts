@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit venue" if venue else "Add venue" }}{% endblock %}
+{% block content %}
+  <h1>{{ "Edit " + venue.name if venue else "Add a venue" }}</h1>
+
+  <form class="stacked" method="post">
+    <label for="name">Venue name</label>
+    <input type="text" id="name" name="name" value="{{ venue.name if venue else '' }}" required>
+
+    <label for="address">Address</label>
+    <input type="text" id="address" name="address" value="{{ venue.address if venue else '' }}">
+
+    <label for="city">City</label>
+    <input type="text" id="city" name="city" value="{{ venue.city if venue else '' }}">
+
+    <label for="state">State</label>
+    <input type="text" id="state" name="state" value="{{ venue.state if venue else '' }}">
+
+    <label for="website_url">Website</label>
+    <input type="url" id="website_url" name="website_url" value="{{ venue.website_url if venue else '' }}" placeholder="https://example.com">
+
+    <label for="source_type">How should this venue's events be pulled in?</label>
+    <select id="source_type" name="source_type">
+      {% for value, label in source_types %}
+        <option value="{{ value }}" {% if venue and venue.source_type == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <div class="hint">
+      Squarespace sites render their <em>own</em> content with JS, so a plain HTML scrape
+      often comes back empty &mdash; the Squarespace option uses the site's own
+      <code>?format=json</code> page-data endpoint instead. That only works if the events
+      are actually stored in Squarespace's own collection, though: some venues (the Iron
+      Horse included) embed a third-party calendar widget (e.g. Elfsight) that has its own
+      private data source Squarespace's JSON never sees. If that widget is specifically
+      Elfsight's "Event Calendar", use "Elfsight widget (JSON-LD)" &mdash; each event card
+      embeds a full schema.org Event script tag (name, dates with year, description,
+      location) that's far more reliable than scraping the widget's visible markup, which
+      uses hashed class names and never shows a year in the date text. Use "Headless
+      browser" for other JS-rendered widgets without that JSON-LD, and "Generic HTML" for
+      plain server-rendered pages with no JS involved.
+    </div>
+
+    <label for="events_url">Events page / feed URL</label>
+    <input type="text" id="events_url" name="events_url" value="{{ venue.events_url if venue else '' }}" placeholder="https://example.com/shows or an .ics URL">
+
+    <label for="scrape_config">Scrape config (JSON, needed for "Generic HTML", "Headless browser", and "Elfsight widget")</label>
+    <textarea id="scrape_config" name="scrape_config" rows="6" placeholder='{"item_selector": ".event-item", "title_selector": ".event-title", "date_selector": ".event-date", "wait_for_selector": ".event-item", "wait_ms": 3000}'>{{ venue.scrape_config if venue else '' }}</textarea>
+    <div class="hint">
+      <code>item_selector</code> / <code>title_selector</code> / <code>date_selector</code> /
+      optional <code>date_format</code> / optional <code>link_selector</code> apply to both
+      HTML source types. <code>wait_for_selector</code> and <code>wait_ms</code> apply to
+      both "Headless browser" and "Elfsight widget" &mdash; use the browser's Inspect tool
+      on a rendered event card to find real class names/selectors once you can see the
+      widget on screen. "Elfsight widget" ignores the selector keys and instead takes
+      optional <code>location_match</code> (a list of substrings matched case-insensitively
+      against each event's JSON-LD location name, since one Elfsight feed can cover several
+      physical venues &mdash; defaults to this venue's own name) and optional
+      <code>include_all_locations</code> (true to skip that filtering and import every event
+      on the feed).
+    </div>
+
+    {% if venue %}
+      <div class="checkbox-row" style="margin-top:1rem;">
+        <input type="checkbox" id="is_active" name="is_active" {% if venue.is_active %}checked{% endif %}>
+        <label for="is_active">Active (included when scraping/browsing)</label>
+      </div>
+    {% endif %}
+
+    <div class="actions">
+      <button class="btn" type="submit">{{ "Save changes" if venue else "Add venue" }}</button>
+      {% if venue %}<a class="btn btn-secondary" href="{{ url_for('venues.detail', venue_id=venue.id) }}">Cancel</a>{% endif %}
+    </div>
+  </form>
+{% endblock %}
