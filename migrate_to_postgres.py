@@ -1,7 +1,7 @@
-"""One-time copy of your local SQLite data (venues, artists, events, and
-their scrape history) into a remote Postgres database -- for moving what
-you've built up locally onto the droplet without re-entering venues or
-re-running every scrape.
+"""One-time copy of your local SQLite data (venues, artists, events, event
+type tags, and their scrape history) into a remote Postgres database --
+for moving what you've built up locally onto the droplet without
+re-entering venues or re-running every scrape.
 
 This does NOT touch the droplet's Postgres over the open internet --
 Postgres there only listens on localhost (see DEPLOY.md), which is the
@@ -16,11 +16,11 @@ this project folder with your local .venv active:
     python3 migrate_to_postgres.py "postgresql://localarts:YOUR_PG_PASSWORD@localhost:5433/localarts"
 
 WARNING: this WIPES every row currently in the target database's venue/
-artist/event/event_artists/scrape_run tables before copying your local
-data in -- it's meant to *replace* whatever's there (which, unless you've
-been managing venues through the live site's admin screens too, is just
-whatever seed.py originally put there). Don't run this if the droplet
-already has real data you haven't backed up.
+artist/event_type/event/event_artists/event_event_types/scrape_run tables
+before copying your local data in -- it's meant to *replace* whatever's
+there (which, unless you've been managing venues through the live site's
+admin screens too, is just whatever seed.py originally put there). Don't
+run this if the droplet already has real data you haven't backed up.
 
 Requires psycopg2 (already in requirements.txt) -- if you haven't run
 `pip install -r requirements.txt` locally since it was added, do that
@@ -35,10 +35,19 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SQLITE_PATH = os.path.join(BASE_DIR, "instance", "local_music.sqlite3")
 
 # Order matters: parents before children, so foreign keys never point at
-# a row that doesn't exist yet. event_artists (the many-to-many table)
-# has no serial "id" of its own, so it's skipped in the sequence-reset
-# step further down but still copied like any other table.
-TABLES_IN_ORDER = ["venue", "artist", "event", "event_artists", "scrape_run"]
+# a row that doesn't exist yet. event_artists and event_event_types (the
+# many-to-many tables) have no serial "id" of their own, so they're
+# skipped in the sequence-reset step further down but still copied like
+# any other table.
+TABLES_IN_ORDER = [
+    "venue",
+    "artist",
+    "event_type",
+    "event",
+    "event_artists",
+    "event_event_types",
+    "scrape_run",
+]
 
 
 def main():
