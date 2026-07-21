@@ -7,14 +7,16 @@ from app.models import Event, Venue, Artist, EventType
 bp = Blueprint("main", __name__)
 
 
-def _base_query(venue_id, artist_id, event_type_id):
+def _base_query(venue_id, artist_id, selected_type):
     query = Event.query.filter(Event.is_approved.is_(True))
     if venue_id:
         query = query.filter(Event.venue_id == venue_id)
     if artist_id:
         query = query.join(Event.artists).filter(Artist.id == artist_id)
-    if event_type_id:
-        query = query.join(Event.event_types).filter(EventType.id == event_type_id)
+    if selected_type == "untagged":
+        query = query.filter(~Event.event_types.any())
+    elif selected_type:
+        query = query.join(Event.event_types).filter(EventType.id == selected_type)
     return query
 
 
@@ -22,7 +24,16 @@ def _base_query(venue_id, artist_id, event_type_id):
 def calendar():
     venue_id = request.args.get("venue", type=int)
     artist_id = request.args.get("artist", type=int)
-    event_type_id = request.args.get("type", type=int)
+    # The type filter is normally a tag id, but also accepts the special
+    # value "untagged" to find events with no tags at all -- see
+    # _base_query() above.
+    type_param = request.args.get("type", "").strip()
+    if type_param == "untagged":
+        event_type_id = "untagged"
+    elif type_param.isdigit():
+        event_type_id = int(type_param)
+    else:
+        event_type_id = None
     # "week" (the next 7 days) is the default landing view; "list" is the
     # full unbounded upcoming-shows list. The month-grid view was removed
     # -- it was hard to read with more than a couple of shows in a day.

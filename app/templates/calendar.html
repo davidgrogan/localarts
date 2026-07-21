@@ -37,6 +37,7 @@
       {% for t in event_types %}
         <option value="{{ t.id }}" {% if t.id == selected_type %}selected{% endif %}>{{ t.name }}</option>
       {% endfor %}
+      <option value="untagged" {% if selected_type == "untagged" %}selected{% endif %}>Untagged</option>
     </select>
     {% if selected_venue or selected_type %}
       <a class="clear" href="{{ url_for('main.calendar', view=view) }}">Clear filters</a>
