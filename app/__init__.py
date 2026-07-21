@@ -24,6 +24,10 @@ _COLUMN_MIGRATIONS = {
     "event": [
         ("genre", "VARCHAR(120)"),
         ("image_url", "VARCHAR(500)"),
+        ("last_seen_at", "DATETIME"),
+        ("missing_streak", "INTEGER DEFAULT 0 NOT NULL"),
+        ("needs_review", "BOOLEAN DEFAULT 0 NOT NULL"),
+        ("review_note", "TEXT"),
     ],
     "artist": [
         ("embed_code", "TEXT"),
@@ -97,6 +101,23 @@ def create_app(test_config=None):
         # edit/delete/scrape controls can hide themselves from anonymous
         # visitors without every route needing to pass it explicitly.
         return {"is_admin": bool(session.get("is_admin"))}
+
+    @app.context_processor
+    def inject_review_count():
+        # Badge count on the nav's "Review" link -- everything waiting on
+        # an admin decision: brand-new scraped events, approved events
+        # flagged for a changed time/title, and events auto-hidden as
+        # likely cancellations. Computed globally (not just on the
+        # calendar route) so it's accurate on every admin page; skipped
+        # entirely for anonymous visitors to avoid the extra query.
+        if not session.get("is_admin"):
+            return {}
+        from app.models import Event
+
+        count = Event.query.filter(
+            db.or_(Event.is_approved.is_(False), Event.needs_review.is_(True))
+        ).count()
+        return {"pending_count": count}
 
     with app.app_context():
         db.create_all()

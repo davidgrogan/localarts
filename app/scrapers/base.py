@@ -22,12 +22,29 @@ that's the extension point the "help me work through scraping" workflow
 is built around.
 """
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from app.models import db, Event, ScrapeRun
 
 RAW_SAMPLE_MAX_CHARS = 8000
+
+# How the daily "scrape all venues" run keeps already-approved (public)
+# events honest, beyond just creating new ones -- see run_scrape()'s
+# docstring for the full behavior. Kept as module constants rather than
+# per-venue config since these are policy calls (how cautious to be
+# about a listing changing), not something that varies venue to venue.
+DATE_FMT = "%b %d, %Y %I:%M %p"
+# Only events starting within this many days are checked for having
+# disappeared from a venue's current listing -- a show three months out
+# not appearing yet doesn't mean anything (it may just be outside a
+# paginated feed's window), but one that was on the list yesterday and
+# is due next week and is gone today is worth a second look.
+MISSING_CHECK_WINDOW_DAYS = 21
+# Require this many consecutive scrapes to come back without the event
+# before treating it as a likely cancellation -- one missed page load or
+# a venue site hiccup shouldn't be enough to pull a real show down.
+MISSING_STREAK_THRESHOLD = 2
 
 
 @dataclass
@@ -99,8 +116,28 @@ def run_scrape(venue, approve_new=False):
     New events are created with is_approved=approve_new so they can be
     reviewed on the scrape preview page before appearing on the public
     calendar (unless the caller explicitly approves on import).
-    Existing events (matched on venue_id + external_id) are updated in
-    place without touching their current approval state.
+
+    Existing events (matched on venue_id + external_id) are always
+    updated in place with the latest scraped fields -- the public site
+    should never show stale info. But if an event that's already
+    *approved* (live on the public calendar) comes back with a different
+    start time or title, that update is also flagged: `needs_review` is
+    set and `review_note` records what changed, so it surfaces in the
+    admin Review queue's "Changed" section instead of silently mutating
+    something a visitor may have already seen. New/still-pending events
+    are simply updated with no flag -- they haven't been reviewed yet
+    either way.
+
+    Separately, any *approved* scraped event starting within the next
+    MISSING_CHECK_WINDOW_DAYS that this run's results *don't* include
+    gets its `missing_streak` bumped. Once that streak reaches
+    MISSING_STREAK_THRESHOLD (two scrapes in a row without it), the
+    event is treated as a likely cancellation: unpublished
+    (is_approved=False) and flagged, landing in the Review queue's
+    "Possibly cancelled" section rather than just vanishing. This check
+    is skipped entirely if the scrape came back with zero events, since
+    an empty result is far more likely to mean the venue's page changed
+    or the fetch broke than that everything got cancelled at once.
     """
     run = ScrapeRun(venue_id=venue.id, status="success")
 
@@ -117,14 +154,37 @@ def run_scrape(venue, approve_new=False):
 
     raw_sample = result["raw_sample"]
     events = result["events"]
+    now = datetime.utcnow()
 
     created = 0
     updated = 0
+    flagged_changed = 0
+    scraped_external_ids = set()
+
     for scraped in events:
+        scraped_external_ids.add(scraped.external_id)
         existing = Event.query.filter_by(
             venue_id=venue.id, external_id=scraped.external_id
         ).first()
         if existing:
+            if existing.is_approved and (
+                existing.start_datetime != scraped.start_datetime
+                or existing.title != scraped.title
+            ):
+                notes = []
+                if existing.title != scraped.title:
+                    notes.append(f"Title changed from “{existing.title}” to “{scraped.title}”")
+                if existing.start_datetime != scraped.start_datetime:
+                    notes.append(
+                        f"Time changed from {existing.start_datetime.strftime(DATE_FMT)} "
+                        f"to {scraped.start_datetime.strftime(DATE_FMT)}"
+                    )
+                existing.needs_review = True
+                existing.review_note = (
+                    "; ".join(notes) + f" (seen on scrape run {now.strftime('%b %d, %Y')})"
+                )
+                flagged_changed += 1
+
             existing.title = scraped.title
             existing.start_datetime = scraped.start_datetime
             existing.end_datetime = scraped.end_datetime
@@ -133,6 +193,8 @@ def run_scrape(venue, approve_new=False):
             existing.genre = scraped.genre
             existing.image_url = scraped.image_url
             existing.source = "scraped"
+            existing.last_seen_at = now
+            existing.missing_streak = 0
             updated += 1
         else:
             db.session.add(
@@ -148,15 +210,45 @@ def run_scrape(venue, approve_new=False):
                     source="scraped",
                     external_id=scraped.external_id,
                     is_approved=approve_new,
+                    last_seen_at=now,
                 )
             )
             created += 1
+
+    flagged_cancelled = 0
+    if events:  # an empty result almost certainly means a broken scrape, not mass cancellations
+        horizon = now + timedelta(days=MISSING_CHECK_WINDOW_DAYS)
+        missing_candidates = Event.query.filter(
+            Event.venue_id == venue.id,
+            Event.source == "scraped",
+            Event.is_approved.is_(True),
+            Event.start_datetime >= now,
+            Event.start_datetime <= horizon,
+        ).all()
+        for candidate in missing_candidates:
+            if candidate.external_id in scraped_external_ids:
+                continue
+            candidate.missing_streak = (candidate.missing_streak or 0) + 1
+            if candidate.missing_streak >= MISSING_STREAK_THRESHOLD:
+                candidate.is_approved = False
+                candidate.needs_review = True
+                candidate.review_note = (
+                    f"Not found in the last {candidate.missing_streak} scrapes as of "
+                    f"{now.strftime('%b %d, %Y')} -- likely cancelled. Restore it if it's "
+                    "actually still happening."
+                )
+                flagged_cancelled += 1
 
     run.events_found = len(events)
     run.events_created = created
     run.events_updated = updated
     run.raw_sample = raw_sample
-    venue.last_scraped_at = datetime.utcnow()
+    if flagged_changed or flagged_cancelled:
+        run.message = (
+            f"{flagged_changed} changed event(s) flagged for review, "
+            f"{flagged_cancelled} event(s) auto-hidden as likely cancelled."
+        )
+    venue.last_scraped_at = now
 
     db.session.add(run)
     db.session.commit()

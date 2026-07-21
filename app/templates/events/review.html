@@ -1,13 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Review scraped shows{% endblock %}
 {% block content %}
-  <h1>Shows awaiting review</h1>
-  <p class="meta">Scraped events land here first so nothing bad gets onto the public calendar unreviewed.</p>
+  <h1>Review</h1>
+  <p class="meta">One stop for everything a scrape needs a human to look at: brand-new shows, approved shows whose time or title changed, and approved shows that vanished from a venue's listing.</p>
 
-  {% if events %}
+  <h2 class="section-heading">New ({{ new_events | length }})</h2>
+  {% if new_events %}
     <table class="plain">
       <tr><th>Date</th><th>Title</th><th>Venue</th><th></th></tr>
-      {% for e in events %}
+      {% for e in new_events %}
         <tr>
           <td>{{ e.start_datetime | dtfmt("%b %-d, %Y %-I:%M %p") }}</td>
           <td>{{ e.title }}</td>
@@ -25,6 +26,59 @@
       {% endfor %}
     </table>
   {% else %}
-    <p class="empty-state">Nothing waiting on review right now.</p>
+    <p class="empty-state">Nothing new waiting on review.</p>
+  {% endif %}
+
+  <h2 class="section-heading">Changed ({{ changed_events | length }})</h2>
+  <p class="meta">Still live on the public calendar -- the venue's site reported a different time or title since this was approved. Confirm it's a real update, or unpublish if the scrape got it wrong.</p>
+  {% if changed_events %}
+    <table class="plain">
+      <tr><th>Date</th><th>Title</th><th>Venue</th><th>What changed</th><th></th></tr>
+      {% for e in changed_events %}
+        <tr>
+          <td>{{ e.start_datetime | dtfmt("%b %-d, %Y %-I:%M %p") }}</td>
+          <td>{{ e.title }}</td>
+          <td><a href="{{ url_for('venues.detail', venue_id=e.venue.id) }}">{{ e.venue.name }}</a></td>
+          <td class="meta">{{ e.review_note }}</td>
+          <td>
+            <form method="post" action="{{ url_for('events.dismiss_flag', event_id=e.id) }}" style="display:inline">
+              <button class="btn btn-small" type="submit">Looks right</button>
+            </form>
+            <a class="btn btn-small btn-secondary" href="{{ url_for('events.edit_event', event_id=e.id) }}">Edit</a>
+            <form method="post" action="{{ url_for('events.unpublish_event', event_id=e.id) }}" style="display:inline" onsubmit="return confirm('Unpublish this show from the public calendar?');">
+              <button class="btn btn-small btn-danger" type="submit">Unpublish</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <p class="empty-state">No flagged changes.</p>
+  {% endif %}
+
+  <h2 class="section-heading">Possibly cancelled ({{ cancelled_events | length }})</h2>
+  <p class="meta">Was approved and live, but hasn't shown up in the venue's listing for a couple of scrapes in a row, so it's been pulled off the public calendar already. Confirm the cancellation (discard) or restore it if it's still actually happening.</p>
+  {% if cancelled_events %}
+    <table class="plain">
+      <tr><th>Date</th><th>Title</th><th>Venue</th><th>Why</th><th></th></tr>
+      {% for e in cancelled_events %}
+        <tr>
+          <td>{{ e.start_datetime | dtfmt("%b %-d, %Y %-I:%M %p") }}</td>
+          <td>{{ e.title }}</td>
+          <td><a href="{{ url_for('venues.detail', venue_id=e.venue.id) }}">{{ e.venue.name }}</a></td>
+          <td class="meta">{{ e.review_note }}</td>
+          <td>
+            <form method="post" action="{{ url_for('events.restore_event', event_id=e.id) }}" style="display:inline">
+              <button class="btn btn-small" type="submit">Still happening</button>
+            </form>
+            <form method="post" action="{{ url_for('events.delete_event', event_id=e.id) }}" style="display:inline" onsubmit="return confirm('Confirm this show is cancelled and remove it?');">
+              <button class="btn btn-small btn-danger" type="submit">Confirm cancelled</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <p class="empty-state">No possible cancellations.</p>
   {% endif %}
 {% endblock %}

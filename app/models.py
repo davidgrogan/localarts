@@ -122,6 +122,21 @@ class Event(db.Model):
     # the public calendar.
     is_approved = db.Column(db.Boolean, default=True, nullable=False)
 
+    # Bookkeeping for the "keep already-reviewed events honest" scrape
+    # behavior (see app/scrapers/base.py's run_scrape docstring):
+    # last_seen_at is stamped every time this event's external_id still
+    # shows up in its venue's scrape results; missing_streak counts
+    # consecutive scrapes in a row where it *didn't*, reset to 0 the
+    # moment it reappears. needs_review + review_note flag an approved
+    # event whose time/title changed, or one that's been auto-hidden as
+    # a likely cancellation, for a human to look at on the Review page
+    # -- kept separate from is_approved so "new, never reviewed" and
+    # "was approved, now flagged" are distinguishable in that view.
+    last_seen_at = db.Column(db.DateTime)
+    missing_streak = db.Column(db.Integer, default=0, nullable=False)
+    needs_review = db.Column(db.Boolean, default=False, nullable=False)
+    review_note = db.Column(db.Text)
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

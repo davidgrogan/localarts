@@ -94,7 +94,70 @@ def delete_event(event_id):
     return redirect(request.referrer or url_for("main.calendar"))
 
 
+@bp.route("/<int:event_id>/dismiss-flag", methods=["POST"])
+def dismiss_flag(event_id):
+    """Clear a "changed" flag on an already-approved event -- the admin
+    looked at the new scraped time/title and it's fine as-is."""
+    event = Event.query.get_or_404(event_id)
+    event.needs_review = False
+    event.review_note = None
+    db.session.commit()
+    flash(f"Dismissed the flag on “{event.title}”.", "success")
+    return redirect(request.referrer or url_for("events.review"))
+
+
+@bp.route("/<int:event_id>/unpublish", methods=["POST"])
+def unpublish_event(event_id):
+    """Pull an approved event back off the public calendar (e.g. a
+    flagged change turned out to be wrong) without deleting its data."""
+    event = Event.query.get_or_404(event_id)
+    event.is_approved = False
+    event.needs_review = False
+    event.review_note = None
+    db.session.commit()
+    flash(f"Unpublished “{event.title}”.", "success")
+    return redirect(request.referrer or url_for("events.review"))
+
+
+@bp.route("/<int:event_id>/restore", methods=["POST"])
+def restore_event(event_id):
+    """Undo an auto-hide from a "possibly cancelled" flag -- the show is
+    actually still happening (it just fell out of the venue's feed)."""
+    event = Event.query.get_or_404(event_id)
+    event.is_approved = True
+    event.needs_review = False
+    event.review_note = None
+    event.missing_streak = 0
+    db.session.commit()
+    flash(f"Restored “{event.title}” -- it's back on the public calendar.", "success")
+    return redirect(request.referrer or url_for("events.review"))
+
+
 @bp.route("/review")
 def review():
-    pending = Event.query.filter_by(is_approved=False).order_by(Event.start_datetime.asc()).all()
-    return render_template("events/review.html", events=pending)
+    # Three mutually-exclusive buckets driven by is_approved + needs_review
+    # (see Event model / run_scrape() docstrings for how they get set):
+    #   New          -- is_approved=False, needs_review=False  (never seen before)
+    #   Changed       -- is_approved=True,  needs_review=True   (still live, flagged)
+    #   Poss. cancelled -- is_approved=False, needs_review=True (auto-hidden)
+    new_events = (
+        Event.query.filter_by(is_approved=False, needs_review=False)
+        .order_by(Event.start_datetime.asc())
+        .all()
+    )
+    changed_events = (
+        Event.query.filter_by(is_approved=True, needs_review=True)
+        .order_by(Event.start_datetime.asc())
+        .all()
+    )
+    cancelled_events = (
+        Event.query.filter_by(is_approved=False, needs_review=True)
+        .order_by(Event.start_datetime.asc())
+        .all()
+    )
+    return render_template(
+        "events/review.html",
+        new_events=new_events,
+        changed_events=changed_events,
+        cancelled_events=cancelled_events,
+    )

@@ -48,8 +48,6 @@ def calendar():
     venues = Venue.query.order_by(Venue.name).all()
     artists = Artist.query.filter_by(is_local=True).order_by(Artist.name).all()
 
-    pending_count = Event.query.filter_by(is_approved=False).count()
-
     return render_template(
         "calendar.html",
         events=events,
@@ -62,5 +60,4 @@ def calendar():
         artists=artists,
         selected_venue=venue_id,
         selected_artist=artist_id,
-        pending_count=pending_count,
     )
