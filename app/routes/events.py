@@ -4,8 +4,13 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 
 from app.models import db, Event, Venue, Artist
 from app.utils import slugify
+from app.auth import require_admin
 
 bp = Blueprint("events", __name__, url_prefix="/events")
+# Entirely an admin surface -- adding/editing/approving/deleting shows and
+# the review queue. Visitors only ever see events rendered on the public
+# calendar, never through this blueprint.
+bp.before_request(require_admin)
 
 
 @bp.route("/new", methods=["GET", "POST"])

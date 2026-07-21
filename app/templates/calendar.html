@@ -1,13 +1,27 @@
 {% extends "base.html" %}
 {% block title %}Calendar{% endblock %}
 {% block content %}
-  <h1>Upcoming shows</h1>
-  <p class="meta">
-    Local venues, local and touring artists &mdash; Northampton, MA.
-    {% if view == 'week' %}
-      Showing {{ week_start | dtfmt("%b %-d") }}&ndash;{{ week_end | dtfmt("%b %-d") }}.
-    {% endif %}
-  </p>
+  <section class="hero">
+    <h1>Find Out What Events Are Happening in the Northampton Area</h1>
+    <p class="hero-lede">
+      One calendar, pulled together from venues all over Northampton, MA
+      &mdash; so you don't have to check a dozen different sites to see
+      what's playing this week.
+    </p>
+    <p class="hero-note">
+      We also shine a light on <strong>local artists</strong> &mdash; look
+      for the &#9733; star on a show to see who on the bill is from right
+      here in the Valley. That said, venues sometimes change set times,
+      lineups, or cancel shows on short notice, so before you head out,
+      it's always worth double-checking the details on the venue's own
+      website.
+    </p>
+  </section>
+
+  <h2 class="section-heading">Upcoming shows</h2>
+  {% if view == 'week' %}
+    <p class="meta">Showing {{ week_start | dtfmt("%b %-d") }}&ndash;{{ week_end | dtfmt("%b %-d") }}.</p>
+  {% endif %}
 
   <form class="filters" method="get">
     <input type="hidden" name="view" value="{{ view }}">
@@ -59,8 +73,12 @@
                     <div class="grid-event {{ 'grid-event-local' if local_artists else '' }}">
                       {% if local_artists %}<span class="grid-local-star" title="Features local artist: {{ local_artists | map(attribute='name') | join(', ') }}">&#9733;</span>{% endif %}
                       {% if e.genre %}<span class="grid-genre-dot" title="{{ e.genre }}"></span>{% endif %}
-                      <a href="{{ url_for('venues.detail', venue_id=e.venue.id) }}"
-                         {% if e.description %}title="{{ e.description }}" class="has-description"{% endif %}>{{ e.start_datetime | dtfmt("%-I:%M %p") }} {{ e.title }}</a>
+                      {% if e.venue.website_url %}
+                        <a href="{{ e.venue.website_url }}" target="_blank" rel="noopener"
+                           {% if e.description %}title="{{ e.description }}" class="has-description"{% endif %}>{{ e.start_datetime | dtfmt("%-I:%M %p") }} {{ e.title }}</a>
+                      {% else %}
+                        <span {% if e.description %}title="{{ e.description }}" class="has-description"{% endif %}>{{ e.start_datetime | dtfmt("%-I:%M %p") }} {{ e.title }}</span>
+                      {% endif %}
                     </div>
                   {% endfor %}
                 </td>
@@ -101,7 +119,11 @@
                 {% if e.genre %}<span class="genre-tag">{{ e.genre }}</span>{% endif %}
               </div>
               <div class="event-venue">
-                <a href="{{ url_for('venues.detail', venue_id=e.venue.id) }}">{{ e.venue.name }}</a>
+                {% if e.venue.website_url %}
+                  <a href="{{ e.venue.website_url }}" target="_blank" rel="noopener">{{ e.venue.name }}</a>
+                {% else %}
+                  {{ e.venue.name }}
+                {% endif %}
                 {% if e.venue.city %} &middot; {{ e.venue.city }}, {{ e.venue.state }}{% endif %}
               </div>
               {% if e.artists %}
@@ -115,15 +137,17 @@
               {% if e.ticket_url %}
                 <div class="event-link"><a href="{{ e.ticket_url }}" target="_blank" rel="noopener">View on venue site &rarr;</a></div>
               {% endif %}
-              <div class="event-actions">
-                {% if not e.artists %}
-                  <a href="{{ url_for('artists.new_artist', from_event=e.id) }}">+ Add as local artist</a>
-                {% endif %}
-                <a href="{{ url_for('events.edit_event', event_id=e.id) }}">Edit</a>
-                <form method="post" action="{{ url_for('events.delete_event', event_id=e.id) }}" onsubmit="return confirm('Delete this show?');">
-                  <button type="submit">Delete</button>
-                </form>
-              </div>
+              {% if is_admin %}
+                <div class="event-actions">
+                  {% if not e.artists %}
+                    <a href="{{ url_for('artists.new_artist', from_event=e.id) }}">+ Add as local artist</a>
+                  {% endif %}
+                  <a href="{{ url_for('events.edit_event', event_id=e.id) }}">Edit</a>
+                  <form method="post" action="{{ url_for('events.delete_event', event_id=e.id) }}" onsubmit="return confirm('Delete this show?');">
+                    <button type="submit">Delete</button>
+                  </form>
+                </div>
+              {% endif %}
             </div>
           </li>
         {% endfor %}
@@ -132,8 +156,10 @@
       <p class="empty-state">
         {% if view == 'week' %}
           No shows in the next 7 days. Try <a href="{{ url_for('main.calendar', view='list', venue=selected_venue, artist=selected_artist) }}">List View</a> or <a href="{{ url_for('main.calendar', view='month', venue=selected_venue, artist=selected_artist) }}">Month View</a> to see what's further out.
-        {% else %}
+        {% elif is_admin %}
           No upcoming shows yet. <a href="{{ url_for('events.new_event') }}">Add one</a>, or add a venue and try a scrape.
+        {% else %}
+          No upcoming shows yet -- check back soon.
         {% endif %}
       </p>
     {% endif %}

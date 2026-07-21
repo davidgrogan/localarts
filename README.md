@@ -8,14 +8,30 @@ DigitalOcean.
 ## What's here
 
 - **Calendar** (`/`) -- upcoming approved shows, filterable by venue or artist.
+  Public -- this and the artist roster below are the only things anonymous
+  visitors see.
+- **Artists** (`/artists`) -- roster of local artists, linked to the shows they're playing. Public.
 - **Venues** (`/venues`) -- add a venue, tell it how to pull in events (manual,
   Squarespace JSON trick, iCal feed, generic HTML selectors, or headless-browser
   selectors), preview a scrape before importing anything, and see a log of
-  recent scrape runs.
-- **Artists** (`/artists`) -- roster of local artists, linked to the shows they're playing.
-- **Add show** (`/events/new`) -- manual entry, with a quick-add box for a new artist.
+  recent scrape runs. Admin-only.
+- **Add show** (`/events/new`) -- manual entry, with a quick-add box for a new artist. Admin-only.
 - **Review** (`/events/review`) -- scraped events land here first (`is_approved = False`)
-  so nothing bad hits the public calendar unreviewed; approve or discard from here.
+  so nothing bad hits the public calendar unreviewed; approve or discard from here. Admin-only.
+
+## Admin login
+
+Everything above marked admin-only (venue/event management, the review
+queue, adding/editing/deleting artists) sits behind a single-admin login
+(`app/auth.py`) -- a username/password from env vars plus Flask's signed
+session cookie, no separate user system needed since there's exactly one
+admin. Log in at `/login` (linked from the footer); the nav and every
+edit/delete/scrape control only render once you're logged in.
+
+Set real credentials via `ADMIN_USERNAME` / `ADMIN_PASSWORD_HASH` (see
+`.env.example` for how to generate the hash) -- with nothing set, it
+falls back to `admin`/`admin`, which is fine for poking around on your
+own laptop and not fine for anything actually deployed.
 
 ## Data model
 

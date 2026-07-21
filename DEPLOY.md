@@ -114,6 +114,10 @@ Fill in:
   `/localarts` / `localarts_session` in the template. Only matters
   because this app shares a domain with sibling apps; leave these unset
   entirely if an app gets its own (sub)domain instead.
+- `ADMIN_USERNAME` / `ADMIN_PASSWORD_HASH` -- gates every management
+  route behind a login. Generate the hash: `python3 -c "from
+  werkzeug.security import generate_password_hash as g; print(g('your-real-password'))"`.
+  Don't skip this one -- leaving it unset falls back to `admin`/`admin`.
 
 This file holds real secrets and is gitignored -- never commit it.
 
@@ -225,11 +229,15 @@ deactivate
 systemctl restart local-music.service
 ```
 
-## Before this is truly public
+## Admin login
 
-The admin routes (`/venues/*`, `/events/new`, `/events/review`, etc.) have
-no authentication at all right now -- anyone who finds the URL can
-add/edit/delete venues, artists, and shows. Worth adding basic auth (or a
-real login) in front of those routes before sharing the URL widely; this
-was already flagged as a next step in README.md and matters more now that
-it's live on the internet rather than just running on your laptop.
+The admin routes (`/venues/*`, `/events/new`, `/events/review`, artist
+add/edit/delete) sit behind a single-admin login now -- see README.md's
+"Admin login" section. The one thing that matters for deployment: set
+real `ADMIN_USERNAME` / `ADMIN_PASSWORD_HASH` values in
+`deploy/local-music.env` (step 5) rather than leaving them unset, which
+falls back to `admin`/`admin`. Generate the hash with:
+
+```bash
+python3 -c "from werkzeug.security import generate_password_hash as g; print(g('your-real-password'))"
+```

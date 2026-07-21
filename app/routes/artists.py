@@ -2,8 +2,13 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 
 from app.models import db, Artist, Event
 from app.utils import slugify
+from app.auth import login_required
 
 bp = Blueprint("artists", __name__, url_prefix="/artists")
+# Unlike venues/events, this blueprint is a mix -- browsing the local
+# artist roster (list_artists, detail) is core public content (the whole
+# point of the site), so only the add/edit/delete routes below are
+# individually gated rather than protecting the whole blueprint.
 
 
 def _find_artist_matching_title(title):
@@ -34,6 +39,7 @@ def list_artists():
 
 
 @bp.route("/new", methods=["GET", "POST"])
+@login_required
 def new_artist():
     # Supports two entry points: Artists -> Add artist (a blank form), and
     # a "+ Add as local artist" link on an event listing that pre-fills
@@ -97,6 +103,7 @@ def detail(artist_id):
 
 
 @bp.route("/<int:artist_id>/edit", methods=["GET", "POST"])
+@login_required
 def edit_artist(artist_id):
     artist = Artist.query.get_or_404(artist_id)
     if request.method == "POST":
@@ -114,6 +121,7 @@ def edit_artist(artist_id):
 
 
 @bp.route("/<int:artist_id>/delete", methods=["POST"])
+@login_required
 def delete_artist(artist_id):
     artist = Artist.query.get_or_404(artist_id)
     db.session.delete(artist)

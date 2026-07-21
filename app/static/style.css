@@ -1,9 +1,12 @@
 :root {
   --ink: #1a1a1a;
   --paper: #faf8f4;
+  --paper-warm: #f6ede1;
   --accent: #a8342a;
+  --accent-soft: #fdf4f2;
   --muted: #6b6b6b;
   --line: #e0dcd3;
+  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
 }
 
 * { box-sizing: border-box; }
@@ -27,8 +30,9 @@ body {
 }
 
 .brand {
-  font-weight: 700;
-  font-size: 1.2rem;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.3rem;
   color: var(--ink);
   text-decoration: none;
 }
@@ -62,6 +66,19 @@ body {
   font-size: 0.85rem;
   padding: 2rem 1rem;
 }
+.site-footer a { color: var(--muted); }
+.login-wrap { max-width: 360px; margin: 2rem auto; }
+.footer-form { display: inline; }
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
 
 .flashes { margin-bottom: 1rem; }
 .flash {
@@ -73,10 +90,44 @@ body {
 .flash-success { background: #e4f0e1; border: 1px solid #b7d3ae; }
 .flash-error { background: #f6dede; border: 1px solid #e1a7a7; }
 
-h1 { font-size: 1.6rem; margin-bottom: 0.25rem; }
-h2 { font-size: 1.2rem; margin-top: 2rem; }
+h1 { font-family: var(--font-display); font-size: 1.6rem; margin-bottom: 0.25rem; }
+h2 { font-family: var(--font-display); font-size: 1.2rem; margin-top: 2rem; }
 
 .page-actions { margin: 1rem 0; }
+
+.hero {
+  background: linear-gradient(160deg, var(--paper-warm) 0%, var(--paper) 65%);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 2.25rem 2rem;
+  margin: 0.5rem 0 2rem;
+}
+.hero h1 {
+  font-size: 2.1rem;
+  line-height: 1.15;
+  margin-bottom: 0.9rem;
+  max-width: 20ch;
+}
+.hero-lede {
+  font-size: 1.05rem;
+  color: var(--ink);
+  max-width: 56ch;
+  margin-bottom: 0.9rem;
+}
+.hero-note {
+  font-size: 0.9rem;
+  color: var(--muted);
+  max-width: 60ch;
+  margin-bottom: 0;
+}
+.hero-note strong { color: var(--ink); }
+
+.section-heading { margin-top: 0.5rem; }
+
+@media (max-width: 600px) {
+  .hero { padding: 1.5rem 1.25rem; border-radius: 10px; }
+  .hero h1 { font-size: 1.6rem; max-width: none; }
+}
 
 .btn {
   display: inline-block;

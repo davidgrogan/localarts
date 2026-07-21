@@ -3,8 +3,12 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 from app.models import db, Venue, Event
 from app.utils import slugify
 from app.scrapers.base import preview_scrape, run_scrape, ScrapeError
+from app.auth import require_admin
 
 bp = Blueprint("venues", __name__, url_prefix="/venues")
+# Entirely an admin surface -- venue management, scrape config/preview/run,
+# and the pending-review queue all live under here, nothing public.
+bp.before_request(require_admin)
 
 SOURCE_TYPES = [
     ("manual", "Manual only (no scraping)"),

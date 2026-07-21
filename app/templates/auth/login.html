@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Admin login{% endblock %}
+{% block content %}
+  <div class="login-wrap">
+    <h1>Admin login</h1>
+    <p class="meta">Venue, event, and artist management for Local Arts.</p>
+
+    <form class="stacked" method="post">
+      <input type="hidden" name="next" value="{{ next_url }}">
+
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" autocomplete="username" required autofocus>
+
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" autocomplete="current-password" required>
+
+      <div class="actions">
+        <button class="btn" type="submit">Log in</button>
+      </div>
+    </form>
+  </div>
+{% endblock %}

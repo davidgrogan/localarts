@@ -2,9 +2,12 @@
 {% block title %}Artists{% endblock %}
 {% block content %}
   <h1>Local artists</h1>
-  <div class="page-actions">
-    <a class="btn" href="{{ url_for('artists.new_artist') }}">+ Add artist</a>
-  </div>
+  <p class="meta">Musicians from the Northampton area who've played shows on this calendar.</p>
+  {% if is_admin %}
+    <div class="page-actions">
+      <a class="btn" href="{{ url_for('artists.new_artist') }}">+ Add artist</a>
+    </div>
+  {% endif %}
 
   {% if artists %}
     {% for a in artists %}
@@ -20,6 +23,12 @@
       </div>
     {% endfor %}
   {% else %}
-    <p class="empty-state">No artists yet. <a href="{{ url_for('artists.new_artist') }}">Add the first one</a>.</p>
+    <p class="empty-state">
+      {% if is_admin %}
+        No artists yet. <a href="{{ url_for('artists.new_artist') }}">Add the first one</a>.
+      {% else %}
+        No artists listed yet -- check back soon.
+      {% endif %}
+    </p>
   {% endif %}
 {% endblock %}
