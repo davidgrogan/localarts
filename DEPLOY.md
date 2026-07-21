@@ -268,6 +268,25 @@ deactivate
 systemctl restart local-music.service
 ```
 
+**If a change adds a new column to an existing model** (like `Event`),
+that's *not* covered by the above on the droplet. Locally/SQLite,
+`app/__init__.py`'s `_run_sqlite_column_migrations()` adds missing
+columns automatically on startup -- but it explicitly skips Postgres
+("use a real migration tool instead"), so on the droplet you need one
+manual `ALTER TABLE` per new column before restarting the service, e.g.:
+
+```bash
+sudo -u postgres psql -d localarts -c 'ALTER TABLE event ADD COLUMN last_seen_at TIMESTAMP;'
+sudo -u postgres psql -d localarts -c 'ALTER TABLE event ADD COLUMN missing_streak INTEGER DEFAULT 0 NOT NULL;'
+sudo -u postgres psql -d localarts -c 'ALTER TABLE event ADD COLUMN needs_review BOOLEAN DEFAULT FALSE NOT NULL;'
+sudo -u postgres psql -d localarts -c 'ALTER TABLE event ADD COLUMN review_note TEXT;'
+```
+
+(Check `app/__init__.py`'s `_COLUMN_MIGRATIONS` dict for the current
+list of pending columns and their SQLite types -- Postgres types are
+usually the same or close; `VARCHAR(n)`/`TEXT` are identical, `DATETIME`
+becomes `TIMESTAMP`, `BOOLEAN DEFAULT 0` becomes `BOOLEAN DEFAULT FALSE`.)
+
 ## Admin login
 
 The admin routes (`/venues/*`, `/events/new`, `/events/review`, artist

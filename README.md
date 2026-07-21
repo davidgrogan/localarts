@@ -16,8 +16,14 @@ DigitalOcean.
   selectors), preview a scrape before importing anything, and see a log of
   recent scrape runs. Admin-only.
 - **Add show** (`/events/new`) -- manual entry, with a quick-add box for a new artist. Admin-only.
-- **Review** (`/events/review`) -- scraped events land here first (`is_approved = False`)
-  so nothing bad hits the public calendar unreviewed; approve or discard from here. Admin-only.
+- **Review** (`/events/review`) -- one queue for everything a scrape needs a human
+  to look at, in three sections: **New** (`is_approved=False`, never seen before --
+  approve or discard), **Changed** (already approved and still live, but the venue's
+  site reported a different time/title since -- confirm it's real or unpublish), and
+  **Possibly cancelled** (was approved, hasn't shown up in the venue's listing for two
+  scrapes in a row, so it's already been auto-hidden -- restore it if it's actually
+  still happening, or confirm/discard). See "Keeping scraped data honest" below for
+  how that bookkeeping works. Admin-only.
 - **Contact** (`/contact`) -- public form for visitors to request an artist/show/venue
   be added, or flag something wrong. Emails `CONTACT_EMAIL` via Gmail SMTP (see below).
 
@@ -156,6 +162,33 @@ the last year seen earlier on the page (the listing is chronological, so
 that's a safe assumption) -- verified against all the actual edge cases seen
 on the page before wiring it up for real.
 
+**On Smith College's events calendar (smith.edu/news-events/events):** a
+Drupal 10 site, server-rendered (confirmed via a direct fetch), so this is
+also `source_type = "html"`. Selectors (confirmed from a real raw-HTML
+sample of one event "teaser") are `article.teaser` / `.heading__link` /
+`.teaser__subheading` / `.teaser__text` / `.teaser__media img`. Two things
+made this venue different from the others:
+
+- This is the *whole college's* calendar (exhibitions, lectures, religious
+  life, performances, everything), not a single music venue -- deliberately
+  seeded to pull all of it rather than filter down to just the site's own
+  "Performances" event type, so expect real non-music noise here that the
+  Review queue needs to sort through.
+- Its date field is `"Wednesday, July 22, 2026 | 9 a.m.-4 p.m."` -- a date
+  and a start-end time range joined by `|`. Handing that whole string to
+  dateutil's fuzzy parser picks up the *end* time instead of the start
+  time. `html_generic.py` now has a small `_clean_time_range()` heuristic
+  (understands "Noon"/"Midnight" and a first time missing am/pm because it
+  shares the second time's) that strips it down to just the start time
+  before parsing -- it's a no-op on any date string without a `|`, so it's
+  safe for every other venue.
+
+Also new in `html_generic.py`, needed because Smith's listing is paginated
+(`?page=N`): `scrape_config` now accepts `"page_param"` and `"max_pages"`
+to fetch and concatenate several pages per scrape (Smith is seeded with
+`max_pages: 6`) -- both are no-ops for every existing venue's single-page
+config.
+
 **On Haze (hazenorthampton.org):** a custom Next.js site with its own
 built-in calendar widget, not a third-party embed. A plain fetch returns
 the full month-grid HTML already rendered, so no headless browser is
@@ -178,6 +211,41 @@ Google Calendar -- if so, that calendar's own `.ics` feed (via the
 `ical` source type) would be more robust than this widget-scraping
 approach, but the actual calendar ID wasn't discoverable from the pages
 fetched so far.
+
+## Keeping scraped data honest
+
+Scraping isn't just "find new shows" -- venues change times, and sometimes
+cancel shows outright, and a re-scrape needs to surface both without either
+silently corrupting something a visitor already saw or nuking a real show
+because of a one-off scraper hiccup. `run_scrape()` in
+`app/scrapers/base.py` handles this with two extra behaviors on top of the
+basic create/update logic, both driven by four columns on `Event`:
+`last_seen_at`, `missing_streak`, `needs_review`, `review_note`.
+
+- **Changed events:** if an already-*approved* event's scraped time or
+  title differs from what's stored, the record is updated immediately (the
+  public site should never show stale info) but also flagged
+  (`needs_review = True`, with a note like "Time changed from 8:00 PM to
+  9:00 PM") so it shows up in the Review page's **Changed** section instead
+  of silently mutating something already public. New/still-pending events
+  just update quietly -- they haven't been reviewed either way yet.
+- **Possibly-cancelled events:** any approved event starting within the
+  next 21 days that a scrape's results *don't* include gets its
+  `missing_streak` bumped. Two misses in a row (not one, to tolerate a
+  single bad page load or a paginated feed's cutoff) and it's auto-hidden
+  (`is_approved = False`) and flagged, landing in Review's **Possibly
+  cancelled** section already off the public calendar rather than just
+  quietly disappearing. Reappearing on a later scrape resets the streak to
+  0 with no flag. This check is skipped entirely if a scrape came back with
+  *zero* events, since that far more likely means a broken scrape (site
+  redesign, selector no longer matching) than every show at that venue
+  getting cancelled at once.
+
+Both together mean the daily "scrape all venues" run (`scrape_all.py`, on
+the `scrape.timer` schedule) can run unattended and the Review page
+(`/events/review`) is the one place to check each morning: **New** (never
+seen before), **Changed** (still live, but flagged), and **Possibly
+cancelled** (auto-hidden, needs a confirm/restore decision).
 
 ## Adding a venue (workflow so far)
 
