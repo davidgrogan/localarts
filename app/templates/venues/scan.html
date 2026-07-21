@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Scan venues{% endblock %}
+{% block content %}
+  <h1>Scan all venues</h1>
+  <p class="meta">Rescrapes every active, non-manual venue for new or changed shows. New events land in Review as usual.</p>
+
+  {% if not venues %}
+    <p class="empty-state">No active, scrapable venues right now. <a href="{{ url_for('venues.list_venues') }}">Manage venues</a>.</p>
+  {% else %}
+    <div class="page-actions">
+      <button class="btn" id="start-scan" type="button">Start scan ({{ venues | length }} venue{{ "s" if venues | length != 1 else "" }})</button>
+      <a class="btn btn-secondary" href="{{ url_for('events.review') }}">Go to Review</a>
+    </div>
+
+    <div class="scan-bar-track"><div class="scan-bar-fill" id="scan-bar-fill"></div></div>
+    <p class="scan-status" id="scan-status"></p>
+    <ul class="scan-log" id="scan-log"></ul>
+
+    <p class="hint" style="margin-top:1.5rem;">
+      If JavaScript is off, you can instead
+      <form method="post" action="{{ url_for('venues.scan_all') }}" style="display:inline"
+            onsubmit="return confirm('Rescrape every active venue now? This can take a minute.');">
+        <button type="submit" class="link-button">run every venue in one request, without a progress bar</button>
+      </form>.
+    </p>
+
+    <script>
+      (function () {
+        var venues = {{ venues | map(attribute="id") | list | tojson }};
+        var names = {{ venues | map(attribute="name") | list | tojson }};
+        var startBtn = document.getElementById("start-scan");
+        var bar = document.getElementById("scan-bar-fill");
+        var status = document.getElementById("scan-status");
+        var log = document.getElementById("scan-log");
+
+        function addLogLine(text, isError) {
+          var li = document.createElement("li");
+          li.textContent = text;
+          if (isError) li.className = "scan-log-error";
+          log.appendChild(li);
+          log.scrollTop = log.scrollHeight;
+        }
+
+        startBtn.addEventListener("click", async function () {
+          startBtn.disabled = true;
+          startBtn.textContent = "Scanning...";
+          log.innerHTML = "";
+          bar.style.width = "0%";
+          var createdTotal = 0, updatedTotal = 0, failedCount = 0;
+
+          for (var i = 0; i < venues.length; i++) {
+            status.textContent = "Scanning " + names[i] + "... (" + (i + 1) + " of " + venues.length + ")";
+            try {
+              var resp = await fetch("/venues/" + venues[i] + "/scan-one", { method: "POST" });
+              var data = await resp.json();
+              if (data.ok) {
+                addLogLine(data.venue + ": " + data.created + " new, " + data.updated + " updated", false);
+                createdTotal += data.created;
+                updatedTotal += data.updated;
+              } else {
+                addLogLine(data.venue + ": failed -- " + data.error, true);
+                failedCount++;
+              }
+            } catch (err) {
+              addLogLine(names[i] + ": request failed -- " + err, true);
+              failedCount++;
+            }
+            bar.style.width = Math.round(((i + 1) / venues.length) * 100) + "%";
+          }
+
+          status.textContent = "Done -- " + createdTotal + " new, " + updatedTotal + " updated" +
+            (failedCount ? ", " + failedCount + " failed" : "") + ".";
+          startBtn.textContent = "Scan again";
+          startBtn.disabled = false;
+        });
+      })();
+    </script>
+  {% endif %}
+{% endblock %}

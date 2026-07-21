@@ -63,19 +63,6 @@ body {
 
 .site-header nav a:hover { color: var(--teal); }
 
-.nav-form { margin: 0; }
-.nav-button {
-  background: none;
-  border: none;
-  padding: 0;
-  margin: 0;
-  font: inherit;
-  font-size: 0.95rem;
-  color: var(--ink);
-  cursor: pointer;
-}
-.nav-button:hover { color: var(--teal); }
-
 @media (max-width: 600px) {
   .brand { font-size: 2rem; }
   .brand-logo { width: 40px; height: 40px; }
@@ -388,3 +375,32 @@ form.stacked .actions { margin-top: 1.5rem; }
   border-radius: 3px;
   margin-left: 0.4rem;
 }
+
+.scan-bar-track {
+  width: 100%;
+  height: 14px;
+  background: var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 0.75rem 0 0.5rem;
+}
+.scan-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--teal);
+  transition: width 0.2s ease;
+}
+.scan-status { font-size: 0.9rem; color: var(--muted); min-height: 1.3em; }
+.scan-log {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0 0;
+  font-size: 0.85rem;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.scan-log li {
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.scan-log li.scan-log-error { color: var(--accent); }
