@@ -176,6 +176,15 @@ class Event(db.Model):
     needs_review = db.Column(db.Boolean, default=False, nullable=False)
     review_note = db.Column(db.Text)
 
+    # Set when a still-pending ("New") scraped event is discarded from the
+    # Review page -- rather than deleting the row outright (which would
+    # make it look brand-new again on the very next scrape, since matching
+    # is done by venue_id + external_id), it's kept and hidden instead, so
+    # a future scrape recognizes it and leaves it alone. Its other fields
+    # still get refreshed on re-scrape like any other matched event (see
+    # run_scrape()), so it stays up to date in case it's ever restored.
+    is_rejected = db.Column(db.Boolean, default=False, nullable=False)
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

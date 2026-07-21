@@ -28,6 +28,7 @@ _COLUMN_MIGRATIONS = {
         ("missing_streak", "INTEGER DEFAULT 0 NOT NULL"),
         ("needs_review", "BOOLEAN DEFAULT 0 NOT NULL"),
         ("review_note", "TEXT"),
+        ("is_rejected", "BOOLEAN DEFAULT 0 NOT NULL"),
     ],
     "artist": [
         ("embed_code", "TEXT"),
@@ -118,7 +119,8 @@ def create_app(test_config=None):
         from app.models import Event
 
         count = Event.query.filter(
-            db.or_(Event.is_approved.is_(False), Event.needs_review.is_(True))
+            Event.is_rejected.is_(False),
+            db.or_(Event.is_approved.is_(False), Event.needs_review.is_(True)),
         ).count()
         return {"pending_count": count}
 

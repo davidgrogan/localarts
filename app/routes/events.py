@@ -177,15 +177,44 @@ def restore_event(event_id):
     return redirect(request.referrer or url_for("events.review"))
 
 
+@bp.route("/<int:event_id>/reject", methods=["POST"])
+def reject_event(event_id):
+    """Discard a still-pending ("New") scraped event without deleting its
+    row outright -- deleting it would make it look brand-new again on the
+    very next scrape (matching is by venue_id + external_id, and a
+    deleted row leaves nothing to match against). Keeping it, hidden and
+    marked is_rejected, means a future scrape recognizes it and leaves it
+    alone; its other fields still get refreshed on re-scrape like any
+    matched event, so it's current if it's ever restored."""
+    event = Event.query.get_or_404(event_id)
+    event.is_rejected = True
+    db.session.commit()
+    flash(f"Discarded “{event.title}” -- it won't be re-added by future scrapes.", "success")
+    return redirect(request.referrer or url_for("events.review"))
+
+
+@bp.route("/<int:event_id>/unreject", methods=["POST"])
+def unreject_event(event_id):
+    """Undo a reject -- puts it back in the "New" bucket for review
+    (not straight onto the public calendar; use Approve for that)."""
+    event = Event.query.get_or_404(event_id)
+    event.is_rejected = False
+    db.session.commit()
+    flash(f"Restored “{event.title}” to the New list for review.", "success")
+    return redirect(request.referrer or url_for("events.review"))
+
+
 @bp.route("/review")
 def review():
-    # Three mutually-exclusive buckets driven by is_approved + needs_review
-    # (see Event model / run_scrape() docstrings for how they get set):
-    #   New          -- is_approved=False, needs_review=False  (never seen before)
-    #   Changed       -- is_approved=True,  needs_review=True   (still live, flagged)
-    #   Poss. cancelled -- is_approved=False, needs_review=True (auto-hidden)
+    # Four mutually-exclusive buckets driven by is_approved / needs_review /
+    # is_rejected (see Event model / run_scrape() docstrings for how they
+    # get set):
+    #   New             -- is_approved=False, needs_review=False, is_rejected=False (never seen before)
+    #   Changed         -- is_approved=True,  needs_review=True                     (still live, flagged)
+    #   Poss. cancelled -- is_approved=False, needs_review=True                      (auto-hidden)
+    #   Rejected        -- is_rejected=True                                         (discarded, remembered)
     new_events = (
-        Event.query.filter_by(is_approved=False, needs_review=False)
+        Event.query.filter_by(is_approved=False, needs_review=False, is_rejected=False)
         .order_by(Event.start_datetime.asc())
         .all()
     )
@@ -195,13 +224,17 @@ def review():
         .all()
     )
     cancelled_events = (
-        Event.query.filter_by(is_approved=False, needs_review=True)
+        Event.query.filter_by(is_approved=False, needs_review=True, is_rejected=False)
         .order_by(Event.start_datetime.asc())
         .all()
+    )
+    rejected_events = (
+        Event.query.filter_by(is_rejected=True).order_by(Event.start_datetime.asc()).all()
     )
     return render_template(
         "events/review.html",
         new_events=new_events,
         changed_events=changed_events,
         cancelled_events=cancelled_events,
+        rejected_events=rejected_events,
     )

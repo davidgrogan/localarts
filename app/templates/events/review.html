@@ -2,7 +2,7 @@
 {% block title %}Review scraped shows{% endblock %}
 {% block content %}
   <h1>Review</h1>
-  <p class="meta">One stop for everything a scrape needs a human to look at: brand-new shows, approved shows whose time or title changed, and approved shows that vanished from a venue's listing.</p>
+  <p class="meta">One stop for everything a scrape needs a human to look at: brand-new shows, approved shows whose time or title changed, approved shows that vanished from a venue's listing, and shows you've already discarded.</p>
 
   <h2 class="section-heading">New ({{ new_events | length }})</h2>
   {% if new_events %}
@@ -25,7 +25,7 @@
               <button class="btn btn-small" type="submit">Approve</button>
             </form>
             <a class="btn btn-small btn-secondary" href="{{ url_for('events.edit_event', event_id=e.id, next=url_for('events.review')) }}">Edit</a>
-            <form method="post" action="{{ url_for('events.delete_event', event_id=e.id) }}" style="display:inline" onsubmit="return confirm('Discard this show?');">
+            <form method="post" action="{{ url_for('events.reject_event', event_id=e.id) }}" style="display:inline" onsubmit="return confirm('Discard this show? It won\'t come back on future scrapes unless you restore it.');">
               <button class="btn btn-small btn-danger" type="submit">Discard</button>
             </form>
           </td>
@@ -101,5 +101,37 @@
     </table>
   {% else %}
     <p class="empty-state">No possible cancellations.</p>
+  {% endif %}
+
+  <h2 class="section-heading">Rejected ({{ rejected_events | length }})</h2>
+  <p class="meta">Discarded from the New list -- kept out of future scrapes on purpose. Restore one if you change your mind, or delete it for good.</p>
+  {% if rejected_events %}
+    <table class="plain">
+      <tr><th>Date</th><th>Title</th><th>Venue</th><th>Link</th><th></th></tr>
+      {% for e in rejected_events %}
+        <tr>
+          <td>{{ e.start_datetime | dtfmt("%b %-d, %Y %-I:%M %p") }}</td>
+          <td>{{ e.title }}</td>
+          <td><a href="{{ url_for('venues.detail', venue_id=e.venue.id) }}">{{ e.venue.name }}</a></td>
+          <td>
+            {% if e.ticket_url %}
+              <a href="{{ e.ticket_url }}" target="_blank" rel="noopener">View on venue site &rarr;</a>
+            {% elif e.venue.website_url %}
+              <a href="{{ e.venue.website_url }}" target="_blank" rel="noopener">Venue site &rarr;</a>
+            {% endif %}
+          </td>
+          <td>
+            <form method="post" action="{{ url_for('events.unreject_event', event_id=e.id) }}" style="display:inline">
+              <button class="btn btn-small" type="submit">Restore</button>
+            </form>
+            <form method="post" action="{{ url_for('events.delete_event', event_id=e.id) }}" style="display:inline" onsubmit="return confirm('Permanently delete this show?');">
+              <button class="btn btn-small btn-danger" type="submit">Delete for good</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <p class="empty-state">Nothing discarded.</p>
   {% endif %}
 {% endblock %}

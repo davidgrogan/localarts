@@ -281,6 +281,7 @@ sudo -u postgres psql -d localarts -c 'ALTER TABLE event ADD COLUMN missing_stre
 sudo -u postgres psql -d localarts -c 'ALTER TABLE event ADD COLUMN needs_review BOOLEAN DEFAULT FALSE NOT NULL;'
 sudo -u postgres psql -d localarts -c 'ALTER TABLE event ADD COLUMN review_note TEXT;'
 sudo -u postgres psql -d localarts -c 'ALTER TABLE venue ADD COLUMN default_event_type_id INTEGER REFERENCES event_type(id);'
+sudo -u postgres psql -d localarts -c 'ALTER TABLE event ADD COLUMN is_rejected BOOLEAN DEFAULT FALSE NOT NULL;'
 ```
 
 The event type tags feature also adds two brand-new tables (`event_type`,

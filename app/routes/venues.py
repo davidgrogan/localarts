@@ -141,7 +141,10 @@ def detail(venue_id):
     venue = Venue.query.get_or_404(venue_id)
     events = Event.query.filter_by(venue_id=venue.id).order_by(Event.start_datetime.asc()).all()
     approved = [e for e in events if e.is_approved]
-    pending = [e for e in events if not e.is_approved]
+    # Rejected events are also is_approved=False, but they're not
+    # "awaiting review" anymore -- they're deliberately discarded and
+    # live in Review's Rejected section instead.
+    pending = [e for e in events if not e.is_approved and not e.is_rejected]
     return render_template("venues/detail.html", venue=venue, approved=approved, pending=pending)
 
 

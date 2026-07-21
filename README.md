@@ -29,13 +29,17 @@ DigitalOcean.
   scheduling more frequent `scrape.timer` runs is the fallback. Admin-only.
 - **Add show** (`/events/new`) -- manual entry, with a quick-add box for a new artist. Admin-only.
 - **Review** (`/events/review`) -- one queue for everything a scrape needs a human
-  to look at, in three sections: **New** (`is_approved=False`, never seen before --
+  to look at, in four sections: **New** (`is_approved=False`, never seen before --
   approve or discard), **Changed** (already approved and still live, but the venue's
-  site reported a different time/title since -- confirm it's real or unpublish), and
+  site reported a different time/title since -- confirm it's real or unpublish),
   **Possibly cancelled** (was approved, hasn't shown up in the venue's listing for two
   scrapes in a row, so it's already been auto-hidden -- restore it if it's actually
-  still happening, or confirm/discard). See "Keeping scraped data honest" below for
-  how that bookkeeping works. Admin-only.
+  still happening, or confirm/discard), and **Rejected** (discarded from New --
+  restore it or delete it for good). Discarding from New doesn't delete the row; it
+  marks `is_rejected` instead, so a future scrape recognizes the same event (matched
+  by venue + external id) and leaves it alone rather than re-adding it as if it were
+  brand new. See "Keeping scraped data honest" below for how that bookkeeping works.
+  Admin-only.
 - **Contact** (`/contact`) -- public form for visitors to request an artist/show/venue
   be added, or flag something wrong. Emails `CONTACT_EMAIL` via Gmail SMTP (see below).
 
