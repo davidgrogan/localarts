@@ -20,7 +20,13 @@ by `venue.scrape_config`, a JSON object with:
       "image_selector": "optional CSS selector *within* an item, for an
                           <img> to use as the event's image (reads its
                           src attribute; relative URLs are resolved
-                          against the venue's website_url)"
+                          against the venue's website_url)",
+      "page_param": "optional query-string param name for pagination
+                      (e.g. 'page') -- if set, fetch_raw fetches pages
+                      0..max_pages-1 by appending ?<page_param>=<n> to
+                      events_url and concatenates the raw HTML",
+      "max_pages": "how many pages to fetch when page_param is set
+                    (default 1 -- i.e. no pagination)"
     }
 
 This only works well on server-rendered (non-JS) pages. If a venue's
@@ -46,6 +52,18 @@ field rather than a single machine-readable date:
     processed in document order and this kind of listing is chronological,
     each parsed event's year is carried forward as the fallback default
     for the next item that doesn't specify one.
+
+A second heuristic, added for Smith College's events calendar
+(smith.edu/news-events/events, a Drupal "teaser" listing), handles a
+different real-world date shape: "Wednesday, July 22, 2026 | 9 a.m.-4
+p.m." -- a date and a start-end time range joined by "|". Handing that
+whole string to dateutil's fuzzy parser directly picks up the *second*
+(end) time instead of the start time. `_clean_time_range()` below strips
+it down to "Wednesday, July 22, 2026 9 a.m." before parsing, understanding
+"Noon"/"Midnight" and a first time that omits am/pm because it shares the
+second time's (e.g. "5-7 p.m." -> "5 p.m."). It's a no-op on any date
+string that doesn't contain "|", so it's safe for every other venue's
+date_selector text.
 """
 import json
 import re
@@ -62,16 +80,58 @@ _WEEKDAY_RE = re.compile(
     r"\b(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\b"
 )
 
+# Matches a "<date> | <start>[-<end>]" tail, e.g. "| 9 a.m.-4 p.m.",
+# "| Noon-1 p.m.", "| 5-7 p.m." -- see module docstring.
+_TIME_RANGE_RE = re.compile(
+    r"^(?P<date>[^|]+)\|\s*"
+    r"(?P<t1>noon|midnight|\d{1,2}(?::\d{2})?)\s*(?P<ap1>[ap]\.?m\.?)?"
+    r"(?:\s*-\s*(?P<t2>noon|midnight|\d{1,2}(?::\d{2})?)\s*(?P<ap2>[ap]\.?m\.?)?)?",
+    re.IGNORECASE,
+)
+
+
+def _clean_time_range(text):
+    match = _TIME_RANGE_RE.match(text.strip())
+    if not match or not match.group("t1"):
+        return text
+
+    date_part = match.group("date").strip()
+    t1 = match.group("t1").lower()
+    if t1 == "noon":
+        time_part = "12:00 pm"
+    elif t1 == "midnight":
+        time_part = "12:00 am"
+    else:
+        ap = match.group("ap1") or match.group("ap2") or ""
+        time_part = f"{t1} {ap}".strip()
+
+    return f"{date_part} {time_part}"
+
 
 def fetch_raw(venue):
     if not venue.events_url:
         raise ScrapeError("Venue has no events_url configured.")
-    try:
-        resp = requests.get(venue.events_url, headers={"User-Agent": USER_AGENT}, timeout=15)
-        resp.raise_for_status()
-    except requests.RequestException as exc:
-        raise ScrapeError(f"Failed to fetch {venue.events_url}: {exc}") from exc
-    return resp.text
+
+    config = _config(venue)
+    page_param = config.get("page_param")
+    max_pages = int(config.get("max_pages") or 1) if page_param else 1
+
+    pages = []
+    for page_num in range(max_pages):
+        url = venue.events_url
+        if page_param and page_num > 0:
+            sep = "&" if "?" in url else "?"
+            url = f"{url}{sep}{page_param}={page_num}"
+        try:
+            resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=15)
+            resp.raise_for_status()
+        except requests.RequestException as exc:
+            if page_num == 0:
+                raise ScrapeError(f"Failed to fetch {url}: {exc}") from exc
+            break  # ran out of pages (or a transient error) -- use what we have
+        pages.append(resp.text)
+
+    return "\n".join(pages)
 
 
 def _config(venue):
@@ -140,7 +200,7 @@ def parse(raw, venue):
             if date_format:
                 start_dt = dt.strptime(date_text, date_format)
             else:
-                phrase = _first_date_phrase(date_text)
+                phrase = _first_date_phrase(_clean_time_range(date_text))
                 default_year = last_known_year or dt.utcnow().year
                 start_dt = dateparser.parse(
                     phrase, fuzzy=True, default=dt(default_year, 1, 1)

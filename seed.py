@@ -138,6 +138,47 @@ def main():
             scrape_config="{}",
         )
 
+        smith_college = get_or_create_venue(
+            name="Smith College Events",
+            slug="smith-college-events",
+            address="10 Elm St.",
+            city="Northampton",
+            state="MA",
+            website_url="https://www.smith.edu",
+            events_url="https://www.smith.edu/news-events/events",
+            # This is the whole college's events calendar (exhibitions,
+            # lectures, performances, etc.), not a single music venue --
+            # David chose to pull everything rather than filter down to
+            # just the "Performances" event type, so expect a lot of
+            # non-music noise here; use the admin Review queue to pick
+            # out what's actually relevant. Drupal 10, server-rendered
+            # (confirmed via a direct fetch -- no JS needed), paginated
+            # with a plain ?page=N query param. Selectors confirmed from
+            # a real raw-HTML sample of one event "teaser":
+            #   <article class="teaser">
+            #     <h2 class="teaser__heading"><a class="heading__link" href="...">Title</a></h2>
+            #     <p class="teaser__subheading"> Wednesday, July 22, 2026 | 9 a.m.-4 p.m.</p>
+            #     <p class="teaser__text">Description...</p>
+            #     <div class="teaser__media"><img src="..."></div>
+            #   </article>
+            # The subheading's "<date> | <start>-<end> time" shape needed
+            # a new date-cleanup heuristic in html_generic.py (see that
+            # file's docstring) -- handing the whole string to dateutil's
+            # fuzzy parser directly picked up the *end* time instead of
+            # the start time. max_pages fetches the first 6 pages (~36
+            # listing rows) each run so near-term events aren't missed;
+            # bump it in the admin if that's not far enough out.
+            source_type="html",
+            scrape_config=(
+                '{"item_selector": "article.teaser", '
+                '"title_selector": ".heading__link", '
+                '"date_selector": ".teaser__subheading", '
+                '"description_selector": ".teaser__text", '
+                '"image_selector": ".teaser__media img", '
+                '"page_param": "page", "max_pages": 6}'
+            ),
+        )
+
         artist_1 = get_or_create_artist(
             name="Sample Local Artist",
             slug=slugify("Sample Local Artist"),
