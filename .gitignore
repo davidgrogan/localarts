@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 instance/
+backups/
 .env
 deploy/local-music.env
 .DS_Store
