@@ -7,12 +7,19 @@
   <h2 class="section-heading">New ({{ new_events | length }})</h2>
   {% if new_events %}
     <table class="plain">
-      <tr><th>Date</th><th>Title</th><th>Venue</th><th></th></tr>
+      <tr><th>Date</th><th>Title</th><th>Venue</th><th>Link</th><th></th></tr>
       {% for e in new_events %}
         <tr>
           <td>{{ e.start_datetime | dtfmt("%b %-d, %Y %-I:%M %p") }}</td>
           <td>{{ e.title }}</td>
           <td><a href="{{ url_for('venues.detail', venue_id=e.venue.id) }}">{{ e.venue.name }}</a></td>
+          <td>
+            {% if e.ticket_url %}
+              <a href="{{ e.ticket_url }}" target="_blank" rel="noopener">View on venue site &rarr;</a>
+            {% elif e.venue.website_url %}
+              <a href="{{ e.venue.website_url }}" target="_blank" rel="noopener">Venue site &rarr;</a>
+            {% endif %}
+          </td>
           <td>
             <form method="post" action="{{ url_for('events.approve_event', event_id=e.id) }}" style="display:inline">
               <button class="btn btn-small" type="submit">Approve</button>
@@ -33,12 +40,19 @@
   <p class="meta">Still live on the public calendar -- the venue's site reported a different time or title since this was approved. Confirm it's a real update, or unpublish if the scrape got it wrong.</p>
   {% if changed_events %}
     <table class="plain">
-      <tr><th>Date</th><th>Title</th><th>Venue</th><th>What changed</th><th></th></tr>
+      <tr><th>Date</th><th>Title</th><th>Venue</th><th>Link</th><th>What changed</th><th></th></tr>
       {% for e in changed_events %}
         <tr>
           <td>{{ e.start_datetime | dtfmt("%b %-d, %Y %-I:%M %p") }}</td>
           <td>{{ e.title }}</td>
           <td><a href="{{ url_for('venues.detail', venue_id=e.venue.id) }}">{{ e.venue.name }}</a></td>
+          <td>
+            {% if e.ticket_url %}
+              <a href="{{ e.ticket_url }}" target="_blank" rel="noopener">View on venue site &rarr;</a>
+            {% elif e.venue.website_url %}
+              <a href="{{ e.venue.website_url }}" target="_blank" rel="noopener">Venue site &rarr;</a>
+            {% endif %}
+          </td>
           <td class="meta">{{ e.review_note }}</td>
           <td>
             <form method="post" action="{{ url_for('events.dismiss_flag', event_id=e.id) }}" style="display:inline">
@@ -60,12 +74,19 @@
   <p class="meta">Was approved and live, but hasn't shown up in the venue's listing for a couple of scrapes in a row, so it's been pulled off the public calendar already. Confirm the cancellation (discard) or restore it if it's still actually happening.</p>
   {% if cancelled_events %}
     <table class="plain">
-      <tr><th>Date</th><th>Title</th><th>Venue</th><th>Why</th><th></th></tr>
+      <tr><th>Date</th><th>Title</th><th>Venue</th><th>Link</th><th>Why</th><th></th></tr>
       {% for e in cancelled_events %}
         <tr>
           <td>{{ e.start_datetime | dtfmt("%b %-d, %Y %-I:%M %p") }}</td>
           <td>{{ e.title }}</td>
           <td><a href="{{ url_for('venues.detail', venue_id=e.venue.id) }}">{{ e.venue.name }}</a></td>
+          <td>
+            {% if e.ticket_url %}
+              <a href="{{ e.ticket_url }}" target="_blank" rel="noopener">View on venue site &rarr;</a>
+            {% elif e.venue.website_url %}
+              <a href="{{ e.venue.website_url }}" target="_blank" rel="noopener">Venue site &rarr;</a>
+            {% endif %}
+          </td>
           <td class="meta">{{ e.review_note }}</td>
           <td>
             <form method="post" action="{{ url_for('events.restore_event', event_id=e.id) }}" style="display:inline">
