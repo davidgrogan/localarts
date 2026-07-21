@@ -44,51 +44,9 @@
 
   <div class="view-toggle">
     <a class="btn btn-small {{ '' if view == 'week' else 'btn-secondary' }}" href="{{ url_for('main.calendar', view='week', venue=selected_venue, artist=selected_artist) }}">Next 7 Days</a>
-    <a class="btn btn-small {{ '' if view == 'month' else 'btn-secondary' }}" href="{{ url_for('main.calendar', view='month', venue=selected_venue, artist=selected_artist) }}">Month View</a>
-    <a class="btn btn-small {{ '' if view == 'list' else 'btn-secondary' }}" href="{{ url_for('main.calendar', view='list', venue=selected_venue, artist=selected_artist) }}">List View</a>
+    <a class="btn btn-small {{ '' if view == 'list' else 'btn-secondary' }}" href="{{ url_for('main.calendar', view='list', venue=selected_venue, artist=selected_artist) }}">List All</a>
   </div>
 
-  {% if view == 'month' %}
-    <div class="month-nav">
-      <a href="{{ url_for('main.calendar', view='month', month=grid.prev_month, venue=selected_venue, artist=selected_artist) }}">&larr; Prev</a>
-      <span class="month-label">{{ grid.month_name }}</span>
-      <a href="{{ url_for('main.calendar', view='month', month=grid.next_month, venue=selected_venue, artist=selected_artist) }}">Next &rarr;</a>
-    </div>
-
-    <table class="month-grid">
-      <thead>
-        <tr><th>Sun</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th></tr>
-      </thead>
-      <tbody>
-        {% for week in grid.weeks %}
-          <tr>
-            {% for day in week %}
-              {% if day == 0 %}
-                <td class="empty-day"></td>
-              {% else %}
-                <td class="{{ 'today' if day == grid.today_day else '' }}">
-                  <div class="day-number">{{ day }}</div>
-                  {% for e in grid.events_by_day.get(day, []) %}
-                    {% set local_artists = e.artists | selectattr("is_local") | list %}
-                    <div class="grid-event {{ 'grid-event-local' if local_artists else '' }}">
-                      {% if local_artists %}<span class="grid-local-star" title="Features local artist: {{ local_artists | map(attribute='name') | join(', ') }}">&#9733;</span>{% endif %}
-                      {% if e.genre %}<span class="grid-genre-dot" title="{{ e.genre }}"></span>{% endif %}
-                      {% if e.venue.website_url %}
-                        <a href="{{ e.venue.website_url }}" target="_blank" rel="noopener"
-                           {% if e.description %}title="{{ e.description }}" class="has-description"{% endif %}>{{ e.start_datetime | dtfmt("%-I:%M %p") }} {{ e.title }}</a>
-                      {% else %}
-                        <span {% if e.description %}title="{{ e.description }}" class="has-description"{% endif %}>{{ e.start_datetime | dtfmt("%-I:%M %p") }} {{ e.title }}</span>
-                      {% endif %}
-                    </div>
-                  {% endfor %}
-                </td>
-              {% endif %}
-            {% endfor %}
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  {% else %}
     {% if events %}
       <ul class="event-list">
         {% set ns = namespace(current_day=None) %}
@@ -155,7 +113,7 @@
     {% else %}
       <p class="empty-state">
         {% if view == 'week' %}
-          No shows in the next 7 days. Try <a href="{{ url_for('main.calendar', view='list', venue=selected_venue, artist=selected_artist) }}">List View</a> or <a href="{{ url_for('main.calendar', view='month', venue=selected_venue, artist=selected_artist) }}">Month View</a> to see what's further out.
+          No shows in the next 7 days. Try <a href="{{ url_for('main.calendar', view='list', venue=selected_venue, artist=selected_artist) }}">List All</a> to see what's further out.
         {% elif is_admin %}
           No upcoming shows yet. <a href="{{ url_for('events.new_event') }}">Add one</a>, or add a venue and try a scrape.
         {% else %}
@@ -163,5 +121,4 @@
         {% endif %}
       </p>
     {% endif %}
-  {% endif %}
 {% endblock %}
