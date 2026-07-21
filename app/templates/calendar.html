@@ -68,6 +68,8 @@
             <div class="event-date">{{ e.start_datetime | dtfmt("%-I:%M %p") }}</div>
             {% if e.image_url %}
               <div class="event-thumb"><img src="{{ e.image_url }}" alt="" loading="lazy"></div>
+            {% else %}
+              <div class="event-thumb event-thumb-fallback"><img src="{{ url_for('static', filename='logo.svg') }}" alt="" loading="lazy"></div>
             {% endif %}
             <div class="event-main">
               <div class="event-title">
