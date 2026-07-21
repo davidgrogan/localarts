@@ -1,10 +1,14 @@
 # Deploying to a DigitalOcean Droplet
 
-This assumes: you already have a DigitalOcean account, and this project is
-(or will be) pushed to a GitHub repo you control. Steps 1-2 happen in your
-own GitHub/DO accounts -- I can't create accounts, add payment methods, or
-authenticate as you, so those parts are on you. Everything after that is a
-straight copy/paste-able walkthrough.
+This documents how this project is *actually* deployed: onto an existing
+shared droplet (`waveyvibe.dev`) that already runs other apps behind
+**Caddy**, mounted at a path (`/localarts`) rather than owning its own
+domain, with Postgres installed directly on the droplet rather than a
+separate managed database. If you're deploying to a brand new droplet
+instead, the shape is similar but simpler -- skip anything below that
+references "the existing app" or path-mounting, use nginx or Caddy per
+your own preference, and consider a DO Managed Database for automatic
+backups.
 
 ## 0. Push this project to GitHub (one time)
 
@@ -12,76 +16,76 @@ From your own machine, in this project folder:
 
 ```bash
 git init
-git add .
+git add -A
 git commit -m "Initial commit"
-```
-
-Then on github.com, create a new **empty** repo (no README/license -- this
-project already has one), and push:
-
-```bash
-git remote add origin https://github.com/<you>/<repo-name>.git
 git branch -M main
+git remote add origin https://github.com/<you>/<repo-name>.git
 git push -u origin main
 ```
 
-## 1. Create the droplet
+(This repo is public -- `github.com/davidgrogan/localarts` -- since
+nothing in it is secret; real secrets live only in `deploy/local-music.env`
+on the droplet, which is gitignored and never committed.)
 
-DigitalOcean dashboard -> **Create -> Droplets**:
-- Image: **Ubuntu 24.04 LTS**
-- Plan: cheapest "Basic" shared-CPU droplet ($6/mo tier is plenty for this
-  traffic level) to start -- you can resize later if it gets slow.
-- Region: pick one near Northampton, MA (e.g. New York) for lower latency.
-- Auth: SSH key (upload your public key) rather than a password.
+## 1. The droplet itself
 
-Note the droplet's public IPv4 address once it's created.
+Already existed: Ubuntu 24.04, running **Caddy** (not nginx) as the
+reverse proxy in front of several small apps, each its own `server {}` /
+path block in `/etc/caddy/Caddyfile`. Apps on this box live under
+`/var/www/<name>` and run as **root** (matching the existing
+`yt-playlist-podcaster` app) rather than a dedicated per-app user --
+DEPLOY.md's systemd units follow that same convention.
 
-## 2. Create a managed Postgres database
-
-DigitalOcean dashboard -> **Create -> Databases** -> PostgreSQL, cheapest
-plan, same region as the droplet. Once it's provisioned, DO gives you a
-full connection string under **Connection details** -- copy it, you'll
-need it in step 6. Under the database's **Settings -> Trusted Sources**,
-add your droplet so only it (not the whole internet) can connect.
-
-(A managed database costs a bit more than just running Postgres on the
-droplet itself, but you get automatic backups and don't have to maintain
-it -- worth it for a low-traffic proof of concept that you don't want to
-lose data on.)
-
-## 3. Point a domain at it (optional but recommended)
-
-If you have a domain, add an **A record** pointing it (or a subdomain
-like `shows.yourdomain.com`) at the droplet's IP. Skip this and use the
-raw IP if you don't have a domain yet -- you can add HTTPS later once you
-do.
-
-## 4. SSH in and do basic setup
+Before doing anything else, check what's already running so you don't
+collide with it:
 
 ```bash
-ssh root@YOUR_DROPLET_IP
-
-apt update && apt upgrade -y
-apt install -y python3-venv python3-pip git nginx libpq-dev ufw
-
-# Basic firewall: only SSH, HTTP, HTTPS
-ufw allow OpenSSH
-ufw allow 'Nginx Full'
-ufw enable
-
-# A dedicated non-root user to run the app under (matches the systemd
-# units in deploy/, which have User=localmusic)
-adduser --disabled-password --gecos "" localmusic
-su - localmusic
+sudo ss -tlnp                        # ports already in use
+sudo cat /etc/caddy/Caddyfile        # how existing apps are wired in
 ```
 
-## 5. Clone the repo and install dependencies
+## 2. Install Postgres directly on the droplet
 
-Still as the `localmusic` user:
+No separate managed database for this deployment -- one more Postgres
+instance was simpler than a second paid resource for a low-traffic hobby
+box already running several such apps.
 
 ```bash
-git clone https://github.com/<you>/<repo-name>.git local-music-poc
-cd local-music-poc
+sudo apt update
+sudo apt install -y postgresql postgresql-contrib libpq-dev
+sudo -u postgres psql -c "CREATE USER localarts WITH PASSWORD 'CHOOSE_A_REAL_PASSWORD';"
+sudo -u postgres psql -c "CREATE DATABASE localarts OWNER localarts;"
+```
+
+Postgres listens on localhost only by default, so there's nothing to open
+in the firewall for it.
+
+## 3. Add swap space
+
+This droplet has ~1GB RAM and no swap by default. Two of this app's
+venues (Iron Horse, The Parlor Room) require launching headless Chromium
+via Playwright to scrape, which can spike memory hard enough to make the
+*entire droplet* (including unrelated apps) grind to a near-halt with no
+swap to fall back on -- this actually happened once during setup. Don't
+skip this step:
+
+```bash
+sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+free -m   # confirm swap shows ~2048
+```
+
+## 4. Clone the repo and install dependencies
+
+As root, under `/var/www/<name>` per this droplet's convention:
+
+```bash
+cd /var/www
+git clone https://github.com/<you>/<repo-name>.git localarts
+cd localarts
 
 python3 -m venv .venv
 source .venv/bin/activate
@@ -92,7 +96,11 @@ pip install -r requirements.txt
 playwright install --with-deps chromium
 ```
 
-## 6. Configure environment variables
+If `python3 -m venv` fails with an `ensurepip`/`externally-managed-environment`
+error, install the matching venv package first (`sudo apt install
+python3.12-venv` on Ubuntu 24.04) and try again.
+
+## 5. Configure environment variables
 
 ```bash
 cp deploy/local-music.env.example deploy/local-music.env
@@ -100,75 +108,120 @@ nano deploy/local-music.env
 ```
 
 Fill in:
-- `DATABASE_URL` -- the connection string from step 2 (DO's format is
-  `postgresql://user:password@host:port/dbname?sslmode=require` --
-  copy it exactly, including `?sslmode=require`).
+- `DATABASE_URL=postgresql://localarts:YOUR_PASSWORD@localhost:5432/localarts`
 - `SECRET_KEY` -- generate one: `python3 -c "import secrets; print(secrets.token_hex(32))"`
+- `SESSION_COOKIE_PATH` / `SESSION_COOKIE_NAME` -- already set to
+  `/localarts` / `localarts_session` in the template. Only matters
+  because this app shares a domain with sibling apps; leave these unset
+  entirely if an app gets its own (sub)domain instead.
 
-This file holds real secrets and is already gitignored -- never commit it.
+This file holds real secrets and is gitignored -- never commit it.
 
-## 7. Create the tables and seed starter data
+## 6. Create the tables and seed starter data
 
 ```bash
 set -a; source deploy/local-music.env; set +a
 python3 -c "from app import create_app; create_app()"   # creates tables
 python3 seed.py                                          # seeds venues/artists
 deactivate
-exit   # back to root
 ```
 
-## 8. Install the systemd services
+Note for any *future* one-off debugging commands on this droplet (e.g.
+inspecting the DB or a scraper directly): a plain interactive shell does
+**not** automatically have `DATABASE_URL` set -- that only happens for
+the actual systemd service via `EnvironmentFile=`. Re-run `set -a; source
+deploy/local-music.env; set +a` in any new shell session before running
+ad-hoc scripts, or they'll silently fall back to a fresh empty SQLite
+database instead of erroring loudly.
 
-Back as `root`:
+## 7. Install the systemd services
 
 ```bash
-cp /home/localmusic/local-music-poc/deploy/local-music.service /etc/systemd/system/
-cp /home/localmusic/local-music-poc/deploy/scrape.service /etc/systemd/system/
-cp /home/localmusic/local-music-poc/deploy/scrape.timer /etc/systemd/system/
+cp /var/www/localarts/deploy/local-music.service /etc/systemd/system/
+cp /var/www/localarts/deploy/scrape.service /etc/systemd/system/
+cp /var/www/localarts/deploy/scrape.timer /etc/systemd/system/
 
 systemctl daemon-reload
 systemctl enable --now local-music.service
 systemctl enable --now scrape.timer
 
 # Sanity checks
-systemctl status local-music.service
+systemctl status local-music.service --no-pager
 curl -I http://127.0.0.1:8000
 ```
 
 If `local-music.service` fails to start, `journalctl -u local-music -n 50`
-will show the actual error (usually a bad DATABASE_URL or a missing
-package).
+usually shows why (bad `DATABASE_URL`, missing package, etc.).
 
-## 9. Set up nginx (and HTTPS if you have a domain)
+## 8. Wire it into Caddy at a path
 
-```bash
-cp /home/localmusic/local-music-poc/deploy/nginx.conf.example /etc/nginx/sites-available/local-music
-nano /etc/nginx/sites-available/local-music   # replace YOUR_DOMAIN_HERE
-
-ln -s /etc/nginx/sites-available/local-music /etc/nginx/sites-enabled/
-nginx -t && systemctl reload nginx
-```
-
-If you have a domain pointed at the droplet:
+See `deploy/Caddyfile.snippet.example` for the exact block and why it's
+needed: `wsgi.py` wraps the app in Werkzeug's `ProxyFix` (`x_prefix=1`),
+which is what makes `url_for()`/static links come out correctly prefixed
+with `/localarts` once Caddy proxies that path segment to gunicorn --
+without it, the app would generate root-relative links assuming it owned
+the whole domain.
 
 ```bash
-apt install -y certbot python3-certbot-nginx
-certbot --nginx -d YOUR_DOMAIN_HERE
+nano /etc/caddy/Caddyfile
 ```
 
-Certbot rewrites the nginx config to add HTTPS and sets up auto-renewal.
-Without a domain, skip this and just browse to `http://YOUR_DROPLET_IP`.
+Add, inside the relevant domain's block, **above** any `file_server`/
+catch-all directive (Caddy tries blocks top-to-bottom):
+
+```
+handle_path /localarts/* {
+    reverse_proxy localhost:8000 {
+        header_up X-Forwarded-Prefix "/localarts"
+    }
+}
+```
+
+Then:
+
+```bash
+caddy validate --config /etc/caddy/Caddyfile
+systemctl reload caddy
+curl -sI https://YOUR_DOMAIN/localarts/
+```
+
+## 9. Add a homepage card (if applicable)
+
+If, like `waveyvibe.dev`, the parent site is a separate static homepage
+listing links to each app, add a card there pointing to `/localarts` --
+see that project's own repo for its card markup/style.
+
+## Known gotchas hit during this deployment
+
+- **Headless Chromium + low RAM + no swap = the whole box can hang.**
+  Playwright-based scrapes (`elfsight_jsonld`, any `rendered_html` venue)
+  can spike memory enough to make an unrelated app on the same droplet
+  become unresponsive, without anything actually crashing or restarting
+  (check `systemctl status caddy`'s uptime if this happens again --
+  continuous uptime there means the droplet itself didn't reboot, it was
+  just starved for memory). The swap file in step 3 is the fix; if it
+  keeps happening, consider bumping the droplet's RAM instead.
+- **Elfsight's widget can render a UTC-offset annotation inside the
+  visible time element** (e.g. `7:00 PM<span> UTC-4</span>`), seemingly
+  triggered by the rendering browser's system timezone not matching the
+  venue's (a fresh Ubuntu droplet defaults to UTC; a Mac is usually
+  already set to Eastern) -- this silently broke Iron Horse's scraped
+  times to all show midnight once moved to the droplet. Fixed in
+  `elfsight_jsonld.py` by regex-extracting the time substring instead of
+  parsing the element's full text exactly; see that file's docstring.
+- **`ensurepip`/`externally-managed-environment` errors** creating the
+  venv mean the OS's `python3-venv` package isn't installed yet (Ubuntu
+  24.04 ships Python without it) -- `apt install python3.12-venv` and
+  retry, no need to work around it with `--break-system-packages`.
 
 ## Redeploying after future changes
 
 ```bash
-su - localmusic
-cd local-music-poc
+cd /var/www/localarts
 git pull
 source .venv/bin/activate
 pip install -r requirements.txt   # only if requirements.txt changed
 deactivate
-exit
 systemctl restart local-music.service
 ```
 
