@@ -53,6 +53,18 @@ visible time element the same way:
          class="Time__TimeComponent-... eapp-events-calendar-time-time">
       7:00 PM
     </div>
+-- except that this element doesn't always contain *just* that text.
+Confirmed on the droplet (Iron Horse, all events scraping to midnight):
+the widget sometimes renders a nested UTC-offset annotation inside the
+same element, e.g. `7:00 PM<span> UTC-4</span>`, seemingly whenever it
+detects the rendering browser's system timezone doesn't match the venue's
+-- your Mac's system clock is already America/New_York so the widget
+never bothered clarifying, but a fresh Ubuntu droplet defaults to UTC, so
+it started showing up there. Reading the element's full text naively
+picked up "7:00 PM UTC-4", which doesn't match a plain time format at
+all -- _find_time_of_day now regex-extracts just the "7:00 PM" portion
+instead of assuming the element's text is exactly that, so it's tolerant
+of this annotation appearing, changing, or not appearing at all.
 
 Also handles a quirk specific to the Iron Horse: its Elfsight feed is
 shared across several physically distinct "Parlor Room Collective"
@@ -77,6 +89,7 @@ Venue scrape_config keys:
                                shows).
 """
 import json
+import re
 from datetime import datetime as dt
 from zoneinfo import ZoneInfo
 
@@ -125,6 +138,14 @@ def _image_url(raw_image):
 _CATEGORY_SELECTOR = ".eapp-events-calendar-grid-item-category"
 _TIME_SELECTOR = ".eapp-events-calendar-time-time"
 _TIME_FORMAT = "%I:%M %p"  # e.g. "7:00 PM"
+# Matches just the "7:00 PM" portion of the time element's text. Needed
+# because that element sometimes contains a nested <span> with a UTC
+# offset annotation (e.g. "7:00 PM<span> UTC-4</span>", observed on the
+# droplet -- see module docstring), which get_text() would otherwise
+# concatenate into "7:00 PM UTC-4" and fail strptime entirely. Extracting
+# just the time substring is robust to that suffix appearing, changing,
+# or not appearing at all.
+_TIME_RE = re.compile(r"\d{1,2}:\d{2}\s*[AaPp][Mm]")
 _MONTH_SELECTOR = ".eapp-events-calendar-date-element-month"
 _DAY_SELECTOR = ".eapp-events-calendar-date-element-day"
 # Stable (non-hashed) class marking the boundary of a single event's card --
@@ -204,13 +225,18 @@ def _to_local(parsed_dt):
 
 def _find_time_of_day(script):
     """Return a `datetime.time` parsed from the card's visible time text
-    (e.g. "7:00 PM"), or None if there's no such element or it doesn't
-    match the expected format."""
+    (e.g. "7:00 PM"), or None if there's no such element or no time-like
+    substring can be found in it. Extracts the time via regex rather than
+    parsing the element's full text directly, since that text sometimes
+    carries a trailing UTC-offset annotation (see _TIME_RE above)."""
     text = _find_in_card(script, _TIME_SELECTOR)
     if not text:
         return None
+    match = _TIME_RE.search(text)
+    if not match:
+        return None
     try:
-        return dt.strptime(text, _TIME_FORMAT).time()
+        return dt.strptime(match.group(0), _TIME_FORMAT).time()
     except ValueError:
         return None
 
