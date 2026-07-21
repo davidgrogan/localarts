@@ -26,6 +26,10 @@
         <a href="{{ url_for('events.review') }}" class="review-link">
           Review{% if pending_count %} <span class="badge">{{ pending_count }}</span>{% endif %}
         </a>
+        <form method="post" action="{{ url_for('venues.scan_all') }}" class="nav-form"
+              onsubmit="return confirm('Rescrape every active venue now? This can take a minute.');">
+          <button type="submit" class="nav-button">Scan</button>
+        </form>
       {% endif %}
     </nav>
   </header>

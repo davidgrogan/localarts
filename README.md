@@ -15,6 +15,15 @@ DigitalOcean.
   Squarespace JSON trick, iCal feed, generic HTML selectors, or headless-browser
   selectors), preview a scrape before importing anything, and see a log of
   recent scrape runs. Admin-only.
+- **Scan** (nav button, `POST /venues/scan`) -- one click to rescrape every
+  active, non-manual venue right now (the same thing `scrape_all.py`/the
+  `scrape.timer` schedule does), then jumps to Review. One venue failing to
+  fetch doesn't stop the rest. Since this runs the scrapes synchronously in
+  the request (no background job queue in this POC), scanning several
+  headless-browser venues back to back could take a little while -- if it
+  ever gets slow enough to bump into a proxy/gunicorn request timeout,
+  scheduling more frequent `scrape.timer` runs instead is the fallback.
+  Admin-only.
 - **Add show** (`/events/new`) -- manual entry, with a quick-add box for a new artist. Admin-only.
 - **Review** (`/events/review`) -- one queue for everything a scrape needs a human
   to look at, in three sections: **New** (`is_approved=False`, never seen before --

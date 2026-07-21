@@ -27,6 +27,41 @@ def list_venues():
     return render_template("venues/list.html", venues=venues)
 
 
+@bp.route("/scan", methods=["POST"])
+def scan_all():
+    """One-click rescrape of every active, non-manual venue -- the same
+    thing scrape_all.py/the scrape.timer does on a schedule, triggered
+    on demand from the admin UI. New events land pending review as usual
+    (never auto-approved); one venue failing to fetch doesn't stop the
+    rest from being scanned."""
+    venues = Venue.query.filter(Venue.is_active.is_(True), Venue.source_type != "manual").all()
+    if not venues:
+        flash("No active, scrapable venues to scan.", "error")
+        return redirect(url_for("events.review"))
+
+    scanned = 0
+    created = 0
+    updated = 0
+    failed = []
+    for venue in venues:
+        try:
+            run = run_scrape(venue, approve_new=False)
+            scanned += 1
+            created += run.events_created
+            updated += run.events_updated
+        except ScrapeError as exc:
+            failed.append(f"{venue.name}: {exc}")
+        except Exception as exc:  # noqa: BLE001 -- keep going on one bad venue
+            failed.append(f"{venue.name}: unexpected error ({exc})")
+
+    summary = f"Scanned {scanned}/{len(venues)} venue(s): {created} new show(s), {updated} updated."
+    if failed:
+        flash(f"{summary} Failed: {'; '.join(failed)}", "error")
+    else:
+        flash(summary, "success")
+    return redirect(url_for("events.review"))
+
+
 def _resolve_default_event_type(form):
     """Turn a submitted venue form's default-tag select + quick-add text
     into an EventType (or None), creating a brand-new one if needed."""
