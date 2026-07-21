@@ -198,6 +198,42 @@ If, like `waveyvibe.dev`, the parent site is a separate static homepage
 listing links to each app, add a card there pointing to `/localarts` --
 see that project's own repo for its card markup/style.
 
+## Moving locally-accumulated data to the droplet
+
+If you keep adding venues and running scrapes on your local machine and
+want that data on the droplet without re-entering it or re-scraping
+everything there, use `migrate_to_postgres.py` (project root). It copies
+every row from your local SQLite database into the droplet's Postgres,
+preserving IDs and foreign keys.
+
+It does **not** open Postgres to the internet -- the droplet's Postgres
+stays localhost-only (as it should). Instead, tunnel to it over SSH:
+
+```
+ssh -L 5433:localhost:5432 root@YOUR_DROPLET_IP -N
+```
+
+Leave that running in its own terminal tab. Then, in another tab, from
+this project folder with your local `.venv` active:
+
+```
+python3 migrate_to_postgres.py "postgresql://localarts:YOUR_PG_PASSWORD@localhost:5433/localarts"
+```
+
+It'll print row counts for each table and ask you to type `yes` before
+doing anything.
+
+**This is destructive to the target**: it truncates the droplet's
+`venue`/`artist`/`event`/`event_artists`/`scrape_run` tables and replaces
+them with your local data. Fine to run any time the droplet only has
+whatever `seed.py` put there originally; don't run it if you've since
+added real data on the live site's admin screens that isn't also in your
+local database, or you'll lose it.
+
+No need to restart `local-music.service` afterward -- it reads from the
+database fresh on every request -- but reload the site to confirm it
+looks right.
+
 ## Known gotchas hit during this deployment
 
 - **Headless Chromium + low RAM + no swap = the whole box can hang.**
