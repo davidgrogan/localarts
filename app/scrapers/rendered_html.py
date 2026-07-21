@@ -23,9 +23,15 @@ plus two more specific to this module:
     wait_for_selector -- optional CSS selector to wait for before capturing
                           the page (use the event item's own selector so we
                           know the widget has actually finished rendering)
-    wait_ms            -- optional extra fixed wait in milliseconds after
-                          the page reports "networkidle" (default 3000);
-                          bump this if a venue's widget is slow to render
+    wait_ms            -- optional fixed wait in milliseconds after the DOM
+                          is ready, used only when wait_for_selector isn't
+                          set (default 3000); bump this if a venue's widget
+                          is slow to render. Deliberately does *not* wait
+                          for Playwright's "networkidle" state -- plenty of
+                          real sites (ad/analytics scripts, chat widgets,
+                          background polling) never fully go idle, which
+                          timed out real scrapes even after the actual
+                          content had long since rendered.
 """
 import json
 
@@ -64,7 +70,18 @@ def fetch_raw(venue):
             browser = p.chromium.launch()
             try:
                 page = browser.new_page(user_agent=USER_AGENT)
-                page.goto(venue.events_url, wait_until="networkidle", timeout=30000)
+                # "networkidle" (no network activity for 500ms) sounds
+                # like the right thing to wait for, but plenty of real
+                # sites never actually go fully idle -- ads, analytics
+                # beacons, chat widgets, or a Squarespace site's own
+                # background polling can keep some request in flight
+                # indefinitely, timing this out even though the content
+                # we actually care about rendered ages ago. Wait only for
+                # the DOM itself to be ready, then rely on
+                # wait_for_selector/wait_ms below (which target this
+                # venue's specific widget) to know when it's safe to
+                # capture the page.
+                page.goto(venue.events_url, wait_until="domcontentloaded", timeout=30000)
                 if wait_for_selector:
                     try:
                         page.wait_for_selector(wait_for_selector, timeout=15000)

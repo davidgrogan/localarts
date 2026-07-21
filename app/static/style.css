@@ -4,6 +4,13 @@
   --paper-warm: #f6ede1;
   --accent: #a8342a;
   --accent-soft: #fdf4f2;
+  /* Secondary accents, alongside the original red -- used to make genre
+     tags, links, and highlights feel more varied instead of everything
+     being the same one color. */
+  --teal: #1c6e62;
+  --teal-soft: #eaf4f2;
+  --gold: #c98a1f;
+  --gold-soft: #fbf1de;
   --muted: #6b6b6b;
   --line: #e0dcd3;
   --font-display: "Fraunces", Georgia, "Times New Roman", serif;
@@ -30,12 +37,16 @@ body {
 }
 
 .brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   font-family: var(--font-display);
   font-weight: 600;
   font-size: 1.3rem;
   color: var(--ink);
   text-decoration: none;
 }
+.brand-logo { width: 32px; height: 32px; display: block; }
 
 .site-header nav a {
   margin-left: 1.1rem;
@@ -44,7 +55,7 @@ body {
   font-size: 0.95rem;
 }
 
-.site-header nav a:hover { color: var(--accent); }
+.site-header nav a:hover { color: var(--teal); }
 
 .badge {
   background: var(--accent);
@@ -96,8 +107,9 @@ h2 { font-family: var(--font-display); font-size: 1.2rem; margin-top: 2rem; }
 .page-actions { margin: 1rem 0; }
 
 .hero {
-  background: linear-gradient(160deg, var(--paper-warm) 0%, var(--paper) 65%);
+  background: linear-gradient(155deg, var(--gold-soft) 0%, var(--paper-warm) 45%, var(--teal-soft) 100%);
   border: 1px solid var(--line);
+  border-top: 5px solid var(--accent);
   border-radius: 14px;
   padding: 2.25rem 2rem;
   margin: 0.5rem 0 2rem;
@@ -133,16 +145,16 @@ h2 { font-family: var(--font-display); font-size: 1.2rem; margin-top: 2rem; }
   display: inline-block;
   padding: 0.45rem 0.9rem;
   border-radius: 4px;
-  background: var(--ink);
+  background: var(--accent);
   color: white;
   text-decoration: none;
   border: none;
   font-size: 0.9rem;
   cursor: pointer;
 }
-.btn:hover { background: var(--accent); }
+.btn:hover { background: var(--ink); }
 .btn-secondary { background: transparent; color: var(--ink); border: 1px solid var(--ink); }
-.btn-secondary:hover { background: var(--ink); color: white; }
+.btn-secondary:hover { background: var(--teal); color: white; border-color: var(--teal); }
 .btn-danger { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
 .btn-danger:hover { background: var(--accent); color: white; }
 .btn-small { padding: 0.25rem 0.6rem; font-size: 0.8rem; }
@@ -213,8 +225,9 @@ h2 { font-family: var(--font-display); font-size: 1.2rem; margin-top: 2rem; }
   display: inline-block;
   font-size: 0.7rem;
   font-weight: 400;
-  color: var(--accent);
-  border: 1px solid var(--accent);
+  color: var(--gold);
+  border: 1px solid var(--gold);
+  background: var(--gold-soft);
   border-radius: 999px;
   padding: 0.05rem 0.5rem;
   margin-left: 0.5rem;
@@ -255,7 +268,7 @@ h2 { font-family: var(--font-display); font-size: 1.2rem; margin-top: 2rem; }
 }
 .month-nav .month-label { font-weight: 700; }
 .month-nav a { color: var(--ink); text-decoration: none; font-size: 0.9rem; }
-.month-nav a:hover { color: var(--accent); }
+.month-nav a:hover { color: var(--teal); }
 
 table.month-grid {
   width: 100%;
@@ -278,7 +291,7 @@ table.month-grid td {
   overflow: hidden;
 }
 table.month-grid td.empty-day { background: #f3f0ea; }
-table.month-grid td.today { background: #fbf1e6; border-color: var(--accent); }
+table.month-grid td.today { background: var(--gold-soft); border-color: var(--accent); }
 .day-number { font-size: 0.8rem; font-weight: 700; color: var(--muted); margin-bottom: 0.2rem; }
 .grid-event {
   font-size: 0.72rem;
@@ -300,7 +313,7 @@ table.month-grid td.today { background: #fbf1e6; border-color: var(--accent); }
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--gold);
   margin-right: 0.2rem;
 }
 
@@ -339,6 +352,7 @@ form.stacked .hint { color: var(--muted); font-size: 0.8rem; margin-top: 0.2rem;
 form.stacked .checkbox-row { display: flex; align-items: center; gap: 0.4rem; }
 form.stacked .checkbox-row label { display: inline; margin: 0; }
 form.stacked .actions { margin-top: 1.5rem; }
+.hp-field { position: absolute; left: -9999px; top: -9999px; }
 
 .artist-checks {
   max-height: 180px;

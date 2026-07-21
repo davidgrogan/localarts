@@ -18,6 +18,19 @@ DigitalOcean.
 - **Add show** (`/events/new`) -- manual entry, with a quick-add box for a new artist. Admin-only.
 - **Review** (`/events/review`) -- scraped events land here first (`is_approved = False`)
   so nothing bad hits the public calendar unreviewed; approve or discard from here. Admin-only.
+- **Contact** (`/contact`) -- public form for visitors to request an artist/show/venue
+  be added, or flag something wrong. Emails `CONTACT_EMAIL` via Gmail SMTP (see below).
+
+## Contact form email
+
+`app/routes/contact.py` sends via Gmail SMTP using an account **App
+Password** (not the real Gmail password) -- see `.env.example` for the
+exact steps to generate one (turn on 2-Step Verification, then
+generate an App Password at https://myaccount.google.com/apppasswords).
+Set `MAIL_USERNAME` (the Gmail address) and `MAIL_PASSWORD` (the App
+Password); `CONTACT_EMAIL` defaults to davidbgrogan@gmail.com. Without
+those set, the form still renders but shows an error instead of quietly
+failing to send.
 
 ## Admin login
 

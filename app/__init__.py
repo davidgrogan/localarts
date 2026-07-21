@@ -81,12 +81,14 @@ def create_app(test_config=None):
     from app.routes.venues import bp as venues_bp
     from app.routes.artists import bp as artists_bp
     from app.routes.events import bp as events_bp
+    from app.routes.contact import bp as contact_bp
     from app.auth import bp as auth_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(venues_bp)
     app.register_blueprint(artists_bp)
     app.register_blueprint(events_bp)
+    app.register_blueprint(contact_bp)
     app.register_blueprint(auth_bp)
 
     @app.context_processor

@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Local Music{% endblock %} · Northampton</title>
+  <title>{% block title %}NoHo Events{% endblock %} · Northampton</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='logo.svg') }}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap" rel="stylesheet">
@@ -11,10 +12,14 @@
 </head>
 <body>
   <header class="site-header">
-    <a class="brand" href="{{ url_for('main.calendar') }}">&#9834; Local Arts</a>
+    <a class="brand" href="{{ url_for('main.calendar') }}">
+      <img src="{{ url_for('static', filename='logo.svg') }}" alt="" class="brand-logo">
+      NoHo Events
+    </a>
     <nav>
       <a href="{{ url_for('main.calendar') }}">Calendar</a>
       <a href="{{ url_for('artists.list_artists') }}">Local Artists</a>
+      <a href="{{ url_for('contact.contact') }}">Contact</a>
       {% if is_admin %}
         <a href="{{ url_for('venues.list_venues') }}">Venues</a>
         <a href="{{ url_for('events.new_event') }}">+ Add show</a>
@@ -40,7 +45,7 @@
   </main>
 
   <footer class="site-footer">
-    Local music listings for Northampton, MA
+    NoHo Events &mdash; local music listings for Northampton, MA
     &middot;
     {% if is_admin %}
       <form method="post" action="{{ url_for('auth.logout') }}" class="footer-form">

@@ -118,6 +118,9 @@ Fill in:
   route behind a login. Generate the hash: `python3 -c "from
   werkzeug.security import generate_password_hash as g; print(g('your-real-password'))"`.
   Don't skip this one -- leaving it unset falls back to `admin`/`admin`.
+- `MAIL_USERNAME` / `MAIL_PASSWORD` -- Gmail SMTP credentials for the
+  contact form (a Gmail App Password, not the real password -- see
+  README.md). `CONTACT_EMAIL` defaults to davidbgrogan@gmail.com if unset.
 
 This file holds real secrets and is gitignored -- never commit it.
 
