@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 from app import create_app
 from app.models import db, Venue, Artist, Event
-from app.utils import slugify
+from app.utils import slugify, get_or_create_event_type
 
 
 def get_or_create_venue(**kwargs):
@@ -36,6 +36,12 @@ def get_or_create_artist(**kwargs):
 def main():
     app = create_app()
     with app.app_context():
+        # Created (not just looked up) here since it needs to exist before
+        # any venue below can reference it as a default -- get_or_create_
+        # event_type() is the same case-insensitive-dedupe helper the admin
+        # UI's "quick add a new tag" inputs use.
+        music_tag = get_or_create_event_type("Music")
+
         iron_horse = get_or_create_venue(
             name="Iron Horse Music Hall",
             slug="iron-horse-music-hall",
@@ -62,6 +68,10 @@ def main():
             # ones actually at the Iron Horse.
             source_type="elfsight_jsonld",
             scrape_config='{"location_match": ["Iron Horse"]}',
+            # Every show here is a live-music show, so scraped imports
+            # (and manual adds that don't pick a tag) default to "Music"
+            # rather than needing tagging by hand every time.
+            default_event_type=music_tag,
         )
 
         parlor_room = get_or_create_venue(
@@ -76,6 +86,7 @@ def main():
             # as the Iron Horse above -- filter to this venue's own shows.
             source_type="elfsight_jsonld",
             scrape_config='{"location_match": ["Parlor Room"]}',
+            default_event_type=music_tag,
         )
 
         academy_of_music = get_or_create_venue(
@@ -113,6 +124,7 @@ def main():
                 '"description_selector": ".event_card_presents", '
                 '"image_selector": ".event_card_image img"}'
             ),
+            default_event_type=music_tag,
         )
 
         haze = get_or_create_venue(
@@ -136,6 +148,7 @@ def main():
             # module (app/scrapers/haze_calendar.py) instead of scrape_config.
             source_type="haze_calendar",
             scrape_config="{}",
+            default_event_type=music_tag,
         )
 
         smith_college = get_or_create_venue(

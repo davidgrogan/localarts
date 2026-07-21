@@ -10,7 +10,7 @@
       <label for="venue_id">Venue</label>
       <select id="venue_id" name="venue_id" required>
         {% for v in venues %}
-          <option value="{{ v.id }}" {% if event and event.venue_id == v.id %}selected{% endif %}>{{ v.name }}</option>
+          <option value="{{ v.id }}" data-default-event-type-id="{{ v.default_event_type_id or '' }}" {% if event and event.venue_id == v.id %}selected{% endif %}>{{ v.name }}</option>
         {% endfor %}
       </select>
 
@@ -48,10 +48,51 @@
       <label for="new_artist_name">Quick-add a new local artist (optional)</label>
       <input type="text" id="new_artist_name" name="new_artist_name" placeholder="Name of an artist not listed above">
 
+      <label>Event type tags</label>
+      <div class="artist-checks" id="event-type-checks">
+        {% if event_types %}
+          {% for t in event_types %}
+            <label>
+              <input type="checkbox" name="event_type_ids" value="{{ t.id }}"
+                {% if event and t in event.event_types %}checked{% endif %}>
+              {{ t.name }}
+            </label>
+          {% endfor %}
+        {% else %}
+          <span class="hint">No tags yet -- add one below.</span>
+        {% endif %}
+      </div>
+      <label for="new_event_type_names">Quick-add new tag(s) (optional, comma-separated)</label>
+      <input type="text" id="new_event_type_names" name="new_event_type_names" placeholder="e.g. Music, Benefit">
+      <div class="hint">
+        If you leave every box unchecked and don't add one here, a brand-new show picks up
+        its venue's default tag automatically (set on the venue's edit page), if it has one.
+      </div>
+
       <div class="actions">
         <button class="btn" type="submit">{{ "Save changes" if event else "Add show" }}</button>
         <a class="btn btn-secondary" href="{{ url_for('main.calendar') }}">Cancel</a>
       </div>
     </form>
+
+    {% if not event %}
+      <script>
+        // Convenience only (the server applies the same default-tag
+        // fallback if this doesn't run, e.g. JS disabled): when picking a
+        // venue on the *new show* form, pre-check its default tag so it
+        // doesn't have to be found and clicked by hand every time. Never
+        // runs on the edit form -- an existing show's tags were already a
+        // deliberate choice, so a venue change there shouldn't silently
+        // reset them.
+        document.getElementById("venue_id").addEventListener("change", function () {
+          var opt = this.options[this.selectedIndex];
+          var defaultId = opt.getAttribute("data-default-event-type-id");
+          if (!defaultId) return;
+          document.querySelectorAll('#event-type-checks input[type=checkbox]').forEach(function (box) {
+            if (box.value === defaultId) box.checked = true;
+          });
+        });
+      </script>
+    {% endif %}
   {% endif %}
 {% endblock %}

@@ -37,14 +37,20 @@
         <option value="{{ a.id }}" {% if a.id == selected_artist %}selected{% endif %}>{{ a.name }}</option>
       {% endfor %}
     </select>
-    {% if selected_venue or selected_artist %}
+    <select name="type" onchange="this.form.submit()">
+      <option value="">All event types</option>
+      {% for t in event_types %}
+        <option value="{{ t.id }}" {% if t.id == selected_type %}selected{% endif %}>{{ t.name }}</option>
+      {% endfor %}
+    </select>
+    {% if selected_venue or selected_artist or selected_type %}
       <a class="clear" href="{{ url_for('main.calendar', view=view) }}">Clear filters</a>
     {% endif %}
   </form>
 
   <div class="view-toggle">
-    <a class="btn btn-small {{ '' if view == 'week' else 'btn-secondary' }}" href="{{ url_for('main.calendar', view='week', venue=selected_venue, artist=selected_artist) }}">Next 7 Days</a>
-    <a class="btn btn-small {{ '' if view == 'list' else 'btn-secondary' }}" href="{{ url_for('main.calendar', view='list', venue=selected_venue, artist=selected_artist) }}">List All</a>
+    <a class="btn btn-small {{ '' if view == 'week' else 'btn-secondary' }}" href="{{ url_for('main.calendar', view='week', venue=selected_venue, artist=selected_artist, type=selected_type) }}">Next 7 Days</a>
+    <a class="btn btn-small {{ '' if view == 'list' else 'btn-secondary' }}" href="{{ url_for('main.calendar', view='list', venue=selected_venue, artist=selected_artist, type=selected_type) }}">List All</a>
   </div>
 
     {% if events %}
@@ -75,6 +81,7 @@
                 {% if e.ticket_url %}<a href="{{ e.ticket_url }}" target="_blank" rel="noopener" {% if e.description %}title="{{ e.description }}" class="has-description"{% endif %}>{{ e.title }}</a>{% else %}<span {% if e.description %}title="{{ e.description }}" class="has-description"{% endif %}>{{ e.title }}</span>{% endif %}
                 {% if local_artists %}<span class="local-artist-badge" title="Features {{ local_artists | map(attribute='name') | join(', ') }}">&#9733; Local Artist</span>{% endif %}
                 {% if e.genre %}<span class="genre-tag">{{ e.genre }}</span>{% endif %}
+                {% for t in e.event_types %}<span class="type-tag">{{ t.name }}</span>{% endfor %}
               </div>
               <div class="event-venue">
                 {% if e.venue.website_url %}
@@ -113,7 +120,7 @@
     {% else %}
       <p class="empty-state">
         {% if view == 'week' %}
-          No shows in the next 7 days. Try <a href="{{ url_for('main.calendar', view='list', venue=selected_venue, artist=selected_artist) }}">List All</a> to see what's further out.
+          No shows in the next 7 days. Try <a href="{{ url_for('main.calendar', view='list', venue=selected_venue, artist=selected_artist, type=selected_type) }}">List All</a> to see what's further out.
         {% elif is_admin %}
           No upcoming shows yet. <a href="{{ url_for('events.new_event') }}">Add one</a>, or add a venue and try a scrape.
         {% else %}

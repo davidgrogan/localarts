@@ -20,6 +20,36 @@ event_artists = db.Table(
     db.Column("artist_id", db.Integer, db.ForeignKey("artist.id"), primary_key=True),
 )
 
+# Many-to-many: an event can carry more than one category tag (e.g. a
+# show that's also a fundraiser might be both "Music" and "Benefit").
+event_event_types = db.Table(
+    "event_event_types",
+    db.Column("event_id", db.Integer, db.ForeignKey("event.id"), primary_key=True),
+    db.Column("event_type_id", db.Integer, db.ForeignKey("event_type.id"), primary_key=True),
+)
+
+
+class EventType(db.Model):
+    """A reusable category tag for events (e.g. "Music", "Exhibition",
+    "Lecture", "Performance"). Deliberately separate from Event.genre
+    (a finer-grained music genre like "Jazz"/"Folk" pulled straight from
+    a venue's own feed): this is the broader, curated category an admin
+    picks so a mixed calendar -- like Smith College's, which covers
+    everything from concerts to art exhibitions -- can be filtered down
+    to just what a visitor cares about. Created ad hoc from the event
+    form or a venue's "default tag" field rather than a dedicated admin
+    screen; see app/utils.py's get_or_create_event_type().
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(80), unique=True, nullable=False)
+    slug = db.Column(db.String(80), unique=True, nullable=False)
+
+    events = db.relationship("Event", secondary=event_event_types, back_populates="event_types")
+
+    def __repr__(self):
+        return f"<EventType {self.name}>"
+
 
 class Venue(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -45,6 +75,15 @@ class Venue(db.Model):
     # particular venue's feed. Edited/iterated on via the scrape preview
     # tool in the UI.
     scrape_config = db.Column(db.Text, default="{}")
+
+    # Applied automatically to brand-new events at this venue (manual adds
+    # that don't pick a tag themselves, and scraped imports -- see
+    # run_scrape()'s docstring) -- e.g. Iron Horse/Parlor Room default to
+    # "Music" so scraped shows don't all need tagging by hand. Always
+    # overridable per event; never re-applied to an event that already has
+    # tags.
+    default_event_type_id = db.Column(db.Integer, db.ForeignKey("event_type.id"))
+    default_event_type = db.relationship("EventType")
 
     last_scraped_at = db.Column(db.DateTime)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
@@ -142,6 +181,7 @@ class Event(db.Model):
 
     venue = db.relationship("Venue", back_populates="events")
     artists = db.relationship("Artist", secondary=event_artists, back_populates="events")
+    event_types = db.relationship("EventType", secondary=event_event_types, back_populates="events")
 
     __table_args__ = (
         db.UniqueConstraint("venue_id", "external_id", name="uq_event_venue_external_id"),

@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 
-from app.models import db, Venue, Event
-from app.utils import slugify
+from app.models import db, Venue, Event, EventType
+from app.utils import slugify, get_or_create_event_type
 from app.scrapers.base import preview_scrape, run_scrape, ScrapeError
 from app.auth import require_admin
 
@@ -27,8 +27,19 @@ def list_venues():
     return render_template("venues/list.html", venues=venues)
 
 
+def _resolve_default_event_type(form):
+    """Turn a submitted venue form's default-tag select + quick-add text
+    into an EventType (or None), creating a brand-new one if needed."""
+    new_name = form.get("new_default_event_type_name", "").strip()
+    if new_name:
+        return get_or_create_event_type(new_name)
+    selected_id = form.get("default_event_type_id", "").strip()
+    return EventType.query.get(int(selected_id)) if selected_id else None
+
+
 @bp.route("/new", methods=["GET", "POST"])
 def new_venue():
+    event_types = EventType.query.order_by(EventType.name).all()
     if request.method == "POST":
         name = request.form["name"].strip()
         venue = Venue(
@@ -42,11 +53,15 @@ def new_venue():
             source_type=request.form.get("source_type", "manual"),
             scrape_config=request.form.get("scrape_config", "").strip() or "{}",
         )
+        default_tag = _resolve_default_event_type(request.form)
+        venue.default_event_type = default_tag
         db.session.add(venue)
         db.session.commit()
         flash(f"Added venue “{venue.name}”.", "success")
         return redirect(url_for("venues.detail", venue_id=venue.id))
-    return render_template("venues/form.html", venue=None, source_types=SOURCE_TYPES)
+    return render_template(
+        "venues/form.html", venue=None, source_types=SOURCE_TYPES, event_types=event_types
+    )
 
 
 @bp.route("/<int:venue_id>")
@@ -61,6 +76,7 @@ def detail(venue_id):
 @bp.route("/<int:venue_id>/edit", methods=["GET", "POST"])
 def edit_venue(venue_id):
     venue = Venue.query.get_or_404(venue_id)
+    event_types = EventType.query.order_by(EventType.name).all()
     if request.method == "POST":
         venue.name = request.form["name"].strip()
         venue.address = request.form.get("address", "").strip()
@@ -71,10 +87,13 @@ def edit_venue(venue_id):
         venue.source_type = request.form.get("source_type", "manual")
         venue.scrape_config = request.form.get("scrape_config", "").strip() or "{}"
         venue.is_active = bool(request.form.get("is_active"))
+        venue.default_event_type = _resolve_default_event_type(request.form)
         db.session.commit()
         flash(f"Updated “{venue.name}”.", "success")
         return redirect(url_for("venues.detail", venue_id=venue.id))
-    return render_template("venues/form.html", venue=venue, source_types=SOURCE_TYPES)
+    return render_template(
+        "venues/form.html", venue=venue, source_types=SOURCE_TYPES, event_types=event_types
+    )
 
 
 @bp.route("/<int:venue_id>/delete", methods=["POST"])

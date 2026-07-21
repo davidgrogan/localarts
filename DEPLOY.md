@@ -280,7 +280,13 @@ sudo -u postgres psql -d localarts -c 'ALTER TABLE event ADD COLUMN last_seen_at
 sudo -u postgres psql -d localarts -c 'ALTER TABLE event ADD COLUMN missing_streak INTEGER DEFAULT 0 NOT NULL;'
 sudo -u postgres psql -d localarts -c 'ALTER TABLE event ADD COLUMN needs_review BOOLEAN DEFAULT FALSE NOT NULL;'
 sudo -u postgres psql -d localarts -c 'ALTER TABLE event ADD COLUMN review_note TEXT;'
+sudo -u postgres psql -d localarts -c 'ALTER TABLE venue ADD COLUMN default_event_type_id INTEGER REFERENCES event_type(id);'
 ```
+
+The event type tags feature also adds two brand-new tables (`event_type`,
+`event_event_types`) -- those *are* covered by the normal `db.create_all()`
+that runs on every app startup (it only skips *existing* tables' missing
+columns, not missing tables entirely), so no manual step needed for those two.
 
 (Check `app/__init__.py`'s `_COLUMN_MIGRATIONS` dict for the current
 list of pending columns and their SQLite types -- Postgres types are

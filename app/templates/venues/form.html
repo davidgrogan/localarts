@@ -59,6 +59,21 @@
       on the feed).
     </div>
 
+    <label for="default_event_type_id">Default event type tag</label>
+    <select id="default_event_type_id" name="default_event_type_id">
+      <option value="">No default</option>
+      {% for t in event_types %}
+        <option value="{{ t.id }}" {% if venue and venue.default_event_type_id == t.id %}selected{% endif %}>{{ t.name }}</option>
+      {% endfor %}
+    </select>
+    <label for="new_default_event_type_name">Or quick-add a new tag to use as the default</label>
+    <input type="text" id="new_default_event_type_name" name="new_default_event_type_name" placeholder="e.g. Music">
+    <div class="hint">
+      Applied automatically to brand-new shows at this venue (manual adds that don't pick a
+      tag, and scraped imports) &mdash; always overridable per show. Filling in the quick-add
+      field takes priority over the dropdown above.
+    </div>
+
     {% if venue %}
       <div class="checkbox-row" style="margin-top:1rem;">
         <input type="checkbox" id="is_active" name="is_active" {% if venue.is_active %}checked{% endif %}>

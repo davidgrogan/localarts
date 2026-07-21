@@ -55,15 +55,44 @@ own laptop and not fine for anything actually deployed.
 ## Data model
 
 - `Venue` -- name, address, website, the specific events URL to pull from, a
-  `source_type` (see below), and a free-form `scrape_config` JSON field for
-  per-venue tuning.
+  `source_type` (see below), a free-form `scrape_config` JSON field for
+  per-venue tuning, and a `default_event_type` tag (see "Event type tags" below).
 - `Artist` -- name, genre, hometown, bio, an `is_local` flag (the whole point
   of the site is surfacing local acts, so this drives any "local spotlight" view later).
 - `Event` -- a single show: title, start/end time, venue, artists (many-to-many),
-  `source` (`manual` vs `scraped`), `external_id` (dedupe key on re-scrape), and
-  `is_approved` (the review gate described above).
+  event type tags (many-to-many, see below), `source` (`manual` vs `scraped`),
+  `external_id` (dedupe key on re-scrape), and `is_approved` (the review gate
+  described above).
+- `EventType` -- a reusable category tag (e.g. "Music", "Exhibition", "Lecture").
+  Distinct from `Event.genre` (a finer-grained music genre like "Jazz"/"Folk"
+  pulled straight from a venue's own feed, one value per event): this is the
+  broader, curated, multi-valued category an admin picks -- the thing you'd
+  filter a mixed calendar like Smith College's down to "just the concerts" by.
 - `ScrapeRun` -- a log row per scrape attempt: status, counts, and a truncated
   raw-response sample, so a bad scrape is debuggable without re-hitting the venue site.
+
+## Event type tags
+
+An event can carry more than one tag (a benefit show might be both "Music"
+and "Benefit"), and tags are created on the fly -- there's no dedicated
+"manage tags" screen. Both the event form (`/events/new`, `/events/<id>/edit`)
+and the venue form (`/venues/new`, `/venues/<id>/edit`) let you either check
+existing tags or type a new one into a "quick add" field (comma-separated on
+the event form, for adding several new tags at once); `get_or_create_event_type()`
+in `app/utils.py` dedupes by name case-insensitively so typing "music" after
+"Music" already exists never creates a duplicate.
+
+A venue can have one **default tag**, applied automatically to a brand-new
+event at that venue -- both a manual add that doesn't pick a tag itself, and
+every scraped import (see `run_scrape()` in `app/scrapers/base.py`) -- always
+overridable per event, and never re-applied once an event already has tags
+(so a later re-scrape can't silently strip an admin's own tagging choice).
+Iron Horse, The Parlor Room, Academy of Music, and Haze are seeded with
+"Music" as their default, since every show at those is one; Smith College
+intentionally has no default, since its calendar mixes exhibitions, lectures,
+and performances and each scraped item needs its own call. Visitors filter
+the public calendar by tag the same way they already filter by venue/artist
+(`?type=<id>`).
 
 ## Scraper framework (`app/scrapers/`)
 

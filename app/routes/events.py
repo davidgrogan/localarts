@@ -2,8 +2,8 @@ from datetime import datetime
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 
-from app.models import db, Event, Venue, Artist
-from app.utils import slugify
+from app.models import db, Event, Venue, Artist, EventType
+from app.utils import slugify, get_or_create_event_type
 from app.auth import require_admin
 
 bp = Blueprint("events", __name__, url_prefix="/events")
@@ -13,15 +13,32 @@ bp = Blueprint("events", __name__, url_prefix="/events")
 bp.before_request(require_admin)
 
 
+def _resolve_event_types(form):
+    """Turn a submitted event form's checked tag ids + quick-add text
+    into a list of EventType objects, creating any brand-new ones."""
+    selected_ids = form.getlist("event_type_ids")
+    tags = EventType.query.filter(EventType.id.in_(selected_ids)).all() if selected_ids else []
+
+    new_names = form.get("new_event_type_names", "").strip()
+    if new_names:
+        for raw_name in new_names.split(","):
+            tag = get_or_create_event_type(raw_name)
+            if tag and tag not in tags:
+                tags.append(tag)
+    return tags
+
+
 @bp.route("/new", methods=["GET", "POST"])
 def new_event():
     venues = Venue.query.order_by(Venue.name).all()
     artists = Artist.query.order_by(Artist.name).all()
+    event_types = EventType.query.order_by(EventType.name).all()
 
     if request.method == "POST":
+        venue = Venue.query.get_or_404(int(request.form["venue_id"]))
         start_dt = datetime.strptime(request.form["start_datetime"], "%Y-%m-%dT%H:%M")
         event = Event(
-            venue_id=int(request.form["venue_id"]),
+            venue_id=venue.id,
             title=request.form["title"].strip(),
             start_datetime=start_dt,
             description=request.form.get("description", "").strip(),
@@ -43,12 +60,20 @@ def new_event():
             db.session.add(artist)
             event.artists.append(artist)
 
+        # Tags: whatever was picked/quick-added, or -- if nothing was --
+        # the venue's own default tag (e.g. Iron Horse shows default to
+        # "Music" so this doesn't need setting by hand every time).
+        tags = _resolve_event_types(request.form)
+        event.event_types = tags if tags else ([venue.default_event_type] if venue.default_event_type else [])
+
         db.session.add(event)
         db.session.commit()
         flash(f"Added show “{event.title}”.", "success")
         return redirect(url_for("main.calendar"))
 
-    return render_template("events/form.html", event=None, venues=venues, artists=artists)
+    return render_template(
+        "events/form.html", event=None, venues=venues, artists=artists, event_types=event_types
+    )
 
 
 @bp.route("/<int:event_id>/edit", methods=["GET", "POST"])
@@ -56,6 +81,7 @@ def edit_event(event_id):
     event = Event.query.get_or_404(event_id)
     venues = Venue.query.order_by(Venue.name).all()
     artists = Artist.query.order_by(Artist.name).all()
+    event_types = EventType.query.order_by(EventType.name).all()
 
     if request.method == "POST":
         event.venue_id = int(request.form["venue_id"])
@@ -68,11 +94,15 @@ def edit_event(event_id):
         artist_ids = request.form.getlist("artist_ids")
         event.artists = Artist.query.filter(Artist.id.in_(artist_ids)).all() if artist_ids else []
 
+        event.event_types = _resolve_event_types(request.form)
+
         db.session.commit()
         flash("Updated show.", "success")
         return redirect(url_for("main.calendar"))
 
-    return render_template("events/form.html", event=event, venues=venues, artists=artists)
+    return render_template(
+        "events/form.html", event=event, venues=venues, artists=artists, event_types=event_types
+    )
 
 
 @bp.route("/<int:event_id>/approve", methods=["POST"])

@@ -197,22 +197,26 @@ def run_scrape(venue, approve_new=False):
             existing.missing_streak = 0
             updated += 1
         else:
-            db.session.add(
-                Event(
-                    venue_id=venue.id,
-                    title=scraped.title,
-                    start_datetime=scraped.start_datetime,
-                    end_datetime=scraped.end_datetime,
-                    description=scraped.description,
-                    ticket_url=scraped.ticket_url,
-                    genre=scraped.genre,
-                    image_url=scraped.image_url,
-                    source="scraped",
-                    external_id=scraped.external_id,
-                    is_approved=approve_new,
-                    last_seen_at=now,
-                )
+            new_event = Event(
+                venue_id=venue.id,
+                title=scraped.title,
+                start_datetime=scraped.start_datetime,
+                end_datetime=scraped.end_datetime,
+                description=scraped.description,
+                ticket_url=scraped.ticket_url,
+                genre=scraped.genre,
+                image_url=scraped.image_url,
+                source="scraped",
+                external_id=scraped.external_id,
+                is_approved=approve_new,
+                last_seen_at=now,
             )
+            # Brand-new events only -- an existing event's tags are never
+            # touched here, so an admin's own tagging (or override of the
+            # venue default) survives every future re-scrape.
+            if venue.default_event_type:
+                new_event.event_types = [venue.default_event_type]
+            db.session.add(new_event)
             created += 1
 
     flagged_cancelled = 0
