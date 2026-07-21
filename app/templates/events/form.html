@@ -77,6 +77,14 @@
       </div>
     </form>
 
+    {% if event and not event.is_approved %}
+      <form method="post" action="{{ url_for('events.approve_event', event_id=event.id) }}" style="margin-top:0.75rem;">
+        <input type="hidden" name="next" value="{{ next_url|default('') }}">
+        <button class="btn btn-small" type="submit">Approve</button>
+        <span class="hint">Approves as-is -- save any edits above first if you want them included.</span>
+      </form>
+    {% endif %}
+
     {% if not event %}
       <script>
         // Convenience only (the server applies the same default-tag

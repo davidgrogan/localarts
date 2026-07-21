@@ -121,7 +121,11 @@ def approve_event(event_id):
     event.is_approved = True
     db.session.commit()
     flash(f"Approved “{event.title}” -- it'll now show on the public calendar.", "success")
-    return redirect(request.referrer or url_for("main.calendar"))
+    # A "next" field (set by the edit form's Approve button, so approving
+    # from there returns to wherever Edit was reached from -- e.g. Review)
+    # takes priority; otherwise fall back to the referring page (how the
+    # Review page's own Approve button has always worked) or the calendar.
+    return redirect(request.form.get("next") or request.referrer or url_for("main.calendar"))
 
 
 @bp.route("/<int:event_id>/delete", methods=["POST"])
