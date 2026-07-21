@@ -82,6 +82,11 @@ def edit_event(event_id):
     venues = Venue.query.order_by(Venue.name).all()
     artists = Artist.query.order_by(Artist.name).all()
     event_types = EventType.query.order_by(EventType.name).all()
+    # Where "Save changes" should return to -- e.g. the Review page's Edit
+    # links pass ?next=/events/review so editing a pending show returns
+    # there instead of the public calendar. request.values covers both the
+    # query string (GET, first load) and the hidden field below (POST).
+    next_url = request.values.get("next") or url_for("main.calendar")
 
     if request.method == "POST":
         event.venue_id = int(request.form["venue_id"])
@@ -98,10 +103,15 @@ def edit_event(event_id):
 
         db.session.commit()
         flash("Updated show.", "success")
-        return redirect(url_for("main.calendar"))
+        return redirect(next_url)
 
     return render_template(
-        "events/form.html", event=event, venues=venues, artists=artists, event_types=event_types
+        "events/form.html",
+        event=event,
+        venues=venues,
+        artists=artists,
+        event_types=event_types,
+        next_url=next_url,
     )
 
 

@@ -7,6 +7,8 @@
     <p class="empty-state">You need at least one venue first. <a href="{{ url_for('venues.new_venue') }}">Add a venue</a>.</p>
   {% else %}
     <form class="stacked" method="post">
+      <input type="hidden" name="next" value="{{ next_url|default('') }}">
+
       <label for="venue_id">Venue</label>
       <select id="venue_id" name="venue_id" required>
         {% for v in venues %}
@@ -71,7 +73,7 @@
 
       <div class="actions">
         <button class="btn" type="submit">{{ "Save changes" if event else "Add show" }}</button>
-        <a class="btn btn-secondary" href="{{ url_for('main.calendar') }}">Cancel</a>
+        <a class="btn btn-secondary" href="{{ next_url|default(url_for('main.calendar')) }}">Cancel</a>
       </div>
     </form>
 
