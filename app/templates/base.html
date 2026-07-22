@@ -19,7 +19,8 @@
     <nav>
       <a href="{{ url_for('main.calendar') }}">Calendar</a>
       <!-- "Local Artists" nav link removed for now -- will revisit. -->
-      <a href="{{ url_for('contact.contact') }}">Contact</a>
+      <!-- "Contact" nav link removed for now -- will revisit. Route/page
+           still work at /contact, just not linked from the nav. -->
       {% if is_admin %}
         <a href="{{ url_for('venues.list_venues') }}">Venues</a>
         <a href="{{ url_for('events.new_event') }}">+ Add show</a>
