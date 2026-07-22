@@ -87,6 +87,16 @@ Venue scrape_config keys:
                                found on the page (useful for a venue
                                whose feed genuinely only lists its own
                                shows).
+    category_include  -- optional list of substrings (case-insensitive)
+                          matched against each event's visible category
+                          text (the same field this module already reads
+                          for `genre` -- see _find_category). Only events
+                          with a matching category survive; useful for a
+                          multi-purpose venue's shared calendar where only
+                          one category (e.g. "Performance") should come in
+                          as new events, rather than every workshop,
+                          class, and rental listed on the same widget.
+                          Omit to import every category, same as before.
 """
 import json
 import re
@@ -266,6 +276,7 @@ def parse(raw, venue):
     include_all = bool(config.get("include_all_locations"))
     match_terms = config.get("location_match") or [venue.name]
     match_terms = [t.lower() for t in match_terms if t]
+    category_include = [t.lower() for t in config.get("category_include", []) if t]
 
     events = []
     seen_external_ids = set()
@@ -279,6 +290,14 @@ def parse(raw, venue):
         location_name = _location_name(item.get("location"))
         if not include_all and match_terms:
             if not any(term in location_name.lower() for term in match_terms):
+                continue
+
+        # Computed once here (rather than inline below) so category_include
+        # can filter on it before doing any more work for this event.
+        category_text = item.get("genre") or _find_category(script)
+        if category_include:
+            haystack = (category_text or "").lower()
+            if not any(term in haystack for term in category_include):
                 continue
 
         try:
@@ -339,7 +358,9 @@ def parse(raw, venue):
                 # Genre/category isn't in the JSON-LD -- it's read from the
                 # visible "Category" element near this event's <script>
                 # tag instead (see module docstring and _find_category).
-                genre=item.get("genre") or _find_category(script),
+                # Already computed above (as category_text) so
+                # category_include could filter on it before this point.
+                genre=category_text,
                 image_url=_image_url(item.get("image")),
                 external_id=external_id,
             )

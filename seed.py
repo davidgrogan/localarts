@@ -221,6 +221,40 @@ def main():
             default_event_type=music_tag,
         )
 
+        thirtythree_hawley = get_or_create_venue(
+            name="33 Hawley",
+            slug="33-hawley",
+            address="33 Hawley St.",
+            city="Northampton",
+            state="MA",
+            website_url="https://www.33hawley.org",
+            # The calendar widget is embedded right on the homepage (no
+            # separate /events page -- confirmed via sitemap.xml, which
+            # lists no such page at all). Confirmed Elfsight "Event
+            # Calendar" -- same widget as Iron Horse/Parlor Room -- via
+            # a DevTools Network-tab request to
+            # universe-static.elfsightcdn.com/.../event-calendar/....
+            events_url="https://www.33hawley.org/",
+            source_type="elfsight_jsonld",
+            # This building hosts several resident arts orgs (Northampton
+            # Center for the Arts, plus building partners) running dance,
+            # theatre, classes, and workshops through the same shared
+            # calendar -- David only wants live performances pulled in
+            # automatically, not every class/workshop/rental (the
+            # opposite tradeoff from Smith College above, which
+            # deliberately pulls everything). category_include filters
+            # to events whose visible Elfsight category tag contains
+            # "Performance"; include_all_locations is set since this
+            # widget (unlike Iron Horse's shared feed) isn't expected to
+            # list other physical venues, just 33 Hawley's own building.
+            # Not yet verified against this venue's actual rendered
+            # widget markup (this sandbox can't launch a headless
+            # browser to check) -- if the real category text doesn't say
+            # exactly "Performance", tell me what it does say and this
+            # filter is a one-line fix.
+            scrape_config='{"include_all_locations": true, "category_include": ["Performance"]}',
+        )
+
         artist_1 = get_or_create_artist(
             name="Sample Local Artist",
             slug=slugify("Sample Local Artist"),

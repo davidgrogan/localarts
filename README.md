@@ -151,8 +151,11 @@ Adding a venue means picking one of these `source_type`s:
   and never shows a year in its date text at all. Same `wait_for_selector` /
   `wait_ms` keys as `rendered_html`, plus `location_match` (list of
   substrings matched case-insensitively against each event's JSON-LD
-  location name -- defaults to `[venue.name]`) and `include_all_locations`
-  (bool, skips that filtering).
+  location name -- defaults to `[venue.name]`), `include_all_locations`
+  (bool, skips that filtering), and `category_include` (list of substrings,
+  case-insensitive, matched against the same visible category text read
+  for `genre` -- only matching events survive; see the 33 Hawley note
+  below for why).
 - **`haze_calendar`** -- purpose-built for Haze's (hazenorthampton.org)
   built-in calendar widget. Plain HTTP fetch (server-rendered, no headless
   browser needed), but events are grouped inside a day cell rather than
@@ -276,6 +279,33 @@ mixed in right alongside real shows, open mics, and karaoke nights.
 before they ever reach the review queue, while still keeping recurring
 Open Mic/Karaoke nights, which are real weekly entertainment.
 
+**On 33 Hawley (33hawley.org, home of the Northampton Center for the
+Arts):** another Elfsight "Event Calendar" widget, same product as Iron
+Horse/Parlor Room, embedded right on the homepage rather than a separate
+events page (there isn't one -- confirmed via `sitemap.xml`, which lists
+no events/calendar URL at all). Identified without being able to render
+the page myself (this sandbox can't launch a headless browser to check
+JS-rendered content): David opened the page's DevTools Network tab and
+found a request to `universe-static.elfsightcdn.com/.../event-calendar/...`,
+which is the same Elfsight product Iron Horse's scraper already handles.
+This building hosts multiple resident arts organizations running dance,
+theatre, classes, and workshops through the same shared calendar --
+David wants only live performances pulled in automatically, the opposite
+tradeoff from Smith College's "pull everything" choice above. New
+`category_include: ["Performance"]` config (see the `elfsight_jsonld`
+bullet) filters to just events whose visible Elfsight category tag
+contains "Performance". No default tag, same reasoning as Smith College:
+even filtered to "Performance," this could still mean theatre or dance,
+not only music.
+
+**Caveat:** this venue's scrape_config hasn't been verified against its
+actual rendered markup the way every other venue here has (again, no
+headless browser available in this environment) -- confirmed via a
+synthetic test that the filtering *logic* works correctly, but not that
+the real widget's category text says exactly "Performance". If a real
+scrape comes back empty or with the wrong events, check what the visible
+category text actually says and adjust `category_include` to match.
+
 ## Keeping scraped data honest
 
 Scraping isn't just "find new shows" -- venues change times, and sometimes
@@ -338,7 +368,7 @@ source .venv/bin/activate        # .venv\Scripts\activate on Windows
 pip install -r requirements.txt
 playwright install chromium      # one-time browser download, needed for rendered_html venues
 
-python seed.py                   # adds Iron Horse, Parlor Room, Academy of Music, Haze, Luthier's Co-Op, sample artists/shows
+python seed.py                   # adds Iron Horse, Parlor Room, Academy of Music, Haze, Luthier's Co-Op, 33 Hawley, sample artists/shows
 python run.py                    # http://127.0.0.1:5000
 ```
 
