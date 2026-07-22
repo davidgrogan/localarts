@@ -111,6 +111,45 @@ and performances and each scraped item needs its own call. Visitors filter
 the public calendar by tag the same way they already filter by venue/artist
 (`?type=<id>`).
 
+## Recurring event grouping (`app/recurrence.py`)
+
+Real users testing the site pointed out the same problem two ways: a daily
+art exhibit (Holley Flagg Exhibit) and a weekly open mic (Tue/Wed/Thu at
+Luthier's Co-Op) each showed up as their own full card every single day,
+which is a lot of repeated noise for "one thing that keeps happening."
+
+`group_recurring_events()` groups same-venue events by normalized title,
+splits each group into "runs" of occurrences close enough together in time
+(within `MAX_GAP_DAYS`, currently 10 days) to plausibly be the same booking,
+and collapses any run of at least `MIN_OCCURRENCES` (currently 3) into a
+single row with an inferred weekday-pattern badge ("Daily", "Weekdays",
+"Every Tue/Wed/Thu", or just a date range if the pattern's too irregular to
+name). This is purely a display-time computation over already-scraped
+`Event` rows -- no schema changes, no scraper changes, and no stored
+"series" concept. It's deliberately *not* based on iCal RRULEs: only
+ical-sourced venues could ever carry one, `icalendar` already expands them
+into individual occurrences before this code sees them anyway (see
+`app/scrapers/ical_feed.py`), and Elfsight/html-sourced venues never have
+structured recurrence data at all -- reverse-engineering the pattern from
+the occurrences we already have is the only approach that works uniformly.
+
+`main.calendar()` always queries the full unbounded future set first (not
+just the week view's 7-day window) so a series' badge/date-range stays
+accurate -- e.g. "Every Tue/Wed/Thu &middot; thru Aug 15" -- even when only
+its next occurrence or two falls inside the current 7 days; the week view
+then just filters which *rows* are shown, without recomputing the grouping
+on a truncated dataset.
+
+To turn this off entirely (e.g. if it doesn't look/feel right in practice),
+flip `GROUP_RECURRING_EVENTS = False` at the top of `app/routes/main.py` --
+that's the only place it's wired in, so this one-line change (no other code
+changes, no migration to undo) reverts to the old flat one-row-per-
+occurrence behavior.
+
+Admins should note that editing/deleting a collapsed series only affects
+the one representative occurrence shown, not the whole run -- the calendar
+page says as much next to those controls when a row is a series.
+
 ## Scraper framework (`app/scrapers/`)
 
 Adding a venue means picking one of these `source_type`s:

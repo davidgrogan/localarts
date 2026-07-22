@@ -46,10 +46,11 @@
     <a class="btn btn-small {{ '' if view == 'list' else 'btn-secondary' }}" href="{{ url_for('main.calendar', view='list', venue=selected_venue, type=selected_type) }}">List All</a>
   </div>
 
-    {% if events %}
+    {% if items %}
       <ul class="event-list">
         {% set ns = namespace(current_day=None) %}
-        {% for e in events %}
+        {% for item in items %}
+          {% set e = item.event %}
           {% set day_key = e.start_datetime.date() %}
           {% if day_key != ns.current_day %}
             {% set ns.current_day = day_key %}
@@ -74,6 +75,11 @@
             <div class="event-main">
               <div class="event-title">
                 {% if e.ticket_url %}<a href="{{ e.ticket_url }}" target="_blank" rel="noopener" {% if e.description %}title="{{ e.description }}" class="has-description"{% endif %}>{{ e.title }}</a>{% else %}<span {% if e.description %}title="{{ e.description }}" class="has-description"{% endif %}>{{ e.title }}</span>{% endif %}
+                {% if item.is_series %}
+                  <span class="recurring-badge" title="{{ item.count }} dates total">
+                    &#8635; {{ item.badge or "Recurring" }}{% if item.range_end %} &middot; thru {{ item.range_end | dtfmt("%b %-d") }}{% endif %}
+                  </span>
+                {% endif %}
                 {% if local_artists %}<span class="local-artist-badge" title="Features {{ local_artists | map(attribute='name') | join(', ') }}">&#9733; Local Artist</span>{% endif %}
                 {% if e.genre %}<span class="genre-tag">{{ e.genre }}</span>{% endif %}
                 {% for t in e.event_types %}<span class="type-tag">{{ t.name }}</span>{% endfor %}
@@ -106,6 +112,9 @@
                   <form method="post" action="{{ url_for('events.delete_event', event_id=e.id) }}" onsubmit="return confirm('Delete this show?');">
                     <button type="submit">Delete</button>
                   </form>
+                  {% if item.is_series %}
+                    <span class="meta">(editing/deleting only affects this one occurrence, {{ item.count }} total)</span>
+                  {% endif %}
                 </div>
               {% endif %}
             </div>
@@ -113,6 +122,7 @@
         {% endfor %}
       </ul>
     {% else %}
+      {# items is empty -- same empty-state copy as before #}
       <p class="empty-state">
         {% if view == 'week' %}
           No shows in the next 7 days. Try <a href="{{ url_for('main.calendar', view='list', venue=selected_venue, type=selected_type) }}">List All</a> to see what's further out.
