@@ -247,12 +247,22 @@ def main():
             # "Performance"; include_all_locations is set since this
             # widget (unlike Iron Horse's shared feed) isn't expected to
             # list other physical venues, just 33 Hawley's own building.
-            # Not yet verified against this venue's actual rendered
-            # widget markup (this sandbox can't launch a headless
-            # browser to check) -- if the real category text doesn't say
-            # exactly "Performance", tell me what it does say and this
-            # filter is a one-line fix.
-            scrape_config='{"include_all_locations": true, "category_include": ["Performance"]}',
+            # First real scrape came back with 0 events parsed and a raw
+            # sample that was just the static <head> -- the widget hadn't
+            # finished loading yet when the default fixed wait (3000ms)
+            # captured the page; Elfsight's own async fetch of this
+            # venue's events apparently takes longer than that. Confirmed
+            # via a real "Inspect element" sample (an event's image tag:
+            # class="... eapp-events-calendar-media-image ...", hosted on
+            # files.elfsightcdn.com) that it is genuinely this widget, so
+            # wait_for_selector -- rather than a longer fixed wait_ms --
+            # is the fix: block until at least one real event card exists
+            # instead of guessing how many milliseconds is enough.
+            scrape_config=(
+                '{"include_all_locations": true, '
+                '"category_include": ["Performance"], '
+                '"wait_for_selector": ".eapp-events-calendar-grid-item-container"}'
+            ),
         )
 
         artist_1 = get_or_create_artist(
