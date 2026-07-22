@@ -3,7 +3,15 @@
 This is the easiest and most robust source type when a venue has one
 (common for WordPress "The Events Calendar" sites, Google Calendar
 based listings, etc.) -- no HTML/JS guesswork involved.
+
+Optional `venue.scrape_config` (JSON):
+    title_exclude: list[str] -- events whose title contains any of these
+        strings (case-insensitive) are dropped entirely. Some venues'
+        calendar feeds mix real events in with operational notices (e.g.
+        "CLOSED", "Bar Open 4-11pm") that aren't shows -- this filters
+        that noise out before it ever reaches the review queue.
 """
+import json
 from datetime import datetime, date
 
 import requests
@@ -37,6 +45,12 @@ def _to_datetime(value):
 
 def parse(raw, venue):
     try:
+        config = json.loads(venue.scrape_config or "{}")
+    except json.JSONDecodeError as exc:
+        raise ScrapeError(f"scrape_config isn't valid JSON: {exc}") from exc
+    title_exclude = [s.lower() for s in config.get("title_exclude", [])]
+
+    try:
         cal = Calendar.from_ical(raw)
     except ValueError as exc:
         raise ScrapeError(f"Response wasn't valid iCal data: {exc}") from exc
@@ -55,6 +69,8 @@ def parse(raw, venue):
 
         uid = str(component.get("uid") or "")
         title = str(component.get("summary") or "Untitled event")
+        if title_exclude and any(pat in title.lower() for pat in title_exclude):
+            continue
         external_id = uid or f"{title}-{start_dt.isoformat()}"
 
         events.append(

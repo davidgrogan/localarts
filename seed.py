@@ -192,6 +192,35 @@ def main():
             ),
         )
 
+        luthiers_coop = get_or_create_venue(
+            name="Luthier's Co-Op",
+            slug="luthiers-co-op",
+            address="108 Cottage St.",
+            # Easthampton, not Northampton -- a few towns over, still
+            # squarely in the "NoHo Now!" area David books/attends in.
+            city="Easthampton",
+            state="MA",
+            website_url="https://www.luthiers-coop.com",
+            # WordPress + "The Events Calendar" plugin -- confirmed via
+            # meta tags (tec-api-*, generator: WordPress) on a direct
+            # fetch of /events/. That plugin publishes a real iCal export
+            # (the page's own "+ Export Events" link), which is far more
+            # robust than scraping the calendar-grid HTML: real UTC/zoned
+            # start-end times, stable per-event UIDs, no JS needed.
+            events_url="https://www.luthiers-coop.com/events/?ical=1",
+            source_type="ical",
+            # This venue's feed mixes real shows in with day-to-day
+            # operational notices that aren't events -- "CLOSED" /
+            # "CLOSED FOR SUMMER VACATION" and "BackStage Bar Open
+            # 4-11pm" (the bar's daily hours, posted as its own calendar
+            # entry every day it's open). title_exclude drops both
+            # before they ever reach the review queue. Recurring
+            # Open Mic / Karaoke entries are kept -- those are real
+            # weekly entertainment, not just operating hours.
+            scrape_config='{"title_exclude": ["CLOSED", "BackStage Bar Open"]}',
+            default_event_type=music_tag,
+        )
+
         artist_1 = get_or_create_artist(
             name="Sample Local Artist",
             slug=slugify("Sample Local Artist"),

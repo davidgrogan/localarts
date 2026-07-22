@@ -103,8 +103,9 @@ event at that venue -- both a manual add that doesn't pick a tag itself, and
 every scraped import (see `run_scrape()` in `app/scrapers/base.py`) -- always
 overridable per event, and never re-applied once an event already has tags
 (so a later re-scrape can't silently strip an admin's own tagging choice).
-Iron Horse, The Parlor Room, Academy of Music, and Haze are seeded with
-"Music" as their default, since every show at those is one; Smith College
+Iron Horse, The Parlor Room, Academy of Music, Haze, and Luthier's Co-Op
+are seeded with "Music" as their default, since every show at those is
+one; Smith College
 intentionally has no default, since its calendar mixes exhibitions, lectures,
 and performances and each scraped item needs its own call. Visitors filter
 the public calendar by tag the same way they already filter by venue/artist
@@ -122,7 +123,11 @@ Adding a venue means picking one of these `source_type`s:
   events collection -- *if* the events actually live in Squarespace's own
   collection (see the Iron Horse note below for a case where they don't).
 - **`ical`** -- for venues that publish a `.ics` feed (WordPress event
-  calendar plugins, Google Calendar, etc.) -- the most robust option when available.
+  calendar plugins, Google Calendar, etc.) -- the most robust option when
+  available. Optional `scrape_config` key: `title_exclude` (list of
+  strings, case-insensitive substring match) drops any event whose title
+  contains one of them -- for feeds that mix real events in with
+  non-event calendar entries (see the Luthier's Co-Op note below).
 - **`html`** -- generic BeautifulSoup + CSS selectors against the raw server
   response, driven by the venue's `scrape_config` JSON (`item_selector`,
   `title_selector`, `date_selector`, optional `date_format`/`link_selector`/
@@ -257,6 +262,20 @@ Google Calendar -- if so, that calendar's own `.ics` feed (via the
 approach, but the actual calendar ID wasn't discoverable from the pages
 fetched so far.
 
+**On Luthier's Co-Op (luthiers-coop.com, Easthampton):** the first venue
+to actually use that `ical` source type for real. Runs WordPress's "The
+Events Calendar" plugin (confirmed via `tec-api-*` meta tags), which
+publishes a genuine `.ics` export at `/events/?ical=1` -- the page's own
+"+ Export Events" link. Real per-event UIDs and zoned start/end times, no
+HTML scraping or headless browser needed at all. The one wrinkle: this
+venue's calendar feed also contains non-event entries -- "CLOSED" /
+"CLOSED FOR SUMMER VACATION" days, and "BackStage Bar Open 4-11pm" (the
+bar's own daily hours, posted as a calendar entry every day it's open) --
+mixed in right alongside real shows, open mics, and karaoke nights.
+`title_exclude: ["CLOSED", "BackStage Bar Open"]` filters those two out
+before they ever reach the review queue, while still keeping recurring
+Open Mic/Karaoke nights, which are real weekly entertainment.
+
 ## Keeping scraped data honest
 
 Scraping isn't just "find new shows" -- venues change times, and sometimes
@@ -319,7 +338,7 @@ source .venv/bin/activate        # .venv\Scripts\activate on Windows
 pip install -r requirements.txt
 playwright install chromium      # one-time browser download, needed for rendered_html venues
 
-python seed.py                   # adds Iron Horse, Parlor Room, Academy of Music, Haze, sample artists/shows
+python seed.py                   # adds Iron Horse, Parlor Room, Academy of Music, Haze, Luthier's Co-Op, sample artists/shows
 python run.py                    # http://127.0.0.1:5000
 ```
 
