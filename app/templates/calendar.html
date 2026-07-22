@@ -36,14 +36,18 @@
       {% endfor %}
       <option value="untagged" {% if selected_type == "untagged" %}selected{% endif %}>Untagged</option>
     </select>
-    {% if selected_venue or selected_type %}
+    <label class="recurring-toggle">
+      <input type="checkbox" name="hide_recurring" value="1" {% if hide_recurring %}checked{% endif %} onchange="this.form.submit()">
+      Only show first date of recurring events
+    </label>
+    {% if selected_venue or selected_type or hide_recurring %}
       <a class="clear" href="{{ url_for('main.calendar', view=view) }}">Clear filters</a>
     {% endif %}
   </form>
 
   <div class="view-toggle">
-    <a class="btn btn-small {{ '' if view == 'week' else 'btn-secondary' }}" href="{{ url_for('main.calendar', view='week', venue=selected_venue, type=selected_type) }}">Next 7 Days</a>
-    <a class="btn btn-small {{ '' if view == 'list' else 'btn-secondary' }}" href="{{ url_for('main.calendar', view='list', venue=selected_venue, type=selected_type) }}">List All</a>
+    <a class="btn btn-small {{ '' if view == 'week' else 'btn-secondary' }}" href="{{ url_for('main.calendar', view='week', venue=selected_venue, type=selected_type, hide_recurring=('1' if hide_recurring else none)) }}">Next 7 Days</a>
+    <a class="btn btn-small {{ '' if view == 'list' else 'btn-secondary' }}" href="{{ url_for('main.calendar', view='list', venue=selected_venue, type=selected_type, hide_recurring=('1' if hide_recurring else none)) }}">List All</a>
   </div>
 
     {% if items %}

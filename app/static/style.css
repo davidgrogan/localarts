@@ -180,6 +180,14 @@ h2 { font-family: var(--font-display); font-size: 1.2rem; margin-top: 2rem; }
   padding: 0.35rem 0.5rem;
   font-size: 0.9rem;
 }
+.recurring-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+  cursor: pointer;
+}
 
 .event-list { list-style: none; padding: 0; margin: 0; }
 .day-header {

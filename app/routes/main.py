@@ -9,10 +9,12 @@ bp = Blueprint("main", __name__)
 
 # Real users testing the site asked for recurring events (a daily exhibit,
 # a weekly open mic) to collapse into one row with a badge instead of
-# repeating in full every single day -- see app/recurrence.py. Flip this
-# to False to instantly revert to the old flat one-row-per-occurrence
-# behavior with no other code changes, in case the grouping doesn't look
-# or feel right in practice.
+# repeating in full every single day -- see app/recurrence.py. This first
+# shipped as always-on, but that wasn't landing well in practice -- it's
+# now an opt-in visitor toggle instead (the "hide_recurring" query param /
+# calendar.html checkbox), defaulting to the original flat behavior.
+# Setting this to False is still a hard server-side kill switch that
+# overrides the toggle entirely, for a one-line rollback if needed.
 GROUP_RECURRING_EVENTS = True
 
 
@@ -49,6 +51,9 @@ def calendar():
     view = request.args.get("view", "week")
     if view not in ("week", "list"):
         view = "week"
+    # Defaults to the plain flat list (every occurrence shown) -- the
+    # collapsed/badged view is opt-in via this checkbox, not automatic.
+    hide_recurring = request.args.get("hide_recurring") == "1"
 
     today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     week_end = today + timedelta(days=7)
@@ -67,7 +72,7 @@ def calendar():
         .all()
     )
 
-    if GROUP_RECURRING_EVENTS:
+    if GROUP_RECURRING_EVENTS and hide_recurring:
         items = group_recurring_events(all_upcoming)
     else:
         items = [DisplayItem(event=e) for e in all_upcoming]
@@ -93,4 +98,5 @@ def calendar():
         selected_venue=venue_id,
         selected_artist=artist_id,
         selected_type=event_type_id,
+        hide_recurring=hide_recurring,
     )
