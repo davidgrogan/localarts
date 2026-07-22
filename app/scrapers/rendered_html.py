@@ -83,16 +83,28 @@ def fetch_raw(venue):
                 # capture the page.
                 page.goto(venue.events_url, wait_until="domcontentloaded", timeout=30000)
                 if wait_for_selector:
-                    try:
-                        page.wait_for_selector(wait_for_selector, timeout=15000)
-                    except PlaywrightTimeoutError:
-                        # Fall through and capture whatever rendered -- the
-                        # scrape preview page will show 0 parsed events plus
-                        # the raw HTML for debugging rather than hard-failing.
-                        pass
+                    # Some widget embeds (confirmed: 33 Hawley's Elfsight
+                    # widget) render inside their own <iframe> rather than
+                    # directly in the page's own document -- an iframe has a
+                    # completely separate DOM, so a selector search scoped to
+                    # the main frame never finds it, silently times out, and
+                    # we'd capture the empty page shell forever. Try the main
+                    # frame first (the common case, e.g. Iron Horse), then
+                    # fall back to checking every iframe on the page and use
+                    # whichever frame's document actually contains the
+                    # selector.
+                    matched_frame = None
+                    for frame in page.frames:
+                        try:
+                            frame.wait_for_selector(wait_for_selector, timeout=15000)
+                            matched_frame = frame
+                            break
+                        except PlaywrightTimeoutError:
+                            continue
+                    html = (matched_frame or page).content()
                 else:
                     page.wait_for_timeout(wait_ms)
-                html = page.content()
+                    html = page.content()
             finally:
                 browser.close()
     except ScrapeError:
