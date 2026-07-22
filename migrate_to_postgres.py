@@ -96,7 +96,7 @@ def main():
 
         print("\nResetting Postgres auto-increment sequences...")
         for table_name in TABLES_IN_ORDER:
-            if table_name == "event_artists":
+            if table_name in ("event_artists", "event_event_types"):
                 continue  # composite primary key, no serial sequence
             dst_conn.execute(
                 text(
