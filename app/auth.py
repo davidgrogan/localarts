@@ -25,7 +25,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 bp = Blueprint("auth", __name__)
 
-ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME") or "admin"
 # Dev-only fallback (password: "admin") so the admin screens work out of
 # the box locally with zero setup. ALWAYS set a real ADMIN_PASSWORD_HASH
 # in any deployment that isn't just your own laptop. Generate one with:

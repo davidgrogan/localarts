@@ -68,7 +68,11 @@ def create_app(test_config=None):
         database_url = f"sqlite:///{db_path}"
 
     app.config.from_mapping(
-        SECRET_KEY=os.environ.get("SECRET_KEY", "dev-secret-change-me"),
+        # `or` rather than `.get(key, default)` -- a blank SECRET_KEY= line
+        # in .env (e.g. from copying .env.example without filling it in)
+        # still counts as "set" to os.environ.get, which would otherwise
+        # silently defeat this fallback and break session cookies entirely.
+        SECRET_KEY=os.environ.get("SECRET_KEY") or "dev-secret-change-me",
         SQLALCHEMY_DATABASE_URI=database_url,
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
         # Only matters when this app shares a domain with other apps behind
@@ -77,8 +81,8 @@ def create_app(test_config=None):
         # and gives it its own name so it can't collide with a same-named
         # cookie set by something else on the same domain. Defaults are the
         # normal Flask behavior for a single-app-per-domain deployment.
-        SESSION_COOKIE_PATH=os.environ.get("SESSION_COOKIE_PATH", "/"),
-        SESSION_COOKIE_NAME=os.environ.get("SESSION_COOKIE_NAME", "session"),
+        SESSION_COOKIE_PATH=os.environ.get("SESSION_COOKIE_PATH") or "/",
+        SESSION_COOKIE_NAME=os.environ.get("SESSION_COOKIE_NAME") or "session",
     )
     if test_config:
         app.config.update(test_config)
