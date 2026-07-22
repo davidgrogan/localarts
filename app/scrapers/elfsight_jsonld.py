@@ -100,7 +100,7 @@ Venue scrape_config keys:
 """
 import json
 import re
-from datetime import datetime as dt
+from datetime import datetime as dt, timedelta
 from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup
@@ -233,22 +233,33 @@ def _to_local(parsed_dt):
     return parsed_dt
 
 
-def _find_time_of_day(script):
-    """Return a `datetime.time` parsed from the card's visible time text
-    (e.g. "7:00 PM"), or None if there's no such element or no time-like
-    substring can be found in it. Extracts the time via regex rather than
-    parsing the element's full text directly, since that text sometimes
-    carries a trailing UTC-offset annotation (see _TIME_RE above)."""
-    text = _find_in_card(script, _TIME_SELECTOR)
-    if not text:
-        return None
-    match = _TIME_RE.search(text)
-    if not match:
-        return None
+def _parse_time_text(text):
     try:
-        return dt.strptime(match.group(0), _TIME_FORMAT).time()
+        return dt.strptime(text, _TIME_FORMAT).time()
     except ValueError:
         return None
+
+
+def _find_time_range(script):
+    """Return (start_time, end_time) as `datetime.time` objects parsed
+    from the card's visible time text, or (None, None) if there's no such
+    element or no time-like substring in it. end_time is None when only
+    one time is present (some venues' cards show just a start time, e.g.
+    "7:00 PM"; others show a full range, e.g. "6:00 PM - 8:00 PM" --
+    confirmed on a real 33 Hawley event card). Extracts times via regex
+    rather than parsing the element's full text directly, since that text
+    sometimes carries a trailing UTC-offset annotation (see _TIME_RE
+    above) that would otherwise get swept into whichever match follows
+    it."""
+    text = _find_in_card(script, _TIME_SELECTOR)
+    if not text:
+        return None, None
+    matches = _TIME_RE.findall(text)
+    if not matches:
+        return None, None
+    start_time = _parse_time_text(matches[0])
+    end_time = _parse_time_text(matches[1]) if len(matches) > 1 else None
+    return start_time, end_time
 
 
 def _find_month_day(script):
@@ -317,23 +328,31 @@ def parse(raw, venue):
             local_raw = _to_local(raw_start)
             month, day = local_raw.month, local_raw.day
 
-        time_of_day = _find_time_of_day(script)
-        hour = time_of_day.hour if time_of_day is not None else 0
-        minute = time_of_day.minute if time_of_day is not None else 0
+        start_time, end_time = _find_time_range(script)
+        hour = start_time.hour if start_time is not None else 0
+        minute = start_time.minute if start_time is not None else 0
 
         try:
             start_dt = dt(raw_start.year, month, day, hour, minute)
         except ValueError:
             continue
 
+        # Prefer a real end *time* read straight off the same card (e.g.
+        # "6:00 PM - 8:00 PM") over the JSON-LD's endDate, whose date
+        # component is no more trustworthy than startDate's (see module
+        # docstring) -- confirmed on a real 33 Hawley event where endDate
+        # was simply the calendar day after startDate even though the
+        # visible times show a same-evening 2-hour show. Reusing start's
+        # hour/minute here (the previous behavior) silently produced
+        # start_dt == end_dt whenever no distinct end time was visible,
+        # which is wrong far more often than just leaving end_dt blank.
         end_dt = None
-        end_raw = item.get("endDate")
-        if end_raw:
-            try:
-                end_raw_dt = dateparser.parse(end_raw)
-                end_dt = dt(end_raw_dt.year, month, day, hour, minute)
-            except (ValueError, OverflowError):
-                end_dt = None
+        if end_time is not None:
+            end_dt = dt(start_dt.year, month, day, end_time.hour, end_time.minute)
+            if end_dt <= start_dt:
+                # An end time that reads earlier than the start time means
+                # the show runs past midnight (e.g. "11:00 PM - 1:00 AM").
+                end_dt += timedelta(days=1)
 
         external_id = f"{name}-{start_dt.isoformat()}"
         if external_id in seen_external_ids:
