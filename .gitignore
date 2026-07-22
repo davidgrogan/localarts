@@ -5,5 +5,6 @@ instance/
 backups/
 .env
 deploy/local-music.env
+deploy/push_to_droplet.env
 .DS_Store
 *.log

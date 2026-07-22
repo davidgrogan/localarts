@@ -200,11 +200,39 @@ see that project's own repo for its card markup/style.
 
 ## Moving locally-accumulated data to the droplet
 
-If you keep adding venues and running scrapes on your local machine and
-want that data on the droplet without re-entering it or re-scraping
-everything there, use `migrate_to_postgres.py` (project root). It copies
-every row from your local SQLite database into the droplet's Postgres,
-preserving IDs and foreign keys.
+The intended day-to-day workflow: run scans, do your review/tagging, all
+on your local machine, then push the result up to the droplet -- no
+re-scraping or manual re-entry on the live site.
+
+### One-click way (recommended)
+
+`push_to_droplet.sh` (and, for Finder, `Push to Droplet.command` --
+double-click it like any other app) automates the whole dance below: it
+opens the SSH tunnel, waits for it to actually be up, runs
+`migrate_to_postgres.py` through it, and closes the tunnel again
+afterward whether the migration succeeded or failed.
+
+One-time setup:
+
+```bash
+cp deploy/push_to_droplet.env.example deploy/push_to_droplet.env
+nano deploy/push_to_droplet.env   # droplet IP, SSH user, localarts PG password
+```
+
+Then any time you want to push: run `./push_to_droplet.sh`, or
+double-click `Push to Droplet.command` in Finder. You'll still be
+prompted for your SSH password once (when the tunnel opens) and asked to
+type `yes` to confirm the migration (that confirmation is intentional --
+see below) -- everything else is automatic.
+
+`deploy/push_to_droplet.env` holds a real password and is gitignored,
+same as `deploy/local-music.env`.
+
+### Manual way (what the script above is doing for you)
+
+`migrate_to_postgres.py` (project root) copies every row from your local
+SQLite database into the droplet's Postgres, preserving IDs and foreign
+keys.
 
 It does **not** open Postgres to the internet -- the droplet's Postgres
 stays localhost-only (as it should). Instead, tunnel to it over SSH:
