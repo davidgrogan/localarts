@@ -35,14 +35,15 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SQLITE_PATH = os.path.join(BASE_DIR, "instance", "local_music.sqlite3")
 
 # Order matters: parents before children, so foreign keys never point at
-# a row that doesn't exist yet. event_artists and event_event_types (the
-# many-to-many tables) have no serial "id" of their own, so they're
-# skipped in the sequence-reset step further down but still copied like
-# any other table.
+# a row that doesn't exist yet. event_type comes before venue because
+# venue.default_event_type_id references it. event_artists and
+# event_event_types (the many-to-many tables) have no serial "id" of
+# their own, so they're skipped in the sequence-reset step further down
+# but still copied like any other table.
 TABLES_IN_ORDER = [
+    "event_type",
     "venue",
     "artist",
-    "event_type",
     "event",
     "event_artists",
     "event_event_types",
