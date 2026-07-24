@@ -16,11 +16,12 @@ this project folder with your local .venv active:
     python3 migrate_to_postgres.py "postgresql://localarts:YOUR_PG_PASSWORD@localhost:5433/localarts"
 
 WARNING: this WIPES every row currently in the target database's venue/
-artist/event_type/event/event_artists/event_event_types/scrape_run tables
-before copying your local data in -- it's meant to *replace* whatever's
-there (which, unless you've been managing venues through the live site's
-admin screens too, is just whatever seed.py originally put there). Don't
-run this if the droplet already has real data you haven't backed up.
+artist/event_type/genre_tag/event/event_artists/event_event_types/
+artist_genre_tags/artist_event_types/scrape_run tables before copying
+your local data in -- it's meant to *replace* whatever's there (which,
+unless you've been managing venues through the live site's admin screens
+too, is just whatever seed.py originally put there). Don't run this if
+the droplet already has real data you haven't backed up.
 
 Requires psycopg2 (already in requirements.txt) -- if you haven't run
 `pip install -r requirements.txt` locally since it was added, do that
@@ -35,18 +36,28 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SQLITE_PATH = os.path.join(BASE_DIR, "instance", "local_music.sqlite3")
 
 # Order matters: parents before children, so foreign keys never point at
-# a row that doesn't exist yet. event_type comes before venue because
-# venue.default_event_type_id references it. event_artists and
-# event_event_types (the many-to-many tables) have no serial "id" of
-# their own, so they're skipped in the sequence-reset step further down
-# but still copied like any other table.
+# a row that doesn't exist yet. event_type and genre_tag come before
+# venue/artist because venue.default_event_type_id and the artist tag
+# association tables reference them. event_artists, event_event_types,
+# artist_genre_tags, and artist_event_types (the many-to-many tables)
+# have no serial "id" of their own, so they're skipped in the
+# sequence-reset step further down but still copied like any other table.
+#
+# genre_tag / artist_genre_tags / artist_event_types were added alongside
+# the local-artist Genre/Category Tags feature -- if a future model adds
+# another tag table or association table, it needs an entry here too, or
+# this script will silently skip copying it (as happened with these three
+# the first time around).
 TABLES_IN_ORDER = [
     "event_type",
+    "genre_tag",
     "venue",
     "artist",
     "event",
     "event_artists",
     "event_event_types",
+    "artist_genre_tags",
+    "artist_event_types",
     "scrape_run",
 ]
 
@@ -96,7 +107,7 @@ def main():
 
         print("\nResetting Postgres auto-increment sequences...")
         for table_name in TABLES_IN_ORDER:
-            if table_name in ("event_artists", "event_event_types"):
+            if table_name in ("event_artists", "event_event_types", "artist_genre_tags", "artist_event_types"):
                 continue  # composite primary key, no serial sequence
             dst_conn.execute(
                 text(
