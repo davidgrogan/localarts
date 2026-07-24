@@ -28,6 +28,31 @@ event_event_types = db.Table(
     db.Column("event_type_id", db.Integer, db.ForeignKey("event_type.id"), primary_key=True),
 )
 
+# Many-to-many: an artist's "Category Tags" (Music, Comedy, Art, etc.) --
+# deliberately the *same* EventType table events use for their own category
+# tags, rather than a separate artist-only category system. That keeps
+# "Comedy" meaning one single, shared thing across the whole site instead of
+# two parallel tag lists that could drift apart, and means an artist's
+# categories and a show's categories are always comparable later (e.g. a
+# future "artists who do Comedy" page reusing the exact tags already used to
+# filter the calendar).
+artist_event_types = db.Table(
+    "artist_event_types",
+    db.Column("artist_id", db.Integer, db.ForeignKey("artist.id"), primary_key=True),
+    db.Column("event_type_id", db.Integer, db.ForeignKey("event_type.id"), primary_key=True),
+)
+
+# Many-to-many: an artist's "Genre Tags" (Electronica, New Wave, Americana,
+# etc.) -- kept as its own separate tag table rather than reusing EventType,
+# since genre is a finer-grained, mostly-music-specific classification (the
+# same distinction Event.genre vs. EventType already draws at the event
+# level -- see EventType's docstring below).
+artist_genre_tags = db.Table(
+    "artist_genre_tags",
+    db.Column("artist_id", db.Integer, db.ForeignKey("artist.id"), primary_key=True),
+    db.Column("genre_tag_id", db.Integer, db.ForeignKey("genre_tag.id"), primary_key=True),
+)
+
 
 class EventType(db.Model):
     """A reusable category tag for events (e.g. "Music", "Exhibition",
@@ -39,6 +64,9 @@ class EventType(db.Model):
     to just what a visitor cares about. Created ad hoc from the event
     form or a venue's "default tag" field rather than a dedicated admin
     screen; see app/utils.py's get_or_create_event_type().
+
+    Also doubles as an Artist's "Category Tags" (see artist_event_types
+    above) -- the same tag set, shared between events and artists.
     """
 
     id = db.Column(db.Integer, primary_key=True)
@@ -46,9 +74,33 @@ class EventType(db.Model):
     slug = db.Column(db.String(80), unique=True, nullable=False)
 
     events = db.relationship("Event", secondary=event_event_types, back_populates="event_types")
+    artists = db.relationship("Artist", secondary=artist_event_types, back_populates="category_tags")
 
     def __repr__(self):
         return f"<EventType {self.name}>"
+
+
+class GenreTag(db.Model):
+    """A reusable music-genre tag for artists (e.g. "Electronica", "New
+    Wave", "Americana") -- an artist can carry several. Separate from the
+    legacy Artist.genre free-text column (kept only so already-seeded data
+    isn't silently lost -- new/edited artists use genre_tags instead) and
+    separate from EventType/Category Tags (see artist_event_types above),
+    since genre is a different, finer-grained axis than the broad
+    Music/Comedy/Art category an artist or show falls under. Created ad hoc
+    from the artist form's "quick add a new tag" input, same pattern as
+    get_or_create_event_type(); see get_or_create_genre_tag() in
+    app/utils.py.
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(80), unique=True, nullable=False)
+    slug = db.Column(db.String(80), unique=True, nullable=False)
+
+    artists = db.relationship("Artist", secondary=artist_genre_tags, back_populates="genre_tags")
+
+    def __repr__(self):
+        return f"<GenreTag {self.name}>"
 
 
 class Venue(db.Model):
@@ -105,8 +157,18 @@ class Artist(db.Model):
     slug = db.Column(db.String(200), unique=True, nullable=False)
 
     hometown = db.Column(db.String(120))
+    # Legacy free-text genre, from before Genre Tags existed. No longer
+    # editable via the artist form (genre_tags below replaced it), kept
+    # only so any already-seeded artist's old value isn't silently
+    # dropped -- safe to ignore going forward.
     genre = db.Column(db.String(120))
     bio = db.Column(db.Text)
+    # A photo/promo image, same idea as Event.image_url -- just a URL (no
+    # upload/storage pipeline in this POC), shown on the artist's own page,
+    # the Local Artists list, and the homepage's featured-artist spotlight.
+    # Falls back to the site logo wherever it's missing, same pattern as
+    # an event with no image_url.
+    image_url = db.Column(db.String(500))
     # Artist's own site or Bandcamp page -- whichever they use most.
     website_url = db.Column(db.String(500))
     # Raw embed HTML from Bandcamp's or YouTube's own "Embed" snippet
@@ -122,6 +184,8 @@ class Artist(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     events = db.relationship("Event", secondary=event_artists, back_populates="artists")
+    genre_tags = db.relationship("GenreTag", secondary=artist_genre_tags, back_populates="artists")
+    category_tags = db.relationship("EventType", secondary=artist_event_types, back_populates="artists")
 
     def __repr__(self):
         return f"<Artist {self.name}>"

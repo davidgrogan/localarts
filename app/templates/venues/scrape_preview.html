@@ -20,11 +20,12 @@
   <h2>Parsed events ({{ result.events | length }})</h2>
   {% if result.events %}
     <table class="plain">
-      <tr><th>Start</th><th>Title</th><th>External ID</th><th>Ticket link</th></tr>
+      <tr><th>Start</th><th>Title</th><th>Genre</th><th>External ID</th><th>Ticket link</th></tr>
       {% for e in result.events %}
         <tr>
           <td>{{ e.start_datetime | dtfmt("%b %-d, %Y %-I:%M %p") }}</td>
           <td>{{ e.title }}</td>
+          <td>{{ e.genre or "" }}</td>
           <td>{{ e.external_id }}</td>
           <td>{% if e.ticket_url %}<a href="{{ e.ticket_url }}" target="_blank" rel="noopener">link</a>{% endif %}</td>
         </tr>

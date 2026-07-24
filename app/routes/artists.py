@@ -1,7 +1,9 @@
+from datetime import datetime
+
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 
-from app.models import db, Artist, Event
-from app.utils import slugify
+from app.models import db, Artist, Event, GenreTag, EventType
+from app.utils import slugify, get_or_create_genre_tag, get_or_create_event_type
 from app.auth import login_required
 
 bp = Blueprint("artists", __name__, url_prefix="/artists")
@@ -9,6 +11,38 @@ bp = Blueprint("artists", __name__, url_prefix="/artists")
 # artist roster (list_artists, detail) is core public content (the whole
 # point of the site), so only the add/edit/delete routes below are
 # individually gated rather than protecting the whole blueprint.
+
+
+def _resolve_genre_tags(form):
+    """Turn a submitted artist form's checked Genre Tag ids + quick-add
+    text into a list of GenreTag objects, creating any brand-new ones.
+    Mirrors app/routes/events.py's _resolve_event_types()."""
+    selected_ids = form.getlist("genre_tag_ids")
+    tags = GenreTag.query.filter(GenreTag.id.in_(selected_ids)).all() if selected_ids else []
+
+    new_names = form.get("new_genre_tag_names", "").strip()
+    if new_names:
+        for raw_name in new_names.split(","):
+            tag = get_or_create_genre_tag(raw_name)
+            if tag and tag not in tags:
+                tags.append(tag)
+    return tags
+
+
+def _resolve_category_tags(form):
+    """Same idea as _resolve_genre_tags() above, for an artist's Category
+    Tags -- which reuse the same EventType tags events are categorized
+    with (see artist_event_types in models.py)."""
+    selected_ids = form.getlist("category_tag_ids")
+    tags = EventType.query.filter(EventType.id.in_(selected_ids)).all() if selected_ids else []
+
+    new_names = form.get("new_category_tag_names", "").strip()
+    if new_names:
+        for raw_name in new_names.split(","):
+            tag = get_or_create_event_type(raw_name)
+            if tag and tag not in tags:
+                tags.append(tag)
+    return tags
 
 
 def _find_artist_matching_title(title):
@@ -34,8 +68,33 @@ def _find_artist_matching_title(title):
 
 @bp.route("/")
 def list_artists():
-    artists = Artist.query.order_by(Artist.name).all()
-    return render_template("artists/list.html", artists=artists)
+    genre_tag_id = request.args.get("genre", type=int)
+    category_tag_id = request.args.get("category", type=int)
+    # Toggle rather than a tri-state filter -- visitors either want "just
+    # the ones with something coming up" or everyone; there's no real use
+    # case for the inverse ("only artists with nothing booked").
+    upcoming_only = request.args.get("upcoming") == "1"
+
+    query = Artist.query.order_by(Artist.name)
+    if genre_tag_id:
+        query = query.filter(Artist.genre_tags.any(GenreTag.id == genre_tag_id))
+    if category_tag_id:
+        query = query.filter(Artist.category_tags.any(EventType.id == category_tag_id))
+    if upcoming_only:
+        # .any() (an EXISTS subquery) rather than a join -- a join here
+        # would duplicate an artist once per upcoming show they have.
+        query = query.filter(Artist.events.any(Event.start_datetime >= datetime.utcnow()))
+    artists = query.all()
+
+    return render_template(
+        "artists/list.html",
+        artists=artists,
+        genre_tags=GenreTag.query.order_by(GenreTag.name).all(),
+        category_tags=EventType.query.order_by(EventType.name).all(),
+        selected_genre=genre_tag_id,
+        selected_category=category_tag_id,
+        upcoming_only=upcoming_only,
+    )
 
 
 @bp.route("/new", methods=["GET", "POST"])
@@ -65,11 +124,13 @@ def new_artist():
             artist.name = name
 
         artist.hometown = request.form.get("hometown", "").strip()
-        artist.genre = request.form.get("genre", "").strip()
         artist.bio = request.form.get("bio", "").strip()
+        artist.image_url = request.form.get("image_url", "").strip()
         artist.website_url = request.form.get("website_url", "").strip()
         artist.embed_code = request.form.get("embed_code", "").strip()
         artist.is_local = bool(request.form.get("is_local"))
+        artist.genre_tags = _resolve_genre_tags(request.form)
+        artist.category_tags = _resolve_category_tags(request.form)
 
         linked_event_id = request.form.get("from_event_id", type=int)
         linked_event = Event.query.get(linked_event_id) if linked_event_id else None
@@ -93,7 +154,13 @@ def new_artist():
     # submitting without re-typing genre/bandcamp/bio/embed code would
     # blank out everything already saved for them.
     existing_artist = _find_artist_matching_title(source_event.title) if source_event else None
-    return render_template("artists/form.html", artist=existing_artist, source_event=source_event)
+    return render_template(
+        "artists/form.html",
+        artist=existing_artist,
+        source_event=source_event,
+        genre_tags=GenreTag.query.order_by(GenreTag.name).all(),
+        category_tags=EventType.query.order_by(EventType.name).all(),
+    )
 
 
 @bp.route("/<int:artist_id>")
@@ -109,15 +176,23 @@ def edit_artist(artist_id):
     if request.method == "POST":
         artist.name = request.form["name"].strip()
         artist.hometown = request.form.get("hometown", "").strip()
-        artist.genre = request.form.get("genre", "").strip()
         artist.bio = request.form.get("bio", "").strip()
+        artist.image_url = request.form.get("image_url", "").strip()
         artist.website_url = request.form.get("website_url", "").strip()
         artist.embed_code = request.form.get("embed_code", "").strip()
         artist.is_local = bool(request.form.get("is_local"))
+        artist.genre_tags = _resolve_genre_tags(request.form)
+        artist.category_tags = _resolve_category_tags(request.form)
         db.session.commit()
         flash(f"Updated “{artist.name}”.", "success")
         return redirect(url_for("artists.detail", artist_id=artist.id))
-    return render_template("artists/form.html", artist=artist, source_event=None)
+    return render_template(
+        "artists/form.html",
+        artist=artist,
+        source_event=None,
+        genre_tags=GenreTag.query.order_by(GenreTag.name).all(),
+        category_tags=EventType.query.order_by(EventType.name).all(),
+    )
 
 
 @bp.route("/<int:artist_id>/delete", methods=["POST"])

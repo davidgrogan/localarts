@@ -25,11 +25,55 @@
     <input type="text" id="name" name="name"
            value="{{ artist.name if artist else (source_event.title if source_event else '') }}" required>
 
-    <label for="genre">Genre</label>
-    <input type="text" id="genre" name="genre" value="{{ artist.genre if artist else '' }}">
+    <label>Genre Tags</label>
+    <div class="artist-checks">
+      {% if genre_tags %}
+        {% for g in genre_tags %}
+          <label>
+            <input type="checkbox" name="genre_tag_ids" value="{{ g.id }}"
+              {% if artist and g in artist.genre_tags %}checked{% endif %}>
+            {{ g.name }}
+          </label>
+        {% endfor %}
+      {% else %}
+        <span class="hint">No genre tags yet -- add one below.</span>
+      {% endif %}
+    </div>
+    <label for="new_genre_tag_names">Quick-add new genre tag(s) (optional, comma-separated)</label>
+    <input type="text" id="new_genre_tag_names" name="new_genre_tag_names" placeholder="e.g. Electronica, New Wave">
+
+    <label>Category Tags</label>
+    <div class="artist-checks">
+      {% if category_tags %}
+        {% for c in category_tags %}
+          <label>
+            <input type="checkbox" name="category_tag_ids" value="{{ c.id }}"
+              {% if artist and c in artist.category_tags %}checked{% endif %}>
+            {{ c.name }}
+          </label>
+        {% endfor %}
+      {% else %}
+        <span class="hint">No category tags yet -- add one below.</span>
+      {% endif %}
+    </div>
+    <label for="new_category_tag_names">Quick-add new category tag(s) (optional, comma-separated)</label>
+    <input type="text" id="new_category_tag_names" name="new_category_tag_names" placeholder="e.g. Music, Comedy, Art">
+    <div class="hint">
+      Category Tags are the same tags shows are labeled with on the calendar (Music, Comedy, Art, etc.).
+    </div>
 
     <label for="hometown">Hometown</label>
     <input type="text" id="hometown" name="hometown" value="{{ artist.hometown if artist else '' }}" placeholder="e.g. Northampton, MA">
+
+    <label for="image_url">Photo / promo image URL</label>
+    <input type="url" id="image_url" name="image_url" value="{{ artist.image_url if artist else '' }}" placeholder="https://example.com/artist-photo.jpg">
+    <div class="hint">
+      Link to an image hosted elsewhere (no file upload here) -- shows on the artist's
+      page, the Local Artists list, and the homepage's featured-artist spotlight.
+      {% if artist and artist.image_url %}
+        <br><img src="{{ artist.image_url }}" alt="" style="max-width:120px; border-radius:4px; margin-top:0.4rem;">
+      {% endif %}
+    </div>
 
     <label for="website_url">Bandcamp / website link</label>
     <input type="url" id="website_url" name="website_url" value="{{ artist.website_url if artist else '' }}" placeholder="https://artistname.bandcamp.com">

@@ -27,7 +27,7 @@ from typing import Optional
 
 from app.models import db, Event, ScrapeRun
 
-RAW_SAMPLE_MAX_CHARS = 8000
+RAW_SAMPLE_MAX_CHARS = 12000
 
 # How the daily "scrape all venues" run keeps already-approved (public)
 # events honest, beyond just creating new ones -- see run_scrape()'s
@@ -105,9 +105,48 @@ def preview_scrape(venue):
     raw = scraper.fetch_raw(venue)
     events = scraper.parse(raw, venue)
     return {
-        "raw_sample": raw[:RAW_SAMPLE_MAX_CHARS],
+        "raw_sample": _raw_sample(raw),
         "events": events,
     }
+
+
+_RAW_SAMPLE_SIGNALS = ("elfsightcdn", "eapp-events-calendar", "tribe-events")
+
+
+def _raw_sample(raw):
+    """A fixed raw[:N] slice sounds like a reasonable preview, but a real
+    page's <head> (fonts, meta tags, inlined CSS) or its header/nav markup
+    can each individually run well past RAW_SAMPLE_MAX_CHARS on their own
+    -- confirmed on a real Squarespace site, where even starting the slice
+    at <body> only got as far as the nav bar, nowhere near the actual
+    calendar widget. Prefer to center the sample on whichever known
+    widget-related string shows up first in the raw HTML (a real hit
+    there is the most direct evidence of whether the venue's calendar
+    widget rendered at all), falling back to <body>, then the very start
+    of the string, so this stays useful for diagnosing "0 events parsed"
+    regardless of how much unrelated markup precedes the interesting
+    part.
+
+    Deliberately excludes generic strings like "fullcalendar" or plain
+    "elfsight" -- a real Squarespace page was seen shipping an empty
+    `<style data-fullcalendar="">` boilerplate tag (and separately, plain
+    "elfsight" can appear in unrelated analytics/meta noise) near the very
+    top of <head>, which matched every single time regardless of what the
+    actual widget did, silently anchoring the sample on the same early,
+    uninformative slice on every attempt. Only match strings confirmed to
+    appear exclusively as part of the real rendered widget content."""
+    lowered = raw.lower()
+    signal_index = -1
+    for signal in _RAW_SAMPLE_SIGNALS:
+        idx = lowered.find(signal)
+        if idx != -1 and (signal_index == -1 or idx < signal_index):
+            signal_index = idx
+    if signal_index != -1:
+        start = max(signal_index - 500, 0)
+    else:
+        body_index = lowered.find("<body")
+        start = body_index if body_index != -1 else 0
+    return raw[start:start + RAW_SAMPLE_MAX_CHARS]
 
 
 def run_scrape(venue, approve_new=False):

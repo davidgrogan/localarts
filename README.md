@@ -7,10 +7,14 @@ DigitalOcean.
 
 ## What's here
 
-- **Calendar** (`/`) -- upcoming approved shows, filterable by venue or artist.
-  Public -- this and the artist roster below are the only things anonymous
-  visitors see.
-- **Artists** (`/artists`) -- roster of local artists, linked to the shows they're playing. Public.
+- **Calendar** (`/`) -- upcoming approved shows, filterable by venue, event
+  type, or a "show only events with local artists" toggle; also spotlights one
+  randomly-picked local artist with an upcoming show at the top of the page
+  (see "Local artist Genre/Category Tags" below). Public -- this and the
+  artist roster below are the only things anonymous visitors see.
+- **Artists** (`/artists`) -- roster of local artists, alphabetical by name,
+  filterable by Genre Tag, Category Tag, or an "only artists with upcoming
+  shows" toggle. Linked to the shows they're playing. Public.
 - **Venues** (`/venues`) -- add a venue, tell it how to pull in events (manual,
   Squarespace JSON trick, iCal feed, generic HTML selectors, or headless-browser
   selectors), preview a scrape before importing anything, and see a log of
@@ -73,8 +77,16 @@ own laptop and not fine for anything actually deployed.
 - `Venue` -- name, address, website, the specific events URL to pull from, a
   `source_type` (see below), a free-form `scrape_config` JSON field for
   per-venue tuning, and a `default_event_type` tag (see "Event type tags" below).
-- `Artist` -- name, genre, hometown, bio, an `is_local` flag (the whole point
-  of the site is surfacing local acts, so this drives any "local spotlight" view later).
+- `Artist` -- name, hometown, bio, an `image_url` (a photo/promo image --
+  just a link to an image hosted elsewhere, same as `Event.image_url`; no
+  file upload in this POC), website/Bandcamp/YouTube link, an embed
+  code, an `is_local` flag (the whole point of the site is surfacing local
+  acts, so this drives every "local spotlight" view), plus `genre_tags` and
+  `category_tags` (both many-to-many -- see "Local artist Genre/Category
+  Tags" below). Also still has the original `genre` column, a single
+  free-text string from before Genre Tags existed -- kept only so any
+  already-seeded artist's old value isn't silently dropped; no longer
+  editable via the artist form.
 - `Event` -- a single show: title, start/end time, venue, artists (many-to-many),
   event type tags (many-to-many, see below), `source` (`manual` vs `scraped`),
   `external_id` (dedupe key on re-scrape), and `is_approved` (the review gate
@@ -84,6 +96,9 @@ own laptop and not fine for anything actually deployed.
   pulled straight from a venue's own feed, one value per event): this is the
   broader, curated, multi-valued category an admin picks -- the thing you'd
   filter a mixed calendar like Smith College's down to "just the concerts" by.
+  Also doubles as an artist's Category Tags -- see below.
+- `GenreTag` -- a reusable music-genre tag for artists (e.g. "Electronica",
+  "Americana"). See "Local artist Genre/Category Tags" below.
 - `ScrapeRun` -- a log row per scrape attempt: status, counts, and a truncated
   raw-response sample, so a bad scrape is debuggable without re-hitting the venue site.
 
@@ -103,13 +118,77 @@ event at that venue -- both a manual add that doesn't pick a tag itself, and
 every scraped import (see `run_scrape()` in `app/scrapers/base.py`) -- always
 overridable per event, and never re-applied once an event already has tags
 (so a later re-scrape can't silently strip an admin's own tagging choice).
-Iron Horse, The Parlor Room, Academy of Music, Haze, and Luthier's Co-Op
-are seeded with "Music" as their default, since every show at those is
-one; Smith College
+Iron Horse, The Parlor Room, Academy of Music, Haze, Luthier's Co-Op, and
+The Heavy Culture Cooperative are seeded with "Music" as their default,
+since every show at those is one; Smith College
 intentionally has no default, since its calendar mixes exhibitions, lectures,
 and performances and each scraped item needs its own call. Visitors filter
 the public calendar by tag the same way they already filter by venue/artist
 (`?type=<id>`).
+
+## Local artist Genre/Category Tags, filtering, and the featured-artist spotlight
+
+An artist's **Genre Tags** (e.g. "Electronica", "New Wave", "Americana") and
+**Category Tags** (e.g. "Music", "Comedy", "Art") both work like event type
+tags above -- multi-valued, created on the fly via checkboxes plus a
+comma-separated "quick add" text field on the artist form
+(`/artists/new`, `/artists/<id>/edit`) -- but they're two deliberately
+different tables under the hood:
+
+- **Category Tags reuse the `EventType` table** shows are already tagged
+  with, rather than a separate artist-only category list. That keeps
+  "Comedy" meaning one single thing site-wide instead of two tag lists that
+  could drift apart, and means an artist's categories and a show's
+  categories are always directly comparable. `get_or_create_event_type()` in
+  `app/utils.py` (already used by the event/venue forms) handles the
+  case-insensitive dedupe for these too.
+- **Genre Tags get their own new `GenreTag` table** (`get_or_create_genre_tag()`
+  in `app/utils.py`), since genre is a finer-grained, mostly-music-specific
+  axis -- the same Event.genre-vs-EventType distinction drawn above, just at
+  the artist level.
+
+The old single `Artist.genre` free-text column is left in place but no longer
+written to by the form -- new/edited artists use `genre_tags` instead.
+
+The Local Artists page (`/artists`) filters by Genre Tag, Category Tag, and an
+"only artists with upcoming shows" toggle (`Artist.events.any(Event.start_datetime
+>= now)`, via an `EXISTS` subquery rather than a join so an artist with
+several upcoming shows isn't listed more than once), always sorted
+alphabetically by name regardless of which filters are active.
+
+The calendar's "show only events with local artists" toggle
+(`?only_local_artists=1`) works the same way one level up: `Event.artists.any(Artist.is_local.is_(True))`,
+added to `_base_query()` in `app/routes/main.py` alongside the existing
+venue/type filters -- distinct from the single-artist dropdown
+(`?artist=<id>`, still wired up server-side but not currently shown on the
+calendar UI).
+
+The homepage's featured-artist spotlight (`_pick_featured_artist()` in
+`app/routes/main.py`) picks one random `is_local` artist with at least one
+upcoming, approved show, recomputed on every page load rather than a
+scheduled rotation -- per David's ask, this keeps it to one query with no
+extra scheduling/state to maintain. Renders nothing if there's no eligible
+artist yet (e.g. a fresh install with no shows linked to a local artist).
+The artist's own upcoming shows (`_upcoming_events_for()`) are listed right
+there in the spotlight, not just linked to, so a visitor doesn't have to
+click through to see when/where to catch them.
+
+Both the homepage's "About this site" intro and the featured-artist
+spotlight are wrapped in a native `<details>`/`<summary>` element rather
+than a custom JS toggle -- clicking the header collapses/expands the
+section with no JavaScript needed. Both default open (the `open` attribute
+in `calendar.html`), so nothing changes for a first-time visitor; it just
+lets a returning visitor tuck either one away.
+
+`seed.py` includes two artists exercising this (Comet & the Roadrunners --
+Electronica/New Wave; Ruth & the Backroads -- Americana), each with a
+placeholder Bandcamp-style `embed_code` and linked to an upcoming sample
+show, so all of the above is visible before any real artist data is entered.
+Comet & the Roadrunners also has a placeholder `image_url` set, and Ruth &
+the Backroads deliberately doesn't, so both states -- an artist photo, and
+the fallback to the site logo used everywhere an artist has none -- are
+visible in the demo (Local Artists list, artist detail page, and the
+homepage's featured-artist spotlight).
 
 ## Recurring event grouping (`app/recurrence.py`)
 
@@ -345,6 +424,43 @@ the real widget's category text says exactly "Performance". If a real
 scrape comes back empty or with the wrong events, check what the visible
 category text actually says and adjust `category_include` to match.
 
+**On The Heavy Culture Cooperative (theheavyculture.coop, Easthampton):**
+a Wix site running the native "Wix Events & Tickets" app. Confirmed
+server-rendered via a real view-source of `/shows` -- unlike Squarespace's
+client-rendered calendars, Wix bakes the event markup (and a big
+`wix-warmup-data` JSON blob with the same data again) right into the raw
+HTML. The one wrinkle worth remembering here: this page embeds the *same*
+events widget three separate times -- an Upcoming Events list, a Calendar
+view, and a Past Events list -- and all three render identical
+`data-hook="event-list-item"` `<li>` markup. A bare `item_selector` would
+triple-count every event and pull in past shows besides, so
+`item_selector` is scoped to `#comp-lk7y5t1j`, the Wix-assigned component
+id of just the Upcoming Events widget. Selectors target Wix's own
+`data-hook` attributes rather than its CSS classes -- the classes are
+per-build hashes (`FwdPeD`, `WFgzOI`, etc.), the same problem seen with
+Elfsight's widget markup elsewhere, while `data-hook` is Wix's stable
+automation-hook convention and shows up consistently across events.
+Some events' date text is a range ("Jul 24, 2026, 7:00 PM &ndash; 11:00
+PM") rather than a single time -- same underlying problem as Smith
+College's "|" ranges (dateutil's fuzzy parser grabs the *end* time), just
+a different separator, so `html_generic.py` got a third heuristic,
+`_strip_dash_time_range()`, alongside `_clean_time_range()`.
+
+The Upcoming Events widget only server-renders its first 7 shows and has
+a "Load More" button (`<button data-hook="load-more-button">`, confirmed
+via a real view-source) for the rest. That button has no `href` and
+there's no `?page=N`-style URL anywhere -- it's a bare client-side control
+that fetches more events from Wix's own internal Events API, and even the
+page's `wix-warmup-data` blob only caches those same first 7 (with
+`"hasMore": true`), so there's genuinely nothing more to find in the
+static HTML. That means plain `html`/`html_generic` can't reach the rest
+of the events, so this venue uses `rendered_html` instead -- the same
+headless-browser approach already built for 33 Hawley's Elfsight "Next
+Events" button. `next_button_selector` is scoped to `#comp-lk7y5t1j`
+(both the Upcoming and Past Events widgets have their own Load More
+button) and `next_button_clicks: 2` grabs a couple of extra batches
+beyond the initial page load.
+
 ## Keeping scraped data honest
 
 Scraping isn't just "find new shows" -- venues change times, and sometimes
@@ -407,7 +523,7 @@ source .venv/bin/activate        # .venv\Scripts\activate on Windows
 pip install -r requirements.txt
 playwright install chromium      # one-time browser download, needed for rendered_html venues
 
-python seed.py                   # adds Iron Horse, Parlor Room, Academy of Music, Haze, Luthier's Co-Op, 33 Hawley, sample artists/shows
+python seed.py                   # adds Iron Horse, Parlor Room, Academy of Music, Haze, Luthier's Co-Op, 33 Hawley, The Heavy Culture Cooperative, sample artists/shows
 python run.py                    # http://127.0.0.1:5000
 ```
 

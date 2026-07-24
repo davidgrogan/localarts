@@ -9,22 +9,56 @@
     </div>
   {% endif %}
 
+  <form class="filters" method="get">
+    <select name="genre" onchange="this.form.submit()">
+      <option value="">All genres</option>
+      {% for g in genre_tags %}
+        <option value="{{ g.id }}" {% if g.id == selected_genre %}selected{% endif %}>{{ g.name }}</option>
+      {% endfor %}
+    </select>
+    <select name="category" onchange="this.form.submit()">
+      <option value="">All categories</option>
+      {% for c in category_tags %}
+        <option value="{{ c.id }}" {% if c.id == selected_category %}selected{% endif %}>{{ c.name }}</option>
+      {% endfor %}
+    </select>
+    <label class="recurring-toggle">
+      <input type="checkbox" name="upcoming" value="1" {% if upcoming_only %}checked{% endif %} onchange="this.form.submit()">
+      Only show artists with upcoming shows
+    </label>
+    {% if selected_genre or selected_category or upcoming_only %}
+      <a class="clear" href="{{ url_for('artists.list_artists') }}">Clear filters</a>
+    {% endif %}
+  </form>
+
   {% if artists %}
     {% for a in artists %}
       <div class="artist-card">
-        <div>
-          <a href="{{ url_for('artists.detail', artist_id=a.id) }}"><strong>{{ a.name }}</strong></a>
-          {% if not a.is_local %}<span class="source-tag">touring</span>{% endif %}
+        <div class="artist-thumb">
+          {% if a.image_url %}
+            <img src="{{ a.image_url }}" alt="" loading="lazy">
+          {% else %}
+            <img src="{{ url_for('static', filename='logo.svg') }}" alt="" loading="lazy" class="artist-thumb-fallback-img">
+          {% endif %}
         </div>
-        <div class="meta">
-          {% if a.genre %}{{ a.genre }}{% endif %}
-          {% if a.hometown %} &middot; {{ a.hometown }}{% endif %}
+        <div class="artist-card-main">
+          <div>
+            <a href="{{ url_for('artists.detail', artist_id=a.id) }}"><strong>{{ a.name }}</strong></a>
+            {% if not a.is_local %}<span class="source-tag">touring</span>{% endif %}
+          </div>
+          <div class="meta">
+            {% for g in a.genre_tags %}<span class="genre-tag">{{ g.name }}</span>{% endfor %}
+            {% for c in a.category_tags %}<span class="type-tag">{{ c.name }}</span>{% endfor %}
+            {% if a.hometown %} &middot; {{ a.hometown }}{% endif %}
+          </div>
         </div>
       </div>
     {% endfor %}
   {% else %}
     <p class="empty-state">
-      {% if is_admin %}
+      {% if selected_genre or selected_category or upcoming_only %}
+        No artists match those filters. <a href="{{ url_for('artists.list_artists') }}">Clear filters</a>.
+      {% elif is_admin %}
         No artists yet. <a href="{{ url_for('artists.new_artist') }}">Add the first one</a>.
       {% else %}
         No artists listed yet -- check back soon.

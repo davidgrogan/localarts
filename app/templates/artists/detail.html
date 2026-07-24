@@ -2,8 +2,12 @@
 {% block title %}{{ artist.name }}{% endblock %}
 {% block content %}
   <h1>{{ artist.name }} {% if not artist.is_local %}<span class="source-tag">touring</span>{% endif %}</h1>
+  {% if artist.image_url %}
+    <div class="artist-thumb-large"><img src="{{ artist.image_url }}" alt=""></div>
+  {% endif %}
   <p class="meta">
-    {% if artist.genre %}{{ artist.genre }}{% endif %}
+    {% for g in artist.genre_tags %}<span class="genre-tag">{{ g.name }}</span>{% endfor %}
+    {% for c in artist.category_tags %}<span class="type-tag">{{ c.name }}</span>{% endfor %}
     {% if artist.hometown %} &middot; {{ artist.hometown }}{% endif %}
     {% if artist.website_url %} &middot; <a href="{{ artist.website_url }}" target="_blank" rel="noopener">Bandcamp / website</a>{% endif %}
   </p>

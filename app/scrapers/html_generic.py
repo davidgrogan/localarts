@@ -64,6 +64,17 @@ it down to "Wednesday, July 22, 2026 9 a.m." before parsing, understanding
 second time's (e.g. "5-7 p.m." -> "5 p.m."). It's a no-op on any date
 string that doesn't contain "|", so it's safe for every other venue's
 date_selector text.
+
+A third heuristic, added for The Heavy Culture Cooperative (a Wix Events
+& Tickets site), handles yet another start-end shape, this time with no
+"|" separator at all: "Jul 23, 2026, 7:00 PM – 11:00 PM" (an en dash,
+no pipe). Same underlying problem as Smith College -- dateutil's fuzzy
+parser grabs the second (end) time -- but `_clean_time_range()`'s
+pipe-anchored regex doesn't match this shape at all. `_strip_dash_time_range()`
+below truncates right after the first "H:MM AM/PM" it finds when followed
+by a dash and a second time, leaving "Jul 23, 2026, 7:00 PM". It's a
+no-op on any date string that doesn't have that "<time> - <time>" shape,
+so it's safe for every other venue's date_selector text too.
 """
 import json
 import re
@@ -106,6 +117,23 @@ def _clean_time_range(text):
         time_part = f"{t1} {ap}".strip()
 
     return f"{date_part} {time_part}"
+
+
+# Matches a "<date>, <start time> <dash> <end time>" shape with no "|"
+# separator, e.g. "Jul 23, 2026, 7:00 PM – 11:00 PM" -- see module
+# docstring. Keeps everything up to and including the first time.
+_DASH_TIME_RANGE_RE = re.compile(
+    r"^(?P<head>.*?\d{1,2}:\d{2}\s*[AP]\.?M\.?)\s*[-–—]\s*"
+    r"\d{1,2}:\d{2}\s*[AP]\.?M\.?",
+    re.IGNORECASE,
+)
+
+
+def _strip_dash_time_range(text):
+    match = _DASH_TIME_RANGE_RE.match(text.strip())
+    if not match:
+        return text
+    return match.group("head").strip()
 
 
 def fetch_raw(venue):
@@ -200,7 +228,9 @@ def parse(raw, venue):
             if date_format:
                 start_dt = dt.strptime(date_text, date_format)
             else:
-                phrase = _first_date_phrase(_clean_time_range(date_text))
+                phrase = _first_date_phrase(
+                    _strip_dash_time_range(_clean_time_range(date_text))
+                )
                 default_year = last_known_year or dt.utcnow().year
                 start_dt = dateparser.parse(
                     phrase, fuzzy=True, default=dt(default_year, 1, 1)

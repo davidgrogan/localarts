@@ -32,6 +32,7 @@ _COLUMN_MIGRATIONS = {
     ],
     "artist": [
         ("embed_code", "TEXT"),
+        ("image_url", "VARCHAR(500)"),
     ],
     "venue": [
         ("default_event_type_id", "INTEGER"),

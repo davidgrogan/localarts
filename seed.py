@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 from app import create_app
 from app.models import db, Venue, Artist, Event
-from app.utils import slugify, get_or_create_event_type
+from app.utils import slugify, get_or_create_event_type, get_or_create_genre_tag
 
 
 def get_or_create_venue(**kwargs):
@@ -265,6 +265,72 @@ def main():
             ),
         )
 
+        heavy_culture = get_or_create_venue(
+            name="The Heavy Culture Cooperative",
+            slug="the-heavy-culture-cooperative",
+            address="1 Northampton St.",
+            city="Easthampton",
+            state="MA",
+            website_url="https://www.theheavyculture.coop",
+            events_url="https://www.theheavyculture.coop/shows",
+            # Wix site running the native "Wix Events & Tickets" app --
+            # confirmed server-rendered via a real view-source (event data
+            # is in the raw HTML both as visible markup and as a big
+            # `wix-warmup-data` JSON blob). Selectors use Wix's own
+            # `data-hook` attributes rather than its CSS classes -- the
+            # classes are per-build hashes (e.g. "FwdPeD", "WFgzOI"), the
+            # same styled-components-style problem seen elsewhere, while
+            # data-hook is Wix's stable automation-hook convention:
+            #   <li data-hook="event-list-item">
+            #     ...
+            #     <span data-hook="ev-list-item-title">Fred Cracklin / Otobo / Mibble</span>
+            #     <div data-hook="ev-date"><span>Jul 24, 2026, 7:00 PM</span></div>
+            #     <a data-hook="ev-rsvp-button" href="https://.../event-details-registration/...">Get Tickets</a>
+            #   </li>
+            # The /shows page actually embeds this same widget *three*
+            # times (Upcoming, a Calendar view, and Past Events), all
+            # sharing the identical data-hook="event-list-item" markup --
+            # a bare item_selector would triple-count events and pull in
+            # past shows. Scoping to "#comp-lk7y5t1j", the Wix-assigned
+            # component id of just the Upcoming Events widget, avoids
+            # that. Some events' date text is a range ("7:00 PM – 11:00
+            # PM") rather than a single time, which needed a new
+            # _strip_dash_time_range() heuristic in html_generic.py (see
+            # that file's docstring) -- same underlying issue as Smith
+            # College's "|" ranges, different separator.
+            #
+            # source_type is rendered_html, not plain html, because of the
+            # widget's "Load More" button (confirmed via a real view-source
+            # of /shows): it's a bare <button type="button"
+            # data-hook="load-more-button"> with no href and no ?page=N-style
+            # URL anywhere -- the extra events it fetches come from a
+            # client-side call to Wix's own internal Events API, invisible
+            # to a plain requests.get() (the page's own embedded
+            # `wix-warmup-data` blob confirms this: it caches only the same
+            # 7 events already in the visible markup, with "hasMore": true,
+            # meaning even the warmup JSON doesn't have the rest). So this
+            # needs the same headless-browser click-and-recapture approach
+            # already used for 33 Hawley's Elfsight "Next Events" button,
+            # via rendered_html.py's next_button_selector/next_button_clicks
+            # -- scoped to "#comp-lk7y5t1j" so it clicks the Upcoming
+            # widget's own Load More button, not the Past Events widget's
+            # (both widgets have one). next_button_clicks: 2 grabs a couple
+            # extra batches beyond the initial page load, per David's ask.
+            source_type="rendered_html",
+            scrape_config=(
+                '{"item_selector": "#comp-lk7y5t1j [data-hook=\\"event-list-item\\"]", '
+                '"title_selector": "[data-hook=\\"ev-list-item-title\\"]", '
+                '"date_selector": "[data-hook=\\"ev-date\\"]", '
+                '"link_selector": "[data-hook=\\"ev-rsvp-button\\"]", '
+                '"wait_for_selector": "#comp-lk7y5t1j [data-hook=\\"event-list-item\\"]", '
+                '"next_button_selector": "#comp-lk7y5t1j [data-hook=\\"load-more-button\\"]", '
+                '"next_button_clicks": 2}'
+            ),
+            # Every show here is a live-music event -- David asked for
+            # everything from this venue auto-tagged "Music".
+            default_event_type=music_tag,
+        )
+
         artist_1 = get_or_create_artist(
             name="Sample Local Artist",
             slug=slugify("Sample Local Artist"),
@@ -281,6 +347,64 @@ def main():
             is_local=True,
             bio="Placeholder artist -- replace with a real local act once you're populating this for real.",
         )
+
+        # Two more placeholder artists, this time exercising the newer
+        # Genre Tags / Category Tags feature (multi-value tags, unlike the
+        # old single artist.genre string used by artist_1/artist_2 above)
+        # -- so David can see the Local Artists page's filters, the
+        # calendar's "only local artists" toggle, and the homepage's random
+        # featured-artist spotlight all working before adding real artists.
+        # embed_code below is a placeholder Bandcamp iframe with a fake
+        # album id -- it renders (Bandcamp shows its own "not found" state
+        # inside the box) just to demonstrate where a real embed would sit;
+        # swap in the real snippet from Bandcamp's/YouTube's own "Embed" /
+        # "Share" button once there's an actual artist to link.
+        placeholder_embed = (
+            '<!-- Placeholder embed -- replace with the real embed code from '
+            'Bandcamp\'s or YouTube\'s own "Embed"/"Share" button -->'
+            '<iframe style="border: 0; width: 100%; height: 120px;" '
+            'src="https://bandcamp.com/EmbeddedPlayer/album=0000000000/size=large/'
+            'bgcol=ffffff/linkcol=0687f5/tracklist=false/transparent=true/" '
+            'seamless></iframe>'
+        )
+        electronica_tag = get_or_create_genre_tag("Electronica")
+        new_wave_tag = get_or_create_genre_tag("New Wave")
+        americana_tag = get_or_create_genre_tag("Americana")
+
+        artist_3 = get_or_create_artist(
+            name="Comet & the Roadrunners",
+            slug=slugify("Comet & the Roadrunners"),
+            hometown="Northampton, MA",
+            is_local=True,
+            bio="Placeholder artist -- replace with a real local act once you're populating this for real.",
+            website_url="https://cometandtheroadrunners.bandcamp.com",
+            embed_code=placeholder_embed,
+        )
+        # Set explicitly (rather than only via get_or_create_artist's
+        # kwargs) since get_or_create_artist only applies kwargs the first
+        # time a row is created -- like genre_tags/category_tags above,
+        # this needs to be reapplied on every seed.py run so it still takes
+        # effect on a db that already has this artist from before this
+        # field existed. Placeholder image from a generic placeholder-image
+        # service -- replace with a real hosted photo URL once there's an
+        # actual artist. artist_4 below deliberately has none set, so both
+        # the "has an image" and "falls back to the site logo" states are
+        # visible in the demo.
+        artist_3.image_url = "https://placehold.co/400x400?text=Comet+%26+the+Roadrunners"
+        artist_3.genre_tags = [electronica_tag, new_wave_tag]
+        artist_3.category_tags = [music_tag]
+
+        artist_4 = get_or_create_artist(
+            name="Ruth & the Backroads",
+            slug=slugify("Ruth & the Backroads"),
+            hometown="Easthampton, MA",
+            is_local=True,
+            bio="Placeholder artist -- replace with a real local act once you're populating this for real.",
+            website_url="https://ruthandthebackroads.bandcamp.com",
+            embed_code=placeholder_embed,
+        )
+        artist_4.genre_tags = [americana_tag]
+        artist_4.category_tags = [music_tag]
 
         # A couple of manually-entered sample shows so the calendar has
         # content immediately, independent of whether a live scrape has
@@ -307,6 +431,36 @@ def main():
                     source="manual",
                     is_approved=True,
                     artists=[artist_2],
+                )
+            )
+        # Upcoming shows for the two new tagged-artist placeholders --
+        # without one of these, artist_3/artist_4 wouldn't show up under
+        # the Local Artists page's "upcoming shows" toggle or be eligible
+        # for the homepage's featured-artist spotlight.
+        if not Event.query.filter_by(title="Sample Show -- Academy of Music").first():
+            db.session.add(
+                Event(
+                    venue_id=academy_of_music.id,
+                    title="Sample Show -- Academy of Music",
+                    start_datetime=datetime.utcnow() + timedelta(days=3, hours=4),
+                    description="Placeholder show, added manually.",
+                    source="manual",
+                    is_approved=True,
+                    artists=[artist_3],
+                    event_types=[music_tag],
+                )
+            )
+        if not Event.query.filter_by(title="Sample Show -- Haze").first():
+            db.session.add(
+                Event(
+                    venue_id=haze.id,
+                    title="Sample Show -- Haze",
+                    start_datetime=datetime.utcnow() + timedelta(days=6, hours=5),
+                    description="Placeholder show, added manually.",
+                    source="manual",
+                    is_approved=True,
+                    artists=[artist_4],
+                    event_types=[music_tag],
                 )
             )
 

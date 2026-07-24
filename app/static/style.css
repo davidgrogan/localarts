@@ -1,16 +1,30 @@
 :root {
+  /* Palette David asked for (coolors.co "Spicy Paprika / Canary Yellow /
+     Honeydew / Muted Olive / Palm Leaf"), mapped onto the variable names
+     already used throughout this file so no call sites needed renaming:
+       --accent           Spicy Paprika  #e4572e
+       --teal / --teal-soft  Palm Leaf   #9d9c62 (+ Honeydew #f0f8ea tint)
+       --gold / --gold-soft  Muted Olive #a8c686, deepened for --gold (see
+                             below) since the raw hex is too light to read
+                             as small text/borders
+       --highlight        Canary Yellow  #f0f66e -- new, used sparingly as
+                             a bright celebratory accent (the featured-
+                             artist spotlight) rather than a big wash,
+                             since a large fully-saturated-yellow area is
+                             hard to read against.
+     --teal and --gold keep their old names purely to avoid touching every
+     usage below; they no longer mean literally teal/gold. */
   --ink: #1a1a1a;
   --paper: #faf8f4;
   --paper-warm: #f6ede1;
-  --accent: #a8342a;
-  --accent-soft: #fdf4f2;
-  /* Secondary accents, alongside the original red -- used to make genre
-     tags, links, and highlights feel more varied instead of everything
-     being the same one color. */
-  --teal: #1c6e62;
-  --teal-soft: #eaf4f2;
-  --gold: #c98a1f;
-  --gold-soft: #fbf1de;
+  --accent: #e4572e;
+  --accent-soft: #fce7dd;
+  --teal: #9d9c62;
+  --teal-soft: #f0f8ea;
+  --gold: #75885a; /* Muted Olive #a8c686, darkened ~25% for legible text/borders */
+  --gold-soft: #eef4e5;
+  --highlight: #f0f66e;
+  --highlight-soft: #fbfce0;
   --muted: #6b6b6b;
   --line: #e0dcd3;
   --font-display: "Fraunces", Georgia, "Times New Roman", serif;
@@ -118,7 +132,7 @@ h2 { font-family: var(--font-display); font-size: 1.2rem; margin-top: 2rem; }
 .page-actions { margin: 1rem 0; }
 
 .hero {
-  background: linear-gradient(155deg, var(--gold-soft) 0%, var(--paper-warm) 45%, var(--teal-soft) 100%);
+  background: linear-gradient(155deg, var(--highlight-soft) 0%, var(--paper-warm) 45%, var(--teal-soft) 100%);
   border: 1px solid var(--line);
   border-top: 5px solid var(--accent);
   border-radius: 14px;
@@ -144,6 +158,7 @@ h2 { font-family: var(--font-display); font-size: 1.2rem; margin-top: 2rem; }
   margin-bottom: 0;
 }
 .hero-note strong { color: var(--ink); }
+.hero-body { margin-top: 0.25rem; }
 
 .section-heading { margin-top: 0.5rem; }
 
@@ -151,6 +166,72 @@ h2 { font-family: var(--font-display); font-size: 1.2rem; margin-top: 2rem; }
   .hero { padding: 1.5rem 1.25rem; border-radius: 10px; }
   .hero h1 { font-size: 1.6rem; max-width: none; }
 }
+
+/* Native <details>/<summary> collapse toggle, shared by .hero and
+   .featured-artist -- no JS needed. Rather than a bare chevron character
+   (which David found too subtle to read as clickable), each summary gets
+   an explicit round icon badge with the toggle glyph inside it -- a
+   solid-colored circle reads much more clearly as a button. The whole
+   header row also gets a hover tint as a second, reinforcing cue. */
+.hero > summary, .featured-artist > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  user-select: none;
+  padding: 0.3rem 0.5rem;
+  margin: -0.3rem -0.5rem 0;
+  border-radius: 8px;
+  transition: background 0.15s ease;
+}
+.hero > summary:hover, .featured-artist > summary:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+.hero > summary::-webkit-details-marker,
+.featured-artist > summary::-webkit-details-marker { display: none; }
+.toggle-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  color: white;
+  font-size: 0.75rem;
+  line-height: 1;
+  transition: transform 0.15s ease;
+}
+.hero:not([open]) .toggle-icon, .featured-artist:not([open]) .toggle-icon {
+  transform: rotate(-90deg);
+}
+.hero > summary { color: var(--accent); }
+.hero > summary .toggle-icon { background: var(--accent); }
+.hero[open] > summary { margin-bottom: 0.5rem; }
+.featured-artist > summary { color: var(--accent); }
+.featured-artist > summary .toggle-icon { background: var(--accent); }
+.featured-artist[open] > summary { margin-bottom: 0.75rem; }
+
+.featured-artist-shows { margin: 0.75rem 0; font-size: 0.9rem; }
+.featured-artist-shows ul { margin: 0.35rem 0 0; padding-left: 1.1rem; }
+.featured-artist-shows li { margin-bottom: 0.2rem; }
+
+.featured-artist {
+  border: 1px solid var(--line);
+  border-left: 5px solid var(--accent);
+  border-radius: 10px;
+  padding: 1.25rem 1.5rem;
+  margin: 0 0 2rem;
+  background: var(--highlight-soft);
+}
+.featured-artist h2 { margin: 0 0 0.4rem; }
+.featured-artist h2 a { color: inherit; }
 
 .btn {
   display: inline-block;
@@ -207,7 +288,7 @@ h2 { font-family: var(--font-display); font-size: 1.2rem; margin-top: 2rem; }
 .event-card-local {
   border-left: 3px solid var(--accent);
   padding-left: 0.75rem;
-  background: #fdf4f2;
+  background: var(--accent-soft);
 }
 .local-artist-badge {
   display: inline-block;
@@ -365,6 +446,32 @@ form.stacked .actions { margin-top: 1.5rem; }
   padding: 0.8rem 0;
 }
 .venue-card .meta, .artist-card .meta { color: var(--muted); font-size: 0.85rem; }
+.artist-card { display: flex; gap: 0.9rem; align-items: center; }
+.artist-card-main { flex: 1; }
+.artist-thumb {
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--line);
+}
+.artist-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.artist-thumb-fallback-img { object-fit: contain !important; padding: 10px; box-sizing: border-box; background: var(--paper-warm); }
+.artist-thumb-large {
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  overflow: hidden;
+  margin-bottom: 0.75rem;
+}
+.artist-thumb-large img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.featured-artist-body { display: flex; gap: 1.25rem; align-items: flex-start; }
+.featured-artist-thumb { width: 84px; height: 84px; }
+@media (max-width: 600px) {
+  .featured-artist-body { flex-direction: column; }
+  .featured-artist-thumb { width: 64px; height: 64px; }
+}
 .source-tag {
   display: inline-block;
   font-size: 0.75rem;

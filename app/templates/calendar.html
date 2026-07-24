@@ -1,19 +1,68 @@
 {% extends "base.html" %}
 {% block title %}Calendar{% endblock %}
 {% block content %}
-  <section class="hero">
-    <h1>Find Out What Events Are Happening in the Northampton Area</h1>
-    <p class="hero-lede">
-      One calendar, pulled together from venues all over Northampton, MA
-      &mdash; so you don't have to check a dozen different sites to see
-      what's playing this week.
-    </p>
-    <p class="hero-note">
-      Venues sometimes change set times, lineups, or cancel shows on short
-      notice, so before you head out, it's always worth double-checking the
-      details on the venue's own website.
-    </p>
-  </section>
+  {# <details>/<summary> gives a native, no-JS-required collapse toggle --
+     both sections default open (element attribute below) so nothing
+     visible changes for a first-time visitor; clicking the header just
+     lets a returning visitor tuck it away without losing anything. #}
+  <details class="hero" open>
+    <summary>About this site <span class="toggle-icon" aria-hidden="true">&#9660;</span></summary>
+    <div class="hero-body">
+      <h1>Find Out What Events Are Happening in the Northampton Area</h1>
+      <p class="hero-lede">
+        One calendar, pulled together from venues all over Northampton, MA
+        &mdash; so you don't have to check a dozen different sites to see
+        what's playing this week.
+      </p>
+      <p class="hero-note">
+        Venues sometimes change set times, lineups, or cancel shows on short
+        notice, so before you head out, it's always worth double-checking the
+        details on the venue's own website.
+      </p>
+    </div>
+  </details>
+
+  {% if featured_artist %}
+    {# Randomly picked from local artists with an upcoming show, on every
+       page load -- see main.py's _pick_featured_artist(). #}
+    <details class="featured-artist" open>
+      <summary>&#9733; Featured local artist <span class="toggle-icon" aria-hidden="true">&#9660;</span></summary>
+      <div class="featured-artist-body">
+        {% if featured_artist.image_url %}
+          <div class="artist-thumb featured-artist-thumb"><img src="{{ featured_artist.image_url }}" alt="" loading="lazy"></div>
+        {% endif %}
+        <div>
+          <h2><a href="{{ url_for('artists.detail', artist_id=featured_artist.id) }}">{{ featured_artist.name }}</a></h2>
+          <p class="meta">
+            {% for g in featured_artist.genre_tags %}<span class="genre-tag">{{ g.name }}</span>{% endfor %}
+            {% if featured_artist.hometown %} &middot; {{ featured_artist.hometown }}{% endif %}
+          </p>
+          {% if featured_artist.bio %}<p>{{ featured_artist.bio }}</p>{% endif %}
+          {% if featured_artist.embed_code %}
+            <div class="artist-embed">{{ featured_artist.embed_code | safe }}</div>
+          {% endif %}
+          {% if featured_artist_events %}
+            <div class="featured-artist-shows">
+              <strong>Upcoming shows:</strong>
+              <ul>
+                {% for e in featured_artist_events %}
+                  <li>
+                    {{ e.start_datetime | dtfmt("%a %b %-d, %-I:%M %p") }} &mdash; {{ e.title }} @
+                    {% if e.venue.website_url %}
+                      <a href="{{ e.venue.website_url }}" target="_blank" rel="noopener">{{ e.venue.name }}</a>
+                    {% else %}
+                      {{ e.venue.name }}
+                    {% endif %}
+                  </li>
+                {% endfor %}
+              </ul>
+            </div>
+          {% endif %}
+          <a class="btn btn-small" href="{{ url_for('artists.detail', artist_id=featured_artist.id) }}">View artist profile &rarr;</a>
+        </div>
+      </div>
+    </details>
+  {% endif %}
 
   <h2 class="section-heading">Upcoming shows</h2>
   {% if view == 'week' %}
@@ -40,14 +89,18 @@
       <input type="checkbox" name="hide_recurring" value="1" {% if hide_recurring %}checked{% endif %} onchange="this.form.submit()">
       Only show first date of recurring events
     </label>
-    {% if selected_venue or selected_type or hide_recurring %}
+    <label class="recurring-toggle">
+      <input type="checkbox" name="only_local_artists" value="1" {% if only_local_artists %}checked{% endif %} onchange="this.form.submit()">
+      Show only events with local artists
+    </label>
+    {% if selected_venue or selected_type or hide_recurring or only_local_artists %}
       <a class="clear" href="{{ url_for('main.calendar', view=view) }}">Clear filters</a>
     {% endif %}
   </form>
 
   <div class="view-toggle">
-    <a class="btn btn-small {{ '' if view == 'week' else 'btn-secondary' }}" href="{{ url_for('main.calendar', view='week', venue=selected_venue, type=selected_type, hide_recurring=('1' if hide_recurring else none)) }}">Next 7 Days</a>
-    <a class="btn btn-small {{ '' if view == 'list' else 'btn-secondary' }}" href="{{ url_for('main.calendar', view='list', venue=selected_venue, type=selected_type, hide_recurring=('1' if hide_recurring else none)) }}">List All</a>
+    <a class="btn btn-small {{ '' if view == 'week' else 'btn-secondary' }}" href="{{ url_for('main.calendar', view='week', venue=selected_venue, type=selected_type, hide_recurring=('1' if hide_recurring else none), only_local_artists=('1' if only_local_artists else none)) }}">Next 7 Days</a>
+    <a class="btn btn-small {{ '' if view == 'list' else 'btn-secondary' }}" href="{{ url_for('main.calendar', view='list', venue=selected_venue, type=selected_type, hide_recurring=('1' if hide_recurring else none), only_local_artists=('1' if only_local_artists else none)) }}">List All</a>
   </div>
 
     {% if items %}
@@ -129,7 +182,7 @@
       {# items is empty -- same empty-state copy as before #}
       <p class="empty-state">
         {% if view == 'week' %}
-          No shows in the next 7 days. Try <a href="{{ url_for('main.calendar', view='list', venue=selected_venue, type=selected_type) }}">List All</a> to see what's further out.
+          No shows in the next 7 days. Try <a href="{{ url_for('main.calendar', view='list', venue=selected_venue, type=selected_type, only_local_artists=('1' if only_local_artists else none)) }}">List All</a> to see what's further out.
         {% elif is_admin %}
           No upcoming shows yet. <a href="{{ url_for('events.new_event') }}">Add one</a>, or add a venue and try a scrape.
         {% else %}

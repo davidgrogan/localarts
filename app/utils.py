@@ -28,3 +28,24 @@ def get_or_create_event_type(name):
     db.session.add(event_type)
     db.session.flush()
     return event_type
+
+
+def get_or_create_genre_tag(name):
+    """Same idea as get_or_create_event_type() above, for an artist's Genre
+    Tags (e.g. "Electronica", "Americana") instead of Category Tags --
+    look up a GenreTag by name case-insensitively, creating it if it
+    doesn't exist yet, so the artist form's "quick add a new tag" input
+    doesn't create "electronica" and "Electronica" as two separate tags.
+    """
+    from app.models import db, GenreTag
+
+    name = (name or "").strip()
+    if not name:
+        return None
+    existing = GenreTag.query.filter(db.func.lower(GenreTag.name) == name.lower()).first()
+    if existing:
+        return existing
+    genre_tag = GenreTag(name=name, slug=slugify(name))
+    db.session.add(genre_tag)
+    db.session.flush()
+    return genre_tag
