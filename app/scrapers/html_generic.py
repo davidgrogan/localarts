@@ -15,18 +15,48 @@ by `venue.scrape_config`, a JSON object with:
                          selector's own <a> if present)",
       "description_selector": "optional CSS selector *within* an item,
                                 for a short description/presenter line",
+      "description_from_link": "optional bool (default false) -- for
+                                 venues whose listing page shows only a
+                                 title/date, with the actual description
+                                 living on each event's own detail page
+                                 (see description_detail_selector below).
+                                 When true, and description_selector is
+                                 either unset or finds nothing inline,
+                                 this fetches each item's resolved link
+                                 URL and pulls the description from
+                                 *that* page instead. Adds one extra HTTP
+                                 request per event, so only turn this on
+                                 for venues that actually need it.",
+      "description_detail_selector": "CSS selector applied to the fetched
+                                       detail page (not the listing item)
+                                       when description_from_link is
+                                       true -- e.g. the container div/
+                                       section holding the event's write-up",
       "genre_selector": "optional CSS selector *within* an item, for a
                           genre/category tag's text",
       "image_selector": "optional CSS selector *within* an item, for an
                           <img> to use as the event's image (reads its
                           src attribute; relative URLs are resolved
-                          against the venue's website_url)",
+                          against events_url's own domain)",
       "page_param": "optional query-string param name for pagination
                       (e.g. 'page') -- if set, fetch_raw fetches pages
                       0..max_pages-1 by appending ?<page_param>=<n> to
                       events_url and concatenates the raw HTML",
       "max_pages": "how many pages to fetch when page_param is set
-                    (default 1 -- i.e. no pagination)"
+                    (default 1 -- i.e. no pagination)",
+      "user_agent": "optional override for the User-Agent header sent on
+                      both the listing fetch and any description_from_link
+                      follow-through fetch (default: this module's own
+                      USER_AGENT constant, which honestly identifies
+                      itself as this project's scraper rather than
+                      impersonating a browser). Some sites' bot filters
+                      block that default outright regardless of what
+                      robots.txt actually allows -- confirmed on Ticket
+                      Tailor (see the Quonk write-up in README.md): its own
+                      robots.txt explicitly allows crawling the exact
+                      pages this scraper needs, but the default UA still
+                      got a 403. Only set this per-venue, for a venue
+                      that's actually hitting that wall."
     }
 
 This only works well on server-rendered (non-JS) pages. If a venue's
@@ -35,6 +65,26 @@ plain requests+BeautifulSoup will see an empty shell -- that's exactly
 the case squarespace_json.py exists to handle differently. Use the
 scrape preview page to check the raw HTML sample before assuming this
 source type will work for a given venue.
+
+Relative href/src values (link_selector, image_selector) are resolved
+against events_url's own scheme+host, not venue.website_url -- those are
+usually the same domain, but not always: Quonk's own homepage
+(quonkhampton.com) is client-rendered and just links each event out to
+its Ticket Tailor listing (tickettailor.com/events/quonkhampton), a
+completely different domain from the venue's own website_url. Resolving
+against website_url there would silently produce a broken quonkhampton.com
+URL instead of the real tickettailor.com one.
+
+description_from_link exists because of that same Quonk case: its Ticket
+Tailor listing page (used as events_url instead of the JS-rendered
+quonkhampton.com homepage) shows title/date/location for every event, but
+never a description -- that only lives on each event's own detail page
+(tickettailor.com/events/quonkhampton/<id>), in a
+`section.detail-content__description` block. Since that per-event page is
+itself plain server-rendered HTML (confirmed via a live fetch), following
+the link with one more plain `requests.get()` is enough -- no headless
+browser needed for this step even though the *venue's own* site is
+client-rendered.
 
 Fuzzy date parsing (no `date_format` given) does two extra things beyond
 a plain dateutil call, both driven by a real-world case (the Academy of
@@ -78,6 +128,7 @@ so it's safe for every other venue's date_selector text too.
 """
 import json
 import re
+from urllib.parse import urlsplit
 
 import requests
 from bs4 import BeautifulSoup
@@ -143,6 +194,7 @@ def fetch_raw(venue):
     config = _config(venue)
     page_param = config.get("page_param")
     max_pages = int(config.get("max_pages") or 1) if page_param else 1
+    user_agent = config.get("user_agent") or USER_AGENT
 
     pages = []
     for page_num in range(max_pages):
@@ -151,7 +203,7 @@ def fetch_raw(venue):
             sep = "&" if "?" in url else "?"
             url = f"{url}{sep}{page_param}={page_num}"
         try:
-            resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=15)
+            resp = requests.get(url, headers={"User-Agent": user_agent}, timeout=15)
             resp.raise_for_status()
         except requests.RequestException as exc:
             if page_num == 0:
@@ -175,6 +227,32 @@ def _resolve_url(href, base_url):
     if href.startswith("http") or href.startswith("//"):
         return href
     return f"{(base_url or '').rstrip('/')}{href}"
+
+
+def _page_origin(url):
+    """scheme://host for the page a relative href/src should resolve
+    against -- events_url's own domain, not venue.website_url (which can
+    be a different site entirely, e.g. a venue whose listing lives on a
+    third-party ticketing platform -- see module docstring)."""
+    if not url:
+        return None
+    parts = urlsplit(url)
+    if not parts.scheme or not parts.netloc:
+        return None
+    return f"{parts.scheme}://{parts.netloc}"
+
+
+def _fetch_description_from_link(url, user_agent):
+    """Best-effort follow-through fetch for description_from_link (see
+    module docstring) -- a failure here (network error, 404, unexpected
+    markup) should never sink the whole scrape over one event's missing
+    description, so this always returns a string, never raises."""
+    try:
+        resp = requests.get(url, headers={"User-Agent": user_agent}, timeout=15)
+        resp.raise_for_status()
+    except requests.RequestException:
+        return ""
+    return resp.text
 
 
 def _first_date_phrase(text):
@@ -207,18 +285,34 @@ def parse(raw, venue):
     date_sel = config.get("date_selector")
     link_sel = config.get("link_selector")
     description_sel = config.get("description_selector")
+    description_from_link = bool(config.get("description_from_link"))
+    description_detail_sel = config.get("description_detail_selector")
     genre_sel = config.get("genre_selector")
     image_sel = config.get("image_selector")
     date_format = config.get("date_format")
+    user_agent = config.get("user_agent") or USER_AGENT
 
+    page_origin = _page_origin(venue.events_url)
     last_known_year = None
 
     for item in items:
         title_el = item.select_one(title_sel) if title_sel else None
         date_el = item.select_one(date_sel) if date_sel else None
 
-        title = title_el.get_text(strip=True) if title_el else None
-        date_text = date_el.get_text(strip=True) if date_el else None
+        # separator=" " matters here -- confirmed on Quonk's Ticket Tailor
+        # listing, whose date_selector match isn't one flat text node but
+        # several: <span isolate>Fri</span><span isolate>Jul</span>
+        # <var>24</var>, <var>2026</var><var>7:30 PM</var>-<var>9:15 PM</var>.
+        # Without separator=" ", get_text(strip=True) glues adjacent
+        # fragments together with nothing between them ("FriJul24, 2026...")
+        # -- dateutil's fuzzy parser then doesn't recognize "FriJul" as a
+        # month at all and silently falls back to January, or fails to
+        # parse the string entirely and the whole event gets skipped
+        # further down. A no-op for every other venue here, whose
+        # date_selector matches a single plain-text node with no internal
+        # tag boundaries to separate.
+        title = title_el.get_text(separator=" ", strip=True) if title_el else None
+        date_text = date_el.get_text(separator=" ", strip=True) if date_el else None
         if not title or not date_text:
             # Skip rather than fail outright -- one malformed item on the
             # page shouldn't sink the whole scrape.
@@ -250,25 +344,33 @@ def parse(raw, venue):
             link_el = None
         ticket_url = None
         if link_el and link_el.has_attr("href"):
-            ticket_url = _resolve_url(link_el["href"], venue.website_url)
+            ticket_url = _resolve_url(link_el["href"], page_origin)
 
         description = ""
         if description_sel:
             description_el = item.select_one(description_sel)
             if description_el:
-                description = description_el.get_text(strip=True)
+                description = description_el.get_text(separator=" ", strip=True)
+
+        if not description and description_from_link and description_detail_sel and ticket_url:
+            detail_html = _fetch_description_from_link(ticket_url, user_agent)
+            if detail_html:
+                detail_soup = BeautifulSoup(detail_html, "html.parser")
+                detail_el = detail_soup.select_one(description_detail_sel)
+                if detail_el:
+                    description = detail_el.get_text(separator=" ", strip=True)
 
         genre = None
         if genre_sel:
             genre_el = item.select_one(genre_sel)
             if genre_el:
-                genre = genre_el.get_text(strip=True) or None
+                genre = genre_el.get_text(separator=" ", strip=True) or None
 
         image_url = None
         if image_sel:
             image_el = item.select_one(image_sel)
             if image_el and image_el.has_attr("src"):
-                image_url = _resolve_url(image_el["src"], venue.website_url)
+                image_url = _resolve_url(image_el["src"], page_origin)
 
         external_id = f"{title}-{start_dt.isoformat()}"
         if external_id in seen_external_ids:

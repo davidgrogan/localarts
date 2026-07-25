@@ -3,12 +3,14 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from app.models import db, Venue, Event, EventType
 from app.utils import slugify, get_or_create_event_type
 from app.scrapers.base import preview_scrape, run_scrape, ScrapeError
-from app.auth import require_admin
+from app.auth import login_required
 
 bp = Blueprint("venues", __name__, url_prefix="/venues")
-# Entirely an admin surface -- venue management, scrape config/preview/run,
-# and the pending-review queue all live under here, nothing public.
-bp.before_request(require_admin)
+# Like artists.py, this is a mix rather than an all-admin surface: browsing
+# the venue directory (list_venues, detail) is public -- visitors can see
+# what venues participate and what's coming up at each one -- while
+# managing venues (add/edit/delete, scrape config/preview/run, scan) stays
+# admin-only via @login_required on each of those routes individually.
 
 SOURCE_TYPES = [
     ("manual", "Manual only (no scraping)"),
@@ -36,6 +38,7 @@ def _scannable_venues():
 
 
 @bp.route("/scan")
+@login_required
 def scan_page():
     """One-click rescrape of every active, non-manual venue -- the same
     thing scrape_all.py/the scrape.timer does on a schedule, triggered on
@@ -49,6 +52,7 @@ def scan_page():
 
 
 @bp.route("/<int:venue_id>/scan-one", methods=["POST"])
+@login_required
 def scan_one(venue_id):
     """JSON endpoint the Scan page's JS calls once per venue in sequence.
     Deliberately one venue per request (rather than looping server-side)
@@ -67,6 +71,7 @@ def scan_one(venue_id):
 
 
 @bp.route("/scan/run-all", methods=["POST"])
+@login_required
 def scan_all():
     """No-JS fallback for the Scan page: runs every venue in one request,
     same as scan_page's JS loop does client-side, just without a
@@ -110,6 +115,7 @@ def _resolve_default_event_type(form):
 
 
 @bp.route("/new", methods=["GET", "POST"])
+@login_required
 def new_venue():
     event_types = EventType.query.order_by(EventType.name).all()
     if request.method == "POST":
@@ -149,6 +155,7 @@ def detail(venue_id):
 
 
 @bp.route("/<int:venue_id>/edit", methods=["GET", "POST"])
+@login_required
 def edit_venue(venue_id):
     venue = Venue.query.get_or_404(venue_id)
     event_types = EventType.query.order_by(EventType.name).all()
@@ -172,6 +179,7 @@ def edit_venue(venue_id):
 
 
 @bp.route("/<int:venue_id>/delete", methods=["POST"])
+@login_required
 def delete_venue(venue_id):
     venue = Venue.query.get_or_404(venue_id)
     db.session.delete(venue)
@@ -181,6 +189,7 @@ def delete_venue(venue_id):
 
 
 @bp.route("/<int:venue_id>/scrape/preview")
+@login_required
 def scrape_preview(venue_id):
     venue = Venue.query.get_or_404(venue_id)
     error = None
@@ -195,6 +204,7 @@ def scrape_preview(venue_id):
 
 
 @bp.route("/<int:venue_id>/scrape/run", methods=["POST"])
+@login_required
 def scrape_run(venue_id):
     venue = Venue.query.get_or_404(venue_id)
     approve_new = bool(request.form.get("approve_new"))

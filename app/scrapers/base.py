@@ -110,7 +110,16 @@ def preview_scrape(venue):
     }
 
 
-_RAW_SAMPLE_SIGNALS = ("elfsightcdn", "eapp-events-calendar", "tribe-events")
+_RAW_SAMPLE_SIGNALS = (
+    "elfsightcdn",
+    "eapp-events-calendar",
+    "tribe-events",
+    # Quonk's Ticket Tailor listing (see rendered_html.py/README.md) --
+    # its header/hero markup alone ran past RAW_SAMPLE_MAX_CHARS, the
+    # same problem as the Squarespace case below, so a preview centered
+    # on <body> never reached the actual event list either.
+    "events-listing__item",
+)
 
 
 def _raw_sample(raw):

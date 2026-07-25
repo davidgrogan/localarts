@@ -16,6 +16,31 @@
     </p>
   {% endif %}
 
+  <div class="stacked" style="border:1px solid var(--border,#ccc); border-radius:6px; padding:1rem; margin-bottom:1.5rem;">
+    <strong>Import from Bandcamp</strong>
+    <div class="hint">
+      Bandcamp blocks automated requests (it CAPTCHA-walls anything that looks like a bot,
+      confirmed the hard way), so this can't be a simple "paste a URL" fetch. Instead, install
+      the bookmarklet once, then use it from your own browser while looking at a band's
+      Bandcamp page:
+    </div>
+    <ol style="margin:0.5rem 0 0.75rem 1.25rem; padding:0;">
+      <li>Drag this to your bookmarks bar:
+        <a href="{{ bandcamp_bookmarklet_href }}" onclick="return false;"
+           style="font-weight:bold;">Import from Bandcamp</a>
+        (clicking it here won't do anything -- it only works dragged onto your bookmarks bar).
+      </li>
+      <li>Go to the band's Bandcamp page in your browser and click that bookmark.</li>
+      <li>It copies the band's details to your clipboard -- paste them into the box below.</li>
+    </ol>
+    <label for="bandcamp_paste">Paste from Bandcamp bookmarklet</label>
+    <textarea id="bandcamp_paste" rows="3" placeholder="Click the bookmarklet on the band's Bandcamp page, then paste here"></textarea>
+    <div class="actions">
+      <button class="btn btn-secondary" type="button" onclick="fillFromBandcampPaste()">Fill in fields</button>
+    </div>
+    <div id="bandcamp_paste_status" class="hint" style="margin-top:0.5rem;"></div>
+  </div>
+
   <form class="stacked" method="post">
     {% if source_event %}
       <input type="hidden" name="from_event_id" value="{{ source_event.id }}">
@@ -41,6 +66,10 @@
     </div>
     <label for="new_genre_tag_names">Quick-add new genre tag(s) (optional, comma-separated)</label>
     <input type="text" id="new_genre_tag_names" name="new_genre_tag_names" placeholder="e.g. Electronica, New Wave">
+    <div class="hint">
+      If you used the Bandcamp import above, its suggested tags land here -- edit freely
+      (some may be locations rather than genres) before saving.
+    </div>
 
     <label>Category Tags</label>
     <div class="artist-checks">
@@ -71,7 +100,9 @@
       Link to an image hosted elsewhere (no file upload here) -- shows on the artist's
       page, the Local Artists list, and the homepage's featured-artist spotlight.
       {% if artist and artist.image_url %}
-        <br><img src="{{ artist.image_url }}" alt="" style="max-width:120px; border-radius:4px; margin-top:0.4rem;">
+        <br><img id="image_url_preview" src="{{ artist.image_url }}" alt="" style="max-width:120px; border-radius:4px; margin-top:0.4rem;">
+      {% else %}
+        <br><img id="image_url_preview" src="" alt="" style="max-width:120px; border-radius:4px; margin-top:0.4rem; display:none;">
       {% endif %}
     </div>
 
@@ -97,4 +128,62 @@
       {% if artist %}<a class="btn btn-secondary" href="{{ url_for('artists.detail', artist_id=artist.id) }}">Cancel</a>{% endif %}
     </div>
   </form>
+
+  <script>
+    // Fills in the form above from whatever the "Import from Bandcamp"
+    // bookmarklet copied to the clipboard (see the "Paste from Bandcamp
+    // bookmarklet" box near the top of this page). Deliberately entirely
+    // client-side -- no fetch/server round-trip at all -- since the whole
+    // point of the bookmarklet is that the *browser*, not the server,
+    // does the Bandcamp fetching (Bandcamp CAPTCHA-walls automated
+    // requests; see app/bandcamp_bookmarklet.py for the full story).
+    // This only ever overwrites a field if the pasted data actually has
+    // something for it -- an admin's own already-typed values are never
+    // silently blanked out by an incomplete paste.
+    function fillFromBandcampPaste() {
+      const statusEl = document.getElementById("bandcamp_paste_status");
+      const raw = document.getElementById("bandcamp_paste").value.trim();
+      if (!raw) {
+        statusEl.textContent = "Paste something first (copy it from the bookmarklet).";
+        return;
+      }
+
+      let data;
+      try {
+        data = JSON.parse(raw);
+      } catch (e) {
+        statusEl.textContent =
+          "That doesn't look like what the bookmarklet copies -- make sure you copied " +
+          "the whole thing and try again.";
+        return;
+      }
+
+      const setIfPresent = (id, value) => {
+        if (value) document.getElementById(id).value = value;
+      };
+
+      setIfPresent("name", data.name);
+      setIfPresent("hometown", data.location);
+      setIfPresent("image_url", data.image_url);
+      setIfPresent("website_url", data.band_url);
+      setIfPresent("embed_code", data.embed_code);
+      setIfPresent("bio", data.bio);
+      if (data.suggested_tags && data.suggested_tags.length) {
+        document.getElementById("new_genre_tag_names").value = data.suggested_tags.join(", ");
+      }
+
+      const preview = document.getElementById("image_url_preview");
+      if (data.image_url) {
+        preview.src = data.image_url;
+        preview.style.display = "";
+      }
+
+      const parts = [];
+      if (data.name) parts.push('Filled in fields for "' + data.name + '".');
+      else parts.push("Filled in what fields it could -- couldn't find a band name, so check those over.");
+      if (data.album_title) parts.push('Embed/photo are from "' + data.album_title + '" (their earliest album).');
+      else parts.push("Couldn't find an album to pull a photo/embed from -- those were left as-is.");
+      statusEl.textContent = parts.join(" ");
+    }
+  </script>
 {% endblock %}

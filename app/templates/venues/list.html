@@ -2,26 +2,36 @@
 {% block title %}Venues{% endblock %}
 {% block content %}
   <h1>Venues</h1>
-  <div class="page-actions">
-    <a class="btn" href="{{ url_for('venues.new_venue') }}">+ Add venue</a>
-  </div>
+  <p class="meta">
+    Places around Northampton that shows on this calendar come from.
+  </p>
+  {% if is_admin %}
+    <div class="page-actions">
+      <a class="btn" href="{{ url_for('venues.new_venue') }}">+ Add venue</a>
+    </div>
+  {% endif %}
 
   {% if venues %}
     {% for v in venues %}
       <div class="venue-card">
         <div>
           <a href="{{ url_for('venues.detail', venue_id=v.id) }}"><strong>{{ v.name }}</strong></a>
-          <span class="source-tag">{{ v.source_type }}</span>
-          {% if not v.is_active %}<span class="source-tag">inactive</span>{% endif %}
+          {% if is_admin %}
+            <span class="source-tag">{{ v.source_type }}</span>
+            {% if not v.is_active %}<span class="source-tag">inactive</span>{% endif %}
+          {% endif %}
         </div>
         <div class="meta">
           {% if v.city %}{{ v.city }}, {{ v.state }} &middot; {% endif %}
           {% if v.website_url %}<a href="{{ v.website_url }}" target="_blank" rel="noopener">{{ v.website_url }}</a>{% endif %}
-          {% if v.last_scraped_at %} &middot; last scraped {{ v.last_scraped_at | dtfmt("%b %-d, %-I:%M %p") }}{% endif %}
+          {% if is_admin and v.last_scraped_at %} &middot; last scraped {{ v.last_scraped_at | dtfmt("%b %-d, %-I:%M %p") }}{% endif %}
         </div>
       </div>
     {% endfor %}
   {% else %}
-    <p class="empty-state">No venues yet. <a href="{{ url_for('venues.new_venue') }}">Add the first one</a>.</p>
+    <p class="empty-state">
+      No venues yet.
+      {% if is_admin %}<a href="{{ url_for('venues.new_venue') }}">Add the first one</a>.{% endif %}
+    </p>
   {% endif %}
 {% endblock %}

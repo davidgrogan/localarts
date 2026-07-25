@@ -331,6 +331,89 @@ def main():
             default_event_type=music_tag,
         )
 
+        quonk = get_or_create_venue(
+            name="Quonk",
+            slug="quonk",
+            address="122 Main Street, Lower Level",
+            city="Northampton",
+            state="MA",
+            website_url="https://www.quonkhampton.com",
+            # quonkhampton.com's own homepage is entirely client-rendered
+            # (confirmed: a plain fetch returns just an empty shell/meta
+            # tags, no event markup at all) -- its "Learn More" links on
+            # each event card don't even go to another page on its own
+            # site, they go straight out to a Ticket Tailor listing
+            # (tickettailor.com/events/quonkhampton/<id>), a third-party
+            # ticketing platform. events_url points directly at Ticket
+            # Tailor's own *listing* page instead -- confirmed via a real
+            # fetch that it's plain server-rendered HTML with every
+            # upcoming event's title/date/link/image already in the
+            # markup:
+            #   <li class="events-listing__item">
+            #     <img src="https://uploads.tickettailorassets.com/...">
+            #     <a class="event__link" href="/events/quonkhampton/2307456">
+            #       <h3 class="event__title">Punchline! Stand Up Comedy @ Quonk</h3>
+            #     </a>
+            #     <span class="event-meta__date">Fri Jul 24, 2026 7:30 PM - 9:15 PM</span>
+            #   </li>
+            # That listing page never shows a description, though -- only
+            # each event's own Ticket Tailor detail page does, in a
+            # `section.detail-content__description` block.
+            #
+            # source_type is rendered_html, not plain html, even though
+            # neither page above actually needs JS to render -- Ticket
+            # Tailor's bot-management blocked a plain requests.get() with
+            # a 403 outright, even after setting a realistic browser
+            # User-Agent (confirmed via two real scrape attempts), while
+            # its own robots.txt explicitly allows crawling these exact
+            # pages for any user-agent. That means the block is on
+            # something a plain `requests` call can't fake (most likely a
+            # TLS/header fingerprint check), not the UA string -- so this
+            # uses a real headless browser (which passes that check
+            # automatically) for both the listing fetch *and* the
+            # per-event description fetch. rendered_html.py's
+            # description_from_link/description_detail_selector do the
+            # latter, reusing the same Playwright page for each event's
+            # detail page and writing the result into the listing HTML as
+            # a `.__prefetched_description` div -- see that file's module
+            # docstring. description_selector below just points at that
+            # injected div, same as any other inline description.
+            #
+            # Relative hrefs/img srcs here resolve against events_url's
+            # own domain (tickettailor.com), not website_url
+            # (quonkhampton.com) -- see html_generic.py's module
+            # docstring for why that distinction matters.
+            #
+            # Date text has one known-bad shape: an event with more than
+            # one showtime just says "Fri Jul 31, 2026, Multiple times"
+            # instead of a real time, which the fuzzy date parser can't
+            # extract a time from and falls back to midnight -- a rare
+            # enough edge case (one event, currently) not worth a special
+            # heuristic for.
+            events_url="https://www.tickettailor.com/events/quonkhampton",
+            source_type="rendered_html",
+            scrape_config=(
+                '{"item_selector": "li.events-listing__item", '
+                '"title_selector": "h3.event__title", '
+                '"link_selector": "a.event__link", '
+                '"date_selector": "span.event-meta__date", '
+                '"image_selector": "img", '
+                '"wait_for_selector": "li.events-listing__item", '
+                '"description_from_link": true, '
+                '"description_detail_selector": "section.detail-content__description", '
+                '"description_selector": ".__prefetched_description", '
+                '"user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+                '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}'
+            ),
+            # No default_event_type -- same call as Smith College above:
+            # Quonk's programming is deliberately all over the place
+            # (stand-up comedy, dance parties, tabletop game nights,
+            # immersive tavern theater), not a single-genre music venue,
+            # so a blanket tag would be wrong more often than right. Use
+            # the admin Review queue to tag each show individually
+            # (Comedy/Dance/Tabletop Gaming/etc. tags already exist).
+        )
+
         artist_1 = get_or_create_artist(
             name="Sample Local Artist",
             slug=slugify("Sample Local Artist"),

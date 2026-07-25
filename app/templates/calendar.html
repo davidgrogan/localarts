@@ -1,11 +1,16 @@
 {% extends "base.html" %}
 {% block title %}Calendar{% endblock %}
 {% block content %}
-  {# <details>/<summary> gives a native, no-JS-required collapse toggle --
-     both sections default open (element attribute below) so nothing
-     visible changes for a first-time visitor; clicking the header just
-     lets a returning visitor tuck it away without losing anything. #}
-  <details class="hero" open>
+  {# <details>/<summary> gives a native, no-JS-required collapse toggle.
+     "About this site" defaults CLOSED (no `open` attribute) -- most
+     returning visitors already know what the site is, so this stays out
+     of the way on every load unless they've explicitly opened it before.
+     "Featured local artist" still defaults OPEN. Either default is
+     immediately overridden for a returning visitor by the localStorage
+     script at the bottom of this page, which remembers whichever state
+     each panel was last left in and restores it on every subsequent page
+     load -- these two `id`s are what that script looks for. #}
+  <details class="hero" id="about-site-details">
     <summary>About this site <span class="toggle-icon" aria-hidden="true">&#9660;</span></summary>
     <div class="hero-body">
       <h1>Find Out What Events Are Happening in the Northampton Area</h1>
@@ -25,7 +30,7 @@
   {% if featured_artist %}
     {# Randomly picked from local artists with an upcoming show, on every
        page load -- see main.py's _pick_featured_artist(). #}
-    <details class="featured-artist" open>
+    <details class="featured-artist" id="featured-artist-details" open>
       <summary>&#9733; Featured local artist <span class="toggle-icon" aria-hidden="true">&#9660;</span></summary>
       <div class="featured-artist-body">
         {% if featured_artist.image_url %}
@@ -190,4 +195,32 @@
         {% endif %}
       </p>
     {% endif %}
+
+  <script>
+    // Remembers whichever open/closed state a visitor last left the
+    // "About this site" and "Featured local artist" panels in, and
+    // restores it on every later page load -- localStorage rather than a
+    // cookie/server session since this is purely a per-browser display
+    // preference with no need to round-trip to the server (and no admin
+    // login is required to have a preference remembered). Each panel is
+    // independent: closing one has no effect on the other's stored state.
+    (function () {
+      function rememberOpenState(elementId, storageKey) {
+        var el = document.getElementById(elementId);
+        if (!el) return;
+        var stored = localStorage.getItem(storageKey);
+        if (stored !== null) {
+          // Overrides this page's server-rendered default (open/closed)
+          // with whatever the visitor last chose -- only once we know
+          // they've actually chosen something before.
+          el.open = stored === "1";
+        }
+        el.addEventListener("toggle", function () {
+          localStorage.setItem(storageKey, el.open ? "1" : "0");
+        });
+      }
+      rememberOpenState("about-site-details", "noho_about_site_open");
+      rememberOpenState("featured-artist-details", "noho_featured_artist_open");
+    })();
+  </script>
 {% endblock %}

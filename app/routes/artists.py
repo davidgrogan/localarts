@@ -11,6 +11,19 @@ bp = Blueprint("artists", __name__, url_prefix="/artists")
 # artist roster (list_artists, detail) is core public content (the whole
 # point of the site), so only the add/edit/delete routes below are
 # individually gated rather than protecting the whole blueprint.
+#
+# Note on "Import from Bandcamp": there's deliberately no server-side
+# route for this. An earlier version fetched the Bandcamp URL directly
+# (first with plain requests, then with a headless Playwright browser
+# once that got served stripped content) -- both got a real CAPTCHA from
+# Bandcamp once actually run against a live URL, not just a fingerprint
+# check any amount of disguising the request could get past. The feature
+# now runs entirely client-side: a bookmarklet (see
+# app/bandcamp_bookmarklet.py and app/static/bandcamp_bookmarklet.js) does
+# the fetching from the admin's own real browser session while they're
+# already on the band's Bandcamp page, and artists/form.html has a paste
+# box + inline <script> that fills in the fields from what it copies to
+# the clipboard -- no server round-trip, so no route needed here at all.
 
 
 def _resolve_genre_tags(form):

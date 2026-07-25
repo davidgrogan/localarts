@@ -112,6 +112,20 @@ def create_app(test_config=None):
         return {"is_admin": bool(session.get("is_admin"))}
 
     @app.context_processor
+    def inject_bandcamp_bookmarklet():
+        # Available in every template as `bandcamp_bookmarklet_href` --
+        # only actually used on artists/form.html, but a context processor
+        # keeps it out of every render_template() call in
+        # app/routes/artists.py rather than threading it through each one.
+        # See app/bandcamp_bookmarklet.py for what this is and why it
+        # exists (short version: Bandcamp CAPTCHA-walls automated fetches,
+        # so this data has to come from the admin's own real browser
+        # session via a bookmarklet instead of a server-side fetch).
+        from app.bandcamp_bookmarklet import bookmarklet_href
+
+        return {"bandcamp_bookmarklet_href": bookmarklet_href()}
+
+    @app.context_processor
     def inject_review_count():
         # Badge count on the nav's "Review" link -- everything waiting on
         # an admin decision: brand-new scraped events, approved events

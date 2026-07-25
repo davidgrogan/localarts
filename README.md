@@ -14,7 +14,11 @@ DigitalOcean.
   artist roster below are the only things anonymous visitors see.
 - **Artists** (`/artists`) -- roster of local artists, alphabetical by name,
   filterable by Genre Tag, Category Tag, or an "only artists with upcoming
-  shows" toggle. Linked to the shows they're playing. Public.
+  shows" toggle. Linked to the shows they're playing. Public. The add/edit
+  forms (admin-only) have an "Import from Bandcamp" bookmarklet + paste box
+  that prefills name/location/bio/photo/embed/tags for review before saving
+  -- see "Import from Bandcamp" below for why it's a bookmarklet rather than
+  a plain "paste a URL" fetch.
 - **Venues** (`/venues`) -- add a venue, tell it how to pull in events (manual,
   Squarespace JSON trick, iCal feed, generic HTML selectors, or headless-browser
   selectors), preview a scrape before importing anything, and see a log of
@@ -120,11 +124,12 @@ overridable per event, and never re-applied once an event already has tags
 (so a later re-scrape can't silently strip an admin's own tagging choice).
 Iron Horse, The Parlor Room, Academy of Music, Haze, Luthier's Co-Op, and
 The Heavy Culture Cooperative are seeded with "Music" as their default,
-since every show at those is one; Smith College
-intentionally has no default, since its calendar mixes exhibitions, lectures,
-and performances and each scraped item needs its own call. Visitors filter
-the public calendar by tag the same way they already filter by venue/artist
-(`?type=<id>`).
+since every show at those is one; Smith College and Quonk
+intentionally have no default, since their calendars mix things like
+exhibitions, lectures, comedy, dance parties, and tabletop game nights with
+actual performances, and each scraped item needs its own call. Visitors
+filter the public calendar by tag the same way they already filter by
+venue/artist (`?type=<id>`).
 
 ## Local artist Genre/Category Tags, filtering, and the featured-artist spotlight
 
@@ -189,6 +194,107 @@ the Backroads deliberately doesn't, so both states -- an artist photo, and
 the fallback to the site logo used everywhere an artist has none -- are
 visible in the demo (Local Artists list, artist detail page, and the
 homepage's featured-artist spotlight).
+
+## Import from Bandcamp (bookmarklet -- `app/bandcamp_bookmarklet.py`, `app/static/bandcamp_bookmarklet.js`)
+
+Both the "Add artist" and "Edit artist" forms (`artists/form.html`) have an
+"Import from Bandcamp" box above the main artist fields: a bookmarklet to
+install once, plus a "Paste from Bandcamp bookmarklet" textarea and a "Fill
+in fields" button. There is **no server-side route for this at all** --
+the admin clicks the bookmarklet while looking at a band's own Bandcamp
+page in their own browser, it copies a block of JSON to the clipboard, and
+a small client-side `<script>` on the form parses that paste and fills in
+name/hometown/photo/website/embed/bio/suggested-tags. That's a deliberately
+unusual design for this project (its one and only bit of client-side JS,
+everything else here is plain server-rendered Flask), and the road to it
+is worth recording in full, because it went through three earlier
+approaches that all failed against a live Bandcamp URL despite each one
+looking sound at the time:
+
+1. **Plain `requests` + BeautifulSoup.** Feasibility research (inspecting
+   a real band's page, hushpuppy-mass.bandcamp.com, by hand through an
+   actual Chrome tab) showed every needed field -- name, location, bio,
+   tags, cover art, embed player URL -- present in the initial
+   server-rendered HTML with no JS execution required. Looked sufficient.
+   Run for real, David got back "couldn't find a band name... couldn't
+   find any albums" -- everything blank, no error at all.
+
+2. **Headless Chromium via Playwright**, with the same
+   `--disable-blink-features=AutomationControlled` launch flag +
+   `navigator.webdriver` override that fixed an identical-looking symptom
+   for Quonk's Ticket Tailor listing (see `app/scrapers/rendered_html.py`
+   and this README's Quonk write-up below). Same live retest, same
+   completely empty result.
+
+3. **A real Chrome User-Agent string**, not this project's usual honest
+   venue-scraper one (`"Mozilla/5.0 (compatible; LocalMusicSitePOC/0.1)"`)
+   -- Quonk's own config overrides `user_agent` too, and that detail had
+   been missed when porting the pattern over. Third live retest, same
+   result again, byte-for-byte.
+
+Three fixes in, still identical failures, was the point to stop guessing
+and get hard evidence instead (the same lesson the Quonk debugging arc
+itself had already taught, further back in this file) -- a small
+stand-alone diagnostic script driving the exact same Chromium/UA/flags as
+the real code, printing the response status, final URL, and a screenshot.
+That revealed the real cause: Bandcamp was serving a genuine **CAPTCHA**
+("Enter the characters seen in the image below... Answer Submit"),
+`Client Challenge` in the page title -- not a fingerprint check any
+UA/flag tweak could quietly get past, an actual human-verification wall.
+No amount of disguising an automated request defeats that, and building
+something that tries to solve or bypass a CAPTCHA isn't something this
+project does.
+
+The retrospective on *why* research had looked so clean despite this:
+research was done by driving a real Chrome browser through the Claude in
+Chrome extension -- an already-established, human-driven browsing session,
+nothing about which looks automated to Bandcamp. The actual feature, by
+contrast, necessarily runs as an unattended, scripted sequence of
+requests (root page, then `/music`, then potentially a dozen-plus release
+pages within a couple of seconds) -- exactly the traffic pattern
+bot-detection is built to catch, regardless of which HTTP client or
+browser drives it. "I can browse it and see the data by hand" and "a
+script can fetch it unattended" turned out to be two different claims,
+and conflating them was the actual mistake, not any particular technical
+detail of the fetch itself.
+
+Given that, the fix couldn't be "make the automated request sneakier" --
+it had to stop being an automated request in the first place. The
+bookmarklet (`app/static/bandcamp_bookmarklet.js`, readable source; minified
+with `terser` and embedded as `BOOKMARKLET_JS` in
+`app/bandcamp_bookmarklet.py`, which turns it into a `javascript:` href via
+`urllib.parse.quote()` -- percent-encoding leaves no characters Jinja's
+autoescaping needs to touch, so it drops straight into an `<a href="...">`
+safely) runs the same logic the abandoned server-side module did (same
+selectors, same earliest-album-by-real-release-date logic, same
+`<meta property="og:video">`-based embed construction), but as `fetch()`
+calls made from *inside* the admin's own already-open Bandcamp tab --
+genuinely no different from the browsing Bandcamp already trusts, because
+it is that. `app/bandcamp_bookmarklet.py`'s docstring has the full
+"why", `app/static/bandcamp_bookmarklet.js`'s comments mirror the
+per-field extraction rationale the old Python module's did (bio
+`<script>`/`more`-`less` toggle-link stripping, `/music` grid walking with
+standalone `/track/...` links excluded, `data-tralbum` JSON parsing, etc.)
+-- keep the two in sync if either changes, there's no shared code between
+them (a bookmarklet can't `import` a Flask app module).
+
+The one meaningful capability loss from dropping the server-side version:
+it can no longer flash a friendly warning through Flask (e.g. "couldn't
+find an album") -- the bookmarklet's own `alert()`/clipboard-copy message
+and the paste box's status line cover the same ground client-side instead.
+
+Verified two ways before shipping: (1) a jsdom-based Node harness
+(`npm install jsdom`) running the actual bookmarklet source -- both the
+readable file and the exact minified string embedded in
+`bandcamp_bookmarklet.py` -- against the same fixture HTML used to verify
+the original Python module, with `fetch`/`DOMParser`/`clipboard.writeText`
+stubbed, confirming identical output (right band info, right earliest
+album picked over the featured/newest one, standalone tracks skipped,
+bio toggle links stripped) to what the old server-side module produced;
+and (2) a Flask test-client smoke test confirming the bookmarklet link and
+paste box render on both the add and edit forms, that no dead references
+to the removed server-side routes remain anywhere, and that saving an
+artist through the ordinary form still works untouched by any of this.
 
 ## Recurring event grouping (`app/recurrence.py`)
 
@@ -461,6 +567,110 @@ Events" button. `next_button_selector` is scoped to `#comp-lk7y5t1j`
 button) and `next_button_clicks: 2` grabs a couple of extra batches
 beyond the initial page load.
 
+**On Quonk (quonkhampton.com, an immersive-arts venue in downtown
+Northampton):** the one venue here whose *own* site is genuinely
+client-rendered start to finish -- a plain fetch of quonkhampton.com
+returns nothing but an empty shell and `<meta>` tags. `events_url` skips
+quonkhampton.com entirely: every event card's "Learn More" link on that
+homepage goes straight out to a Ticket Tailor listing
+(`tickettailor.com/events/quonkhampton/<id>`) -- a third-party ticketing
+platform, not another page on Quonk's own site -- so `events_url` points
+at Ticket Tailor's own listing page (`tickettailor.com/events/quonkhampton`)
+instead, which has every upcoming event's title/date/link/image in its
+markup:
+
+```
+<li class="events-listing__item">
+  <div class="event__content__titles">
+    <h3 class="event__title">
+      <a class="event__link" href="/events/quonkhampton/2307456">Punchline! Stand Up Comedy @ Quonk</a>
+    </h3>
+    <div class="event-meta event__meta">
+      <span class="event-meta__date">
+        <span isolate="">Fri</span><span isolate="">Jul</span>
+        <var>24</var>, <var>2026</var><var>7:30 PM</var>-<var>9:15 PM</var>
+      </span>
+    </div>
+  </div>
+</li>
+```
+
+That listing page never shows a description, though -- David asked for
+this venue specifically because you have to click through to each event
+to read one, and each event's own Ticket Tailor detail page has it, in a
+`section.detail-content__description` block.
+
+Getting this venue actually working took three separate real bugs to
+chase down, worth recording since each one *looked* like it explained the
+symptom until the next scrape attempt proved otherwise:
+
+1. **A plain `requests.get()` on the listing page got a flat 403,
+   regardless of `User-Agent`.** Ticket Tailor's own `robots.txt`
+   explicitly allows crawling these exact pages for any user-agent, so
+   this wasn't really "keep bots out" -- almost certainly a TLS/header
+   fingerprint check a plain `requests` call can't fake no matter what
+   headers it sends, which a real browser passes automatically. Fixed by
+   switching `source_type` to `rendered_html` (a real headless Chromium
+   via Playwright) for both the listing fetch *and* the per-event
+   description fetch -- the latter needed its own new mechanism,
+   `description_from_link`/`description_detail_selector` in
+   `rendered_html.py`, which reuses the same already-past-the-block
+   Playwright page for each event's detail page and writes the result
+   into the captured listing HTML as a `<div class="__prefetched_description">`
+   right inside its matching item, so `html_generic.py`'s ordinary
+   `description_selector` handling (pointed at that class) picks it up
+   with no separate network call at parse time at all.
+2. **Even with a real headless browser, the scrape came back with only 1
+   of 5 events, and a garbled date on that one.** A direct side-by-side
+   check -- the identical URL, loaded in an ordinary human-driven Chrome
+   tab -- came back with all 5 events correctly immediately, no waiting
+   needed. Same URL, different content, only when automated: the
+   likely cause is `navigator.webdriver` (`true` by default in an
+   unmodified Playwright session, `false` in a real browser), a
+   well-known signal bot-management products check for, causing a
+   stale/fallback snapshot to be served to automated sessions. Fixed with
+   the standard mitigation -- `rendered_html.py` now launches Chromium
+   with `--disable-blink-features=AutomationControlled` and overrides
+   `navigator.webdriver` via an init script before any page script runs.
+   (Also added `_wait_for_stable_item_count()`, which polls the matching
+   item count until it stops changing rather than capturing the instant
+   the first one appears -- a reasonable fix for a *different*, more
+   common failure mode of progressively-hydrating widgets, and worth
+   keeping even though it turned out not to be this specific symptom's
+   actual cause.)
+3. **Even after fixing the above, the real captured HTML -- confirmed via
+   a raw-sample dump, which needed `_RAW_SAMPLE_SIGNALS` in
+   `app/scrapers/base.py` extended with `"events-listing__item"` since
+   the default `<body>`-anchored sample never reached that far past
+   Quonk's header/hero markup -- showed all 5 events with correct dates
+   right there in the markup, yet parsing still produced 1 wrong event.**
+   The real culprit: `date_selector`'s match isn't one flat text node,
+   it's several (`<span isolate>Fri</span><span isolate>Jul</span>
+   <var>24</var>...`, see the sample above). `BeautifulSoup.get_text(strip=True)`
+   with no separator glues adjacent fragments together with nothing
+   between them ("FriJul24, 2026..."), and dateutil's fuzzy parser
+   doesn't recognize "FriJul" as a month at all -- it either fails to
+   parse the string outright (event silently skipped) or falls back to
+   January. Fixed by adding `separator=" "` to every `get_text()` call in
+   `html_generic.py`'s `parse()` (title, date, inline description, genre)
+   -- a no-op for every other venue here, whose selectors all match a
+   single plain-text node with no internal tag boundaries to separate.
+
+This is also the first venue where a relative href/src needs resolving
+against a *different* domain than `website_url` -- Ticket Tailor's own
+domain, not quonkhampton.com. `html_generic.py`'s `_resolve_url()` calls
+now anchor against `events_url`'s own scheme+host instead (see that
+file's module docstring), which is a strictly more correct fix for every
+other venue here too, since it happens their `events_url` and
+`website_url` share a domain already.
+
+**Caveat:** one event ("The Number Goes Up! Gameshow") lists multiple
+showtimes as just "Fri Jul 31, 2026, Multiple times" instead of a real
+time -- the fuzzy date parser can't extract a time from that and falls
+back to midnight. Rare enough (one event, currently) not to be worth a
+dedicated heuristic; if it bothers you, edit that show's time by hand
+after it's imported.
+
 ## Keeping scraped data honest
 
 Scraping isn't just "find new shows" -- venues change times, and sometimes
@@ -523,7 +733,7 @@ source .venv/bin/activate        # .venv\Scripts\activate on Windows
 pip install -r requirements.txt
 playwright install chromium      # one-time browser download, needed for rendered_html venues
 
-python seed.py                   # adds Iron Horse, Parlor Room, Academy of Music, Haze, Luthier's Co-Op, 33 Hawley, The Heavy Culture Cooperative, sample artists/shows
+python seed.py                   # adds Iron Horse, Parlor Room, Academy of Music, Haze, Luthier's Co-Op, 33 Hawley, The Heavy Culture Cooperative, Quonk, sample artists/shows
 python run.py                    # http://127.0.0.1:5000
 ```
 

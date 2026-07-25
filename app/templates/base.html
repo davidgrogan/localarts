@@ -19,10 +19,9 @@
     <nav>
       <a href="{{ url_for('main.calendar') }}">Calendar</a>
       <a href="{{ url_for('artists.list_artists') }}">Local Artists</a>
-      <!-- "Contact" nav link removed for now -- will revisit. Route/page
-           still work at /contact, just not linked from the nav. -->
+      <a href="{{ url_for('venues.list_venues') }}">Venues</a>
+      <a href="{{ url_for('contact.contact') }}">Contact</a>
       {% if is_admin %}
-        <a href="{{ url_for('venues.list_venues') }}">Venues</a>
         <a href="{{ url_for('events.new_event') }}">+ Add show</a>
         <a href="{{ url_for('events.review') }}" class="review-link">
           Review{% if pending_count %} <span class="badge">{{ pending_count }}</span>{% endif %}
