@@ -7,37 +7,9 @@
     venues, artists, or improvements please email
     <a href="mailto:davidbgrogan@gmail.com">davidbgrogan@gmail.com</a>.
   </p>
-  <p class="meta">
-    Know a local artist, show, or venue that should be on here? Spot
-    something wrong? Let us know below.
-  </p>
-
-  <form class="stacked" method="post">
-    <label for="category">What's this about?</label>
-    <select id="category" name="category">
-      {% for value, label in categories %}
-        <option value="{{ value }}" {% if form and form.get('category') == value %}selected{% endif %}>{{ label }}</option>
-      {% endfor %}
-    </select>
-
-    <label for="name">Your name (optional)</label>
-    <input type="text" id="name" name="name" value="{{ form.get('name', '') if form else '' }}">
-
-    <label for="email">Your email (optional, so we can follow up)</label>
-    <input type="email" id="email" name="email" value="{{ form.get('email', '') if form else '' }}">
-
-    <label for="message">Details</label>
-    <textarea id="message" name="message" rows="6" required>{{ form.get('message', '') if form else '' }}</textarea>
-
-    <!-- Honeypot -- hidden from real visitors via CSS; bots that fill in
-         every field will trip it. -->
-    <div class="hp-field" aria-hidden="true">
-      <label for="website">Leave this field blank</label>
-      <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
-    </div>
-
-    <div class="actions">
-      <button class="btn" type="submit">Send</button>
-    </div>
-  </form>
+  {# The contact form (category/name/email/message + Gmail SMTP send) is
+     removed for now, per David's request -- the route in
+     app/routes/contact.py still handles GET/POST and the email-sending
+     logic is untouched, so restoring the form here is a template-only
+     change if it comes back later. #}
 {% endblock %}
