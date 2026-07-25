@@ -39,7 +39,7 @@ def _send_email(name, reply_to, category_label, message):
         )
 
     msg = EmailMessage()
-    msg["Subject"] = f"NoHo Now! contact form: {category_label}"
+    msg["Subject"] = f"Paradise City Music contact form: {category_label}"
     msg["From"] = MAIL_USERNAME
     msg["To"] = CONTACT_EMAIL
     if reply_to:

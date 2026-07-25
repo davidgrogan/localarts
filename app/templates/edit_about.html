@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Edit About This Site{% endblock %}
+{% block content %}
+  <h1>Edit "About this site"</h1>
+  <p class="meta">
+    This is the block visitors see under "About this site" on the calendar
+    page. Raw HTML is allowed and rendered as-is &mdash; no need to escape
+    tags, but double-check your markup here before saving since there's no
+    preview.
+  </p>
+
+  <form class="stacked" method="post">
+    <label for="about_html">HTML content</label>
+    <textarea id="about_html" name="about_html" rows="16">{{ setting.about_html }}</textarea>
+    <p class="hint">Tip: this is the same markup already used for the default copy &mdash; an &lt;h1&gt;, then one or more &lt;p&gt; tags. Class names like "hero-lede" and "hero-note" pick up the site's existing styling.</p>
+    <div class="actions">
+      <button class="btn" type="submit">Save</button>
+      <a class="btn btn-secondary" href="{{ url_for('main.calendar') }}">Cancel</a>
+    </div>
+  </form>
+{% endblock %}

@@ -23,6 +23,8 @@ is built around.
 """
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+
+from app.utils import local_now
 from typing import Optional
 
 from app.models import db, Event, ScrapeRun
@@ -196,13 +198,17 @@ def run_scrape(venue, approve_new=False):
         run.message = str(exc)
         run.events_found = 0
         db.session.add(run)
-        venue.last_scraped_at = datetime.utcnow()
+        venue.last_scraped_at = local_now()
         db.session.commit()
         raise
 
     raw_sample = result["raw_sample"]
     events = result["events"]
-    now = datetime.utcnow()
+    # local_now(), not datetime.utcnow() -- see app/utils.py's SITE_TIMEZONE
+    # docstring. This gets compared against Event.start_datetime below (the
+    # "did an approved show quietly disappear from the feed" check), which
+    # is naive local wall-clock, not true UTC.
+    now = local_now()
 
     created = 0
     updated = 0

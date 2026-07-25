@@ -288,3 +288,27 @@ class ScrapeRun(db.Model):
     raw_sample = db.Column(db.Text)
 
     venue = db.relationship("Venue", back_populates="scrape_runs")
+
+
+class SiteSetting(db.Model):
+    """A single-row table for small pieces of sitewide content an admin
+    can edit through the UI instead of needing a code change -- right now
+    just the "About this site" block on the calendar page. Deliberately
+    not a general key/value settings table (nothing else needs one yet);
+    always exactly one row, fixed at id=1, created on first access by
+    app.utils.get_site_setting() if it's missing (e.g. a fresh install
+    with no admin edit yet).
+
+    about_html is stored and rendered as raw HTML (see calendar.html's
+    `| safe` filter) rather than escaped/plain text, per David's ask --
+    same trust model already used for Artist.embed_code: only an
+    already-authenticated admin can ever write to this field (see
+    main.py's edit_about(), which is @login_required), so allowing HTML
+    here doesn't open an XSS hole to the public the way accepting raw
+    HTML from a visitor-facing form would.
+    """
+
+    __tablename__ = "site_setting"
+
+    id = db.Column(db.Integer, primary_key=True)
+    about_html = db.Column(db.Text, nullable=False, default="")

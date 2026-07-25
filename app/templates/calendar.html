@@ -13,17 +13,13 @@
   <details class="hero" id="about-site-details">
     <summary>About this site <span class="toggle-icon" aria-hidden="true">&#9660;</span></summary>
     <div class="hero-body">
-      <h1>Find Out What Events Are Happening in the Northampton Area</h1>
-      <p class="hero-lede">
-        One calendar, pulled together from venues all over Northampton, MA
-        &mdash; so you don't have to check a dozen different sites to see
-        what's playing this week.
-      </p>
-      <p class="hero-note">
-        Venues sometimes change set times, lineups, or cancel shows on short
-        notice, so before you head out, it's always worth double-checking the
-        details on the venue's own website.
-      </p>
+      {# about_html is admin-editable HTML (see main.py's edit_about() and
+         models.py's SiteSetting) -- trusted input, same pattern as an
+         artist's embed_code, so it's rendered unescaped. #}
+      {{ about_html | safe }}
+      {% if is_admin %}
+        <p><a class="btn btn-small btn-secondary" href="{{ url_for('main.edit_about') }}">Edit this text</a></p>
+      {% endif %}
     </div>
   </details>
 
@@ -83,29 +79,34 @@
       {% endfor %}
     </select>
     <!-- Local artist filter removed for now -- coming back to this later. -->
-    <select name="type" onchange="document.getElementById('view-field').value='list'; this.form.submit()">
-      <option value="">All event types</option>
-      {% for t in event_types %}
-        <option value="{{ t.id }}" {% if t.id == selected_type %}selected{% endif %}>{{ t.name }}</option>
+    <select name="genre" onchange="document.getElementById('view-field').value='list'; this.form.submit()">
+      <option value="">All genres</option>
+      {% for g in genres %}
+        <option value="{{ g }}" {% if g == selected_genre %}selected{% endif %}>{{ g }}</option>
       {% endfor %}
-      <option value="untagged" {% if selected_type == "untagged" %}selected{% endif %}>Untagged</option>
     </select>
+    <!-- "Only show first date of recurring events" toggle hidden for now,
+         per David's ask -- the underlying hide_recurring query param,
+         main.py's GROUP_RECURRING_EVENTS grouping logic, and the
+         view-toggle/clear-filters links below are all untouched, so this
+         is a one-line uncomment to bring the checkbox back later.
     <label class="recurring-toggle">
       <input type="checkbox" name="hide_recurring" value="1" {% if hide_recurring %}checked{% endif %} onchange="this.form.submit()">
       Only show first date of recurring events
     </label>
+    -->
     <label class="recurring-toggle">
       <input type="checkbox" name="only_local_artists" value="1" {% if only_local_artists %}checked{% endif %} onchange="this.form.submit()">
       Show only events with local artists
     </label>
-    {% if selected_venue or selected_type or hide_recurring or only_local_artists %}
+    {% if selected_venue or selected_genre or hide_recurring or only_local_artists %}
       <a class="clear" href="{{ url_for('main.calendar', view=view) }}">Clear filters</a>
     {% endif %}
   </form>
 
   <div class="view-toggle">
-    <a class="btn btn-small {{ '' if view == 'week' else 'btn-secondary' }}" href="{{ url_for('main.calendar', view='week', venue=selected_venue, type=selected_type, hide_recurring=('1' if hide_recurring else none), only_local_artists=('1' if only_local_artists else none)) }}">Next 7 Days</a>
-    <a class="btn btn-small {{ '' if view == 'list' else 'btn-secondary' }}" href="{{ url_for('main.calendar', view='list', venue=selected_venue, type=selected_type, hide_recurring=('1' if hide_recurring else none), only_local_artists=('1' if only_local_artists else none)) }}">List All</a>
+    <a class="btn btn-small {{ '' if view == 'week' else 'btn-secondary' }}" href="{{ url_for('main.calendar', view='week', venue=selected_venue, genre=selected_genre, hide_recurring=('1' if hide_recurring else none), only_local_artists=('1' if only_local_artists else none)) }}">Next 7 Days</a>
+    <a class="btn btn-small {{ '' if view == 'list' else 'btn-secondary' }}" href="{{ url_for('main.calendar', view='list', venue=selected_venue, genre=selected_genre, hide_recurring=('1' if hide_recurring else none), only_local_artists=('1' if only_local_artists else none)) }}">List All</a>
   </div>
 
     {% if items %}
@@ -144,7 +145,11 @@
                 {% endif %}
                 {% if local_artists %}<span class="local-artist-badge" title="Features {{ local_artists | map(attribute='name') | join(', ') }}">&#9733; Local Artist</span>{% endif %}
                 {% if e.genre %}<span class="genre-tag">{{ e.genre }}</span>{% endif %}
-                {% for t in e.event_types %}<span class="type-tag">{{ t.name }}</span>{% endfor %}
+                {# Category Tag pills (e.g. "Music") are no longer shown per-card --
+                   now that the whole calendar is hard-restricted to Music, every
+                   single card would carry the same redundant "Music" badge. The
+                   underlying tags/filter infrastructure is untouched; this is
+                   purely a display cleanup. #}
               </div>
               <div class="event-venue">
                 {% if e.venue.website_url %}
@@ -187,7 +192,7 @@
       {# items is empty -- same empty-state copy as before #}
       <p class="empty-state">
         {% if view == 'week' %}
-          No shows in the next 7 days. Try <a href="{{ url_for('main.calendar', view='list', venue=selected_venue, type=selected_type, only_local_artists=('1' if only_local_artists else none)) }}">List All</a> to see what's further out.
+          No shows in the next 7 days. Try <a href="{{ url_for('main.calendar', view='list', venue=selected_venue, genre=selected_genre, only_local_artists=('1' if only_local_artists else none)) }}">List All</a> to see what's further out.
         {% elif is_admin %}
           No upcoming shows yet. <a href="{{ url_for('events.new_event') }}">Add one</a>, or add a venue and try a scrape.
         {% else %}
@@ -219,8 +224,8 @@
           localStorage.setItem(storageKey, el.open ? "1" : "0");
         });
       }
-      rememberOpenState("about-site-details", "noho_about_site_open");
-      rememberOpenState("featured-artist-details", "noho_featured_artist_open");
+      rememberOpenState("about-site-details", "pcm_about_site_open");
+      rememberOpenState("featured-artist-details", "pcm_featured_artist_open");
     })();
   </script>
 {% endblock %}

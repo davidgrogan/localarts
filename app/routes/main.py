@@ -1,10 +1,12 @@
 import random
-from datetime import datetime, timedelta
+from datetime import timedelta
 
-from flask import Blueprint, render_template, request
+from flask import Blueprint, flash, redirect, render_template, request, url_for
 
-from app.models import Event, Venue, Artist, EventType
+from app.auth import login_required
+from app.models import db, Event, Venue, Artist, EventType
 from app.recurrence import DisplayItem, group_recurring_events
+from app.utils import get_site_setting, local_now
 
 bp = Blueprint("main", __name__)
 
@@ -18,22 +20,72 @@ bp = Blueprint("main", __name__)
 # overrides the toggle entirely, for a one-line rollback if needed.
 GROUP_RECURRING_EVENTS = True
 
+# The site pivoted to a music-only focus -- the public calendar now always
+# restricts to events carrying this EventType category tag, regardless of
+# any filter selection (there's no way to opt back into seeing Comedy/Art/
+# Lecture/etc. from the calendar UI at all anymore). The underlying
+# Category Tags infrastructure is untouched otherwise -- a venue can still
+# scrape/tag non-music events, an admin can still see and manage them via
+# the Review queue and each venue's own detail page -- they just never
+# reach the public calendar. Matched case-insensitively (this dataset has
+# inconsistently-cased tags, e.g. "Music" alongside "karaoke") rather than
+# hardcoding a specific EventType id, which could differ per install.
+MUSIC_ONLY_CATEGORY_NAME = "music"
 
-def _base_query(venue_id, artist_id, selected_type, only_local_artists=False):
+
+def _base_query(venue_id, artist_id, selected_genre, only_local_artists=False):
     query = Event.query.filter(Event.is_approved.is_(True))
+    query = query.join(Event.event_types).filter(
+        db.func.lower(EventType.name) == MUSIC_ONLY_CATEGORY_NAME
+    )
     if venue_id:
         query = query.filter(Event.venue_id == venue_id)
     if artist_id:
-        query = query.join(Event.artists).filter(Artist.id == artist_id)
-    if selected_type == "untagged":
-        query = query.filter(~Event.event_types.any())
-    elif selected_type:
-        query = query.join(Event.event_types).filter(EventType.id == selected_type)
+        query = query.filter(Event.artists.any(Artist.id == artist_id))
+    if selected_genre:
+        # Event.genre is a freeform, comma-separated string straight from
+        # whatever a venue's own feed happens to publish (see models.py) --
+        # not a real tag table like EventType/GenreTag. A plain
+        # case-insensitive substring match is the simplest thing that
+        # works against that: good enough at this site's scale (confirmed
+        # against real scraped data), would need a proper normalized
+        # genre-tag table if the venue list grew a lot and this started
+        # producing noisy false matches.
+        query = query.filter(Event.genre.ilike(f"%{selected_genre}%"))
     if only_local_artists:
         # .any() (an EXISTS subquery) rather than a join -- a join here
         # would duplicate a show once per local artist it features.
         query = query.filter(Event.artists.any(Artist.is_local.is_(True)))
     return query
+
+
+def _distinct_genres():
+    """Every individual genre word/phrase currently in play across
+    approved, Music-tagged events' freeform Event.genre field -- powers
+    the Genre filter dropdown (replacing the old Event Type filter, which
+    stopped being useful once the calendar hard-restricts to Music
+    anyway). A venue's feed often lists a show's genre(s) as one
+    comma-separated string (e.g. "Alternative, Americana,
+    Singer-Songwriter"); this splits those apart and de-duplicates
+    case-insensitively (keeping whichever casing was seen first) so the
+    dropdown offers one option per genre rather than one per unique
+    combination of genres."""
+    seen = {}
+    rows = (
+        _base_query(None, None, None)
+        .filter(Event.genre.isnot(None), Event.genre != "")
+        .with_entities(Event.genre)
+        .distinct()
+    )
+    for (raw,) in rows:
+        for piece in raw.split(","):
+            piece = piece.strip()
+            if not piece:
+                continue
+            key = piece.lower()
+            if key not in seen:
+                seen[key] = piece
+    return sorted(seen.values(), key=str.lower)
 
 
 def _pick_featured_artist():
@@ -42,13 +94,20 @@ def _pick_featured_artist():
     (rather than a curated rotation) per David's ask -- keeps this to a
     single query with no scheduling/state to maintain. Returns None if
     there's no eligible artist yet (e.g. a fresh install with no shows
-    linked to any local artist)."""
+    linked to any local artist).
+
+    Compares against local_now(), not datetime.utcnow() -- Event.start_datetime
+    is stored as a naive local wall-clock time straight from whatever a
+    venue's feed says (see app/utils.py's SITE_TIMEZONE docstring), so
+    comparing it against true UTC "now" made same-day shows look like
+    they'd already happened for the several hours US/Eastern trails UTC
+    (the bug behind a real show, today, not appearing here)."""
     from sqlalchemy import and_
 
     candidates = Artist.query.filter(
         Artist.is_local.is_(True),
         Artist.events.any(and_(
-            Event.start_datetime >= datetime.utcnow(),
+            Event.start_datetime >= local_now(),
             Event.is_approved.is_(True),
         )),
     ).all()
@@ -63,7 +122,7 @@ def _upcoming_events_for(artist):
     already loaded and typically tiny (a handful of shows at most)."""
     if not artist:
         return []
-    now = datetime.utcnow()
+    now = local_now()
     upcoming = [e for e in artist.events if e.start_datetime >= now and e.is_approved]
     return sorted(upcoming, key=lambda e: e.start_datetime)
 
@@ -72,16 +131,7 @@ def _upcoming_events_for(artist):
 def calendar():
     venue_id = request.args.get("venue", type=int)
     artist_id = request.args.get("artist", type=int)
-    # The type filter is normally a tag id, but also accepts the special
-    # value "untagged" to find events with no tags at all -- see
-    # _base_query() above.
-    type_param = request.args.get("type", "").strip()
-    if type_param == "untagged":
-        event_type_id = "untagged"
-    elif type_param.isdigit():
-        event_type_id = int(type_param)
-    else:
-        event_type_id = None
+    genre_param = request.args.get("genre", "").strip() or None
     # "week" (the next 7 days) is the default landing view; "list" is the
     # full unbounded upcoming-shows list. The month-grid view was removed
     # -- it was hard to read with more than a couple of shows in a day.
@@ -97,7 +147,10 @@ def calendar():
     # shows at once rather than one artist at a time.
     only_local_artists = request.args.get("only_local_artists") == "1"
 
-    today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    # local_now(), not datetime.utcnow() -- see app/utils.py's SITE_TIMEZONE
+    # docstring. Using true UTC here made "today" roll over hours before
+    # local midnight actually arrived.
+    today = local_now().replace(hour=0, minute=0, second=0, microsecond=0)
     week_end = today + timedelta(days=7)
 
     # Always query the full unbounded future set (not just the week-view's
@@ -108,7 +161,7 @@ def calendar():
     # falls in that window; it just computes the grouping from complete
     # data first.
     all_upcoming = (
-        _base_query(venue_id, artist_id, event_type_id, only_local_artists)
+        _base_query(venue_id, artist_id, genre_param, only_local_artists)
         .filter(Event.start_datetime >= today)
         .order_by(Event.start_datetime.asc())
         .all()
@@ -124,8 +177,9 @@ def calendar():
 
     venues = Venue.query.order_by(Venue.name).all()
     artists = Artist.query.filter_by(is_local=True).order_by(Artist.name).all()
-    event_types = EventType.query.order_by(EventType.name).all()
+    genres = _distinct_genres()
     featured_artist = _pick_featured_artist()
+    site_setting = get_site_setting()
 
     return render_template(
         "calendar.html",
@@ -137,12 +191,32 @@ def calendar():
         week_end=week_end - timedelta(days=1),
         venues=venues,
         artists=artists,
-        event_types=event_types,
+        genres=genres,
         selected_venue=venue_id,
         selected_artist=artist_id,
-        selected_type=event_type_id,
+        selected_genre=genre_param,
         hide_recurring=hide_recurring,
         only_local_artists=only_local_artists,
         featured_artist=featured_artist,
         featured_artist_events=_upcoming_events_for(featured_artist),
+        about_html=site_setting.about_html,
     )
+
+
+@bp.route("/about/edit", methods=["GET", "POST"])
+@login_required
+def edit_about():
+    """Admin-only editor for the "About this site" block on the calendar
+    page. Deliberately a single big HTML textarea (not a rich-text/WYSIWYG
+    editor -- no such dependency exists in this project) since David asked
+    for it to "allow HTML markup" directly, same trust model as an
+    artist's embed_code field. See models.py's SiteSetting docstring for
+    why this is safe (only an authenticated admin can ever reach this
+    route)."""
+    setting = get_site_setting()
+    if request.method == "POST":
+        setting.about_html = request.form.get("about_html", "")
+        db.session.commit()
+        flash("Updated “About this site.”", "success")
+        return redirect(url_for("main.calendar"))
+    return render_template("edit_about.html", setting=setting)

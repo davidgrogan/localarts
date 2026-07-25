@@ -1,9 +1,7 @@
-from datetime import datetime
-
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 
 from app.models import db, Artist, Event, GenreTag, EventType
-from app.utils import slugify, get_or_create_genre_tag, get_or_create_event_type
+from app.utils import slugify, get_or_create_genre_tag, get_or_create_event_type, local_now
 from app.auth import login_required
 
 bp = Blueprint("artists", __name__, url_prefix="/artists")
@@ -96,7 +94,10 @@ def list_artists():
     if upcoming_only:
         # .any() (an EXISTS subquery) rather than a join -- a join here
         # would duplicate an artist once per upcoming show they have.
-        query = query.filter(Artist.events.any(Event.start_datetime >= datetime.utcnow()))
+        # local_now(), not datetime.utcnow() -- see app/utils.py's
+        # SITE_TIMEZONE docstring (Event.start_datetime is naive local
+        # wall-clock, not true UTC).
+        query = query.filter(Artist.events.any(Event.start_datetime >= local_now()))
     artists = query.all()
 
     return render_template(

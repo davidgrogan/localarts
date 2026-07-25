@@ -6,11 +6,11 @@ Safe to re-run: looks up by slug/title before inserting.
 Usage:
     python seed.py
 """
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from app import create_app
 from app.models import db, Venue, Artist, Event
-from app.utils import slugify, get_or_create_event_type, get_or_create_genre_tag
+from app.utils import slugify, get_or_create_event_type, get_or_create_genre_tag, local_now
 
 
 def get_or_create_venue(**kwargs):
@@ -197,7 +197,7 @@ def main():
             slug="luthiers-co-op",
             address="108 Cottage St.",
             # Easthampton, not Northampton -- a few towns over, still
-            # squarely in the "NoHo Now!" area David books/attends in.
+            # squarely in the "Paradise City Music" area David books/attends in.
             city="Easthampton",
             state="MA",
             website_url="https://www.luthiers-coop.com",
@@ -492,60 +492,50 @@ def main():
         # A couple of manually-entered sample shows so the calendar has
         # content immediately, independent of whether a live scrape has
         # been run yet.
-        if not Event.query.filter_by(title="Sample Show -- Iron Horse").first():
-            db.session.add(
-                Event(
-                    venue_id=iron_horse.id,
-                    title="Sample Show -- Iron Horse",
-                    start_datetime=datetime.utcnow() + timedelta(days=5, hours=2),
-                    description="Placeholder show, added manually. Delete once real scraped/added shows are in.",
-                    source="manual",
-                    is_approved=True,
-                    artists=[artist_1],
-                )
-            )
-        if not Event.query.filter_by(title="Sample Show -- Parlor Room").first():
-            db.session.add(
-                Event(
-                    venue_id=parlor_room.id,
-                    title="Sample Show -- Parlor Room",
-                    start_datetime=datetime.utcnow() + timedelta(days=9, hours=3),
-                    description="Placeholder show, added manually.",
-                    source="manual",
-                    is_approved=True,
-                    artists=[artist_2],
-                )
-            )
-        # Upcoming shows for the two new tagged-artist placeholders --
-        # without one of these, artist_3/artist_4 wouldn't show up under
-        # the Local Artists page's "upcoming shows" toggle or be eligible
-        # for the homepage's featured-artist spotlight.
-        if not Event.query.filter_by(title="Sample Show -- Academy of Music").first():
-            db.session.add(
-                Event(
-                    venue_id=academy_of_music.id,
-                    title="Sample Show -- Academy of Music",
-                    start_datetime=datetime.utcnow() + timedelta(days=3, hours=4),
-                    description="Placeholder show, added manually.",
-                    source="manual",
-                    is_approved=True,
-                    artists=[artist_3],
-                    event_types=[music_tag],
-                )
-            )
-        if not Event.query.filter_by(title="Sample Show -- Haze").first():
-            db.session.add(
-                Event(
-                    venue_id=haze.id,
-                    title="Sample Show -- Haze",
-                    start_datetime=datetime.utcnow() + timedelta(days=6, hours=5),
-                    description="Placeholder show, added manually.",
-                    source="manual",
-                    is_approved=True,
-                    artists=[artist_4],
-                    event_types=[music_tag],
-                )
-            )
+        # These four placeholder shows exist so the calendar/featured-artist
+        # spotlight have something to show before any real scrape/manual add
+        # has happened. They used to be inserted with a one-time "only if no
+        # row with this title exists yet" guard, which meant their
+        # start_datetime was set exactly once, the very first time seed.py
+        # ran on a given database, and never touched again. That's exactly
+        # why the homepage's featured-artist spotlight can quietly vanish
+        # weeks/months later: _pick_featured_artist() (main.py) only
+        # considers an artist with a *future* approved show, and these
+        # placeholder shows' "N days from now" dates were computed relative
+        # to whatever "now" was on that first run -- once enough real time
+        # passes, every one of them silently rolls into the past and no
+        # longer counts, with nothing surfacing an error since an empty
+        # candidate list is a perfectly normal, silent "don't show the
+        # spotlight" state. Fetching by title and refreshing start_datetime
+        # (and is_approved, in case one was manually rejected while testing)
+        # on every run -- same "reapply on every seed.py run" pattern
+        # already used above for artist_3/artist_4's tags -- keeps these
+        # useful as an always-current demo instead of a one-time snapshot.
+        def _upsert_sample_show(title, venue_id, days_out, hours_out, artists, event_types=None):
+            event = Event.query.filter_by(title=title).first()
+            if not event:
+                event = Event(title=title, venue_id=venue_id, source="manual")
+                db.session.add(event)
+            # local_now(), not datetime.utcnow() -- keeps these placeholder
+            # shows' "N days from now" dates consistent with how every real
+            # start_datetime is compared elsewhere (see app/utils.py's
+            # SITE_TIMEZONE docstring).
+            event.start_datetime = local_now() + timedelta(days=days_out, hours=hours_out)
+            event.description = event.description or "Placeholder show, added manually. Delete once real scraped/added shows are in."
+            event.is_approved = True
+            event.artists = artists
+            if event_types is not None:
+                event.event_types = event_types
+            return event
+
+        _upsert_sample_show("Sample Show -- Iron Horse", iron_horse.id, 5, 2, [artist_1])
+        _upsert_sample_show("Sample Show -- Parlor Room", parlor_room.id, 9, 3, [artist_2])
+        # Upcoming shows for the two tagged-artist placeholders -- without
+        # one of these, artist_3/artist_4 wouldn't show up under the Local
+        # Artists page's "upcoming shows" toggle or be eligible for the
+        # homepage's featured-artist spotlight.
+        _upsert_sample_show("Sample Show -- Academy of Music", academy_of_music.id, 3, 4, [artist_3], [music_tag])
+        _upsert_sample_show("Sample Show -- Haze", haze.id, 6, 5, [artist_4], [music_tag])
 
         db.session.commit()
         print("Seed complete:")
