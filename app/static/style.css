@@ -415,8 +415,23 @@ h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; lett
 
 .view-toggle { margin: 0.25rem 0 1.25rem; display: flex; gap: 0.5rem; }
 
-.artist-embed { margin: 1.25rem 0; }
-.artist-embed iframe { max-width: 100%; }
+.artist-embed { margin: 0.75rem 0 0.5rem; }
+.artist-embed iframe { max-width: 100%; display: block; }
+/* The gap after the embed on an artist's profile page was still reading as
+   "a lot of white space" even after the first pass at this -- the previous
+   fix only reduced each side's margin, but adjacent margins in normal flow
+   *collapse* to whichever single one is largest rather than adding up, so
+   trimming both sides only helps as much as the smaller of the two actually
+   was. Zeroing out margin-top entirely on the heading that follows (instead
+   of just shrinking it) makes the preceding block's own margin-bottom the
+   *only* thing controlling the gap -- deterministic and not dependent on
+   whether the admin-only Edit/Delete buttons (.page-actions) happen to sit
+   in between artist.embed_code and "Upcoming shows" or not. h2's normal
+   2rem top margin (further down this file) is left alone everywhere else
+   it's used. */
+.artist-embed + h2,
+.page-actions + h2 { margin-top: 0 !important; }
+.artist-embed + .page-actions { margin-top: 0.5rem; }
 
 table.plain { width: 100%; border-collapse: collapse; }
 table.plain th, table.plain td {

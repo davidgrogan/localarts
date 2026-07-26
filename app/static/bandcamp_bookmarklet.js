@@ -188,8 +188,16 @@
     if (ogImage && ogImage.getAttribute("content")) result.image_url = ogImage.getAttribute("content");
     if (ogVideo && ogVideo.getAttribute("content")) {
       const albumTitle = earliest.title || "Listen on Bandcamp";
+      // height: 120px, not Bandcamp's full "large tracklist" player size
+      // (470px) -- og:video is Bandcamp's own minimal social-share/link-
+      // preview embed (no tracklist, just cover art + a play button), so a
+      // 470px-tall box around it left a large empty void below the actual
+      // compact player -- exactly the "white space" bug this fixes. 120px
+      // matches the height already used for seed.py's placeholder embed,
+      // which points at the same size=large/tracklist=false Bandcamp
+      // embed style.
       result.embed_code =
-        '<iframe style="border: 0; width: 350px; height: 470px;" src="' +
+        '<iframe style="border: 0; width: 350px; height: 120px;" src="' +
         ogVideo.getAttribute("content") +
         '" seamless><a href="' +
         earliest.url +
