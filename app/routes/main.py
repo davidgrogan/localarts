@@ -1,4 +1,4 @@
-import random
+from dataclasses import dataclass
 from datetime import timedelta
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for
@@ -88,43 +88,43 @@ def _distinct_genres():
     return sorted(seen.values(), key=str.lower)
 
 
-def _pick_featured_artist():
-    """Pick one random is_local artist that has at least one upcoming
-    show, for the homepage spotlight. Random on every homepage load
-    (rather than a curated rotation) per David's ask -- keeps this to a
-    single query with no scheduling/state to maintain. Returns None if
-    there's no eligible artist yet (e.g. a fresh install with no shows
-    linked to any local artist).
-
-    Compares against local_now(), not datetime.utcnow() -- Event.start_datetime
-    is stored as a naive local wall-clock time straight from whatever a
-    venue's feed says (see app/utils.py's SITE_TIMEZONE docstring), so
-    comparing it against true UTC "now" made same-day shows look like
-    they'd already happened for the several hours US/Eastern trails UTC
-    (the bug behind a real show, today, not appearing here)."""
-    from sqlalchemy import and_
-
-    candidates = Artist.query.filter(
-        Artist.is_local.is_(True),
-        Artist.events.any(and_(
-            Event.start_datetime >= local_now(),
-            Event.is_approved.is_(True),
-        )),
-    ).all()
-    return random.choice(candidates) if candidates else None
+@dataclass
+class WeeklySpot:
+    """One card in the "Local Artists Playing This Week!" gallery: a single
+    local artist's appearance at a single show. Deliberately one entry per
+    (artist, show) pair rather than one per artist or one per show -- an
+    artist playing twice this week gets two cards (one per date/venue), and
+    a bill with more than one local act (not unusual -- e.g. a show billing
+    three local bands together) gets one card per artist rather than
+    picking just one of them to represent the whole bill."""
+    artist: Artist
+    event: Event
 
 
-def _upcoming_events_for(artist):
-    """The featured artist's own upcoming, approved shows, soonest first --
-    shown directly in the homepage spotlight (rather than making a visitor
-    click through to the artist's page to see them) per David's ask.
-    Filtered/sorted in Python rather than a query since artist.events is
-    already loaded and typically tiny (a handful of shows at most)."""
-    if not artist:
-        return []
-    now = local_now()
-    upcoming = [e for e in artist.events if e.start_datetime >= now and e.is_approved]
-    return sorted(upcoming, key=lambda e: e.start_datetime)
+def _local_artists_playing_this_week(week_start, week_end):
+    """Every local artist's appearance at an approved, Music-tagged show
+    landing in the [week_start, week_end) window, soonest first -- powers
+    the homepage's "Local Artists Playing This Week!" gallery. Replaces the
+    old single-random-artist spotlight with everything actually happening
+    this week, since that's more useful to a visitor deciding what to go
+    see than one random pick. Reuses whatever week_start/week_end the
+    calendar's own "week" view is built from (see calendar() below), so
+    "this week" means the same 7-day window everywhere on the page --
+    that's already computed with local_now(), not datetime.utcnow() (see
+    app/utils.py's SITE_TIMEZONE docstring), so today's shows correctly
+    still count as upcoming."""
+    events = (
+        _base_query(None, None, None, only_local_artists=True)
+        .filter(Event.start_datetime >= week_start, Event.start_datetime < week_end)
+        .order_by(Event.start_datetime.asc())
+        .all()
+    )
+    spots = []
+    for event in events:
+        for artist in event.artists:
+            if artist.is_local:
+                spots.append(WeeklySpot(artist=artist, event=event))
+    return spots
 
 
 @bp.route("/")
@@ -178,7 +178,7 @@ def calendar():
     venues = Venue.query.order_by(Venue.name).all()
     artists = Artist.query.filter_by(is_local=True).order_by(Artist.name).all()
     genres = _distinct_genres()
-    featured_artist = _pick_featured_artist()
+    artists_this_week = _local_artists_playing_this_week(today, week_end)
     site_setting = get_site_setting()
 
     return render_template(
@@ -197,8 +197,7 @@ def calendar():
         selected_genre=genre_param,
         hide_recurring=hide_recurring,
         only_local_artists=only_local_artists,
-        featured_artist=featured_artist,
-        featured_artist_events=_upcoming_events_for(featured_artist),
+        artists_this_week=artists_this_week,
         about_html=site_setting.about_html,
     )
 

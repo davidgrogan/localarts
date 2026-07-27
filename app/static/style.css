@@ -229,10 +229,6 @@ h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; lett
 .featured-artist > summary .toggle-icon { background: var(--accent); }
 .featured-artist[open] > summary { margin-bottom: 0.75rem; }
 
-.featured-artist-shows { margin: 0.75rem 0; font-size: 0.9rem; }
-.featured-artist-shows ul { margin: 0.35rem 0 0; padding-left: 1.1rem; }
-.featured-artist-shows li { margin-bottom: 0.2rem; }
-
 .featured-artist {
   border: 1px solid var(--line);
   border-left: 4px solid var(--accent);
@@ -241,8 +237,46 @@ h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; lett
   margin: 0 0 2rem;
   background: var(--highlight-soft);
 }
-.featured-artist h2 { margin: 0 0 0.4rem; }
-.featured-artist h2 a { color: inherit; }
+
+/* "Local Artists Playing This Week!" gallery -- a plain horizontally
+   scrolling flex row with CSS scroll-snap, so swipe/trackpad scrolling
+   works with zero JS; the Prev/Next buttons (see calendar.html's
+   <script>) just trigger the same native scrolling programmatically. */
+.artist-week-gallery-wrap { margin-top: 0.25rem; }
+.artist-week-gallery {
+  display: flex;
+  gap: 1rem;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding-bottom: 0.5rem;
+  margin: 0 -0.25rem;
+}
+.artist-week-card {
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+  width: min(320px, 85vw);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper);
+  padding: 1rem 1.1rem;
+}
+.artist-week-card h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.05rem;
+  margin: 0.3rem 0;
+}
+.artist-week-card .meta { margin: 0; }
+.artist-week-card .artist-embed { margin: 0.5rem 0; }
+.artist-week-card .btn-small { margin-top: 0.4rem; }
+.artist-week-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+.artist-week-count { font-size: 0.85rem; color: var(--muted); min-width: 5ch; text-align: center; }
 
 .btn {
   display: inline-block;
@@ -509,10 +543,12 @@ form.stacked .actions { margin-top: 1.5rem; }
   margin-bottom: 0.75rem;
 }
 .artist-thumb-large img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.featured-artist-body { display: flex; gap: 1.25rem; align-items: flex-start; }
-.featured-artist-thumb { width: 84px; height: 84px; }
+/* .featured-artist-thumb is still used (each artist-week-card's photo) --
+   .featured-artist-body (the old single-spotlight's side-by-side layout)
+   was removed along with it, since the new gallery stacks each card's
+   photo/text vertically instead. */
+.featured-artist-thumb { width: 84px; height: 84px; margin-bottom: 0.5rem; }
 @media (max-width: 600px) {
-  .featured-artist-body { flex-direction: column; }
   .featured-artist-thumb { width: 64px; height: 64px; }
 }
 .source-tag {

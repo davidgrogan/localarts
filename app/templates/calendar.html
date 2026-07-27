@@ -5,8 +5,8 @@
      "About this site" defaults CLOSED (no `open` attribute) -- most
      returning visitors already know what the site is, so this stays out
      of the way on every load unless they've explicitly opened it before.
-     "Featured local artist" still defaults OPEN. Either default is
-     immediately overridden for a returning visitor by the localStorage
+     "Local Artists Playing This Week!" still defaults OPEN. Either default
+     is immediately overridden for a returning visitor by the localStorage
      script at the bottom of this page, which remembers whichever state
      each panel was last left in and restores it on every subsequent page
      load -- these two `id`s are what that script looks for. #}
@@ -23,44 +23,56 @@
     </div>
   </details>
 
-  {% if featured_artist %}
-    {# Randomly picked from local artists with an upcoming show, on every
-       page load -- see main.py's _pick_featured_artist(). #}
-    <details class="featured-artist" id="featured-artist-details" open>
-      <summary>&#9733; Featured local artist <span class="toggle-icon" aria-hidden="true">&#9660;</span></summary>
-      <div class="featured-artist-body">
-        {% if featured_artist.image_url %}
-          <div class="artist-thumb featured-artist-thumb"><img src="{{ featured_artist.image_url }}" alt="" loading="lazy"></div>
-        {% endif %}
-        <div>
-          <h2><a href="{{ url_for('artists.detail', artist_id=featured_artist.id) }}">{{ featured_artist.name }}</a></h2>
-          <p class="meta">
-            {% for g in featured_artist.genre_tags %}<span class="genre-tag">{{ g.name }}</span>{% endfor %}
-            {% if featured_artist.hometown %} &middot; {{ featured_artist.hometown }}{% endif %}
-          </p>
-          {% if featured_artist.bio %}<p>{{ featured_artist.bio }}</p>{% endif %}
-          {% if featured_artist.embed_code %}
-            <div class="artist-embed">{{ featured_artist.embed_code | safe }}</div>
-          {% endif %}
-          {% if featured_artist_events %}
-            <div class="featured-artist-shows">
-              <strong>Upcoming shows:</strong>
-              <ul>
-                {% for e in featured_artist_events %}
-                  <li>
-                    {{ e.start_datetime | dtfmt("%a %b %-d, %-I:%M %p") }} &mdash; {{ e.title }} @
-                    {% if e.venue.website_url %}
-                      <a href="{{ e.venue.website_url }}" target="_blank" rel="noopener">{{ e.venue.name }}</a>
-                    {% else %}
-                      {{ e.venue.name }}
-                    {% endif %}
-                  </li>
-                {% endfor %}
-              </ul>
+  {% if artists_this_week %}
+    {# Every local artist's appearance at a show landing in this same
+       7-day window (see main.py's _local_artists_playing_this_week()) --
+       one card per (artist, show) pair, so an artist playing twice this
+       week (or a bill with more than one local act) gets a card each.
+       Replaces the old single-random-artist spotlight. The gallery itself
+       is a plain horizontally-scrolling flex row (CSS scroll-snap) so it
+       works via touch/trackpad swipe with no JS at all -- the Prev/Next
+       buttons below are just a more discoverable way to do the same
+       scroll, wired up in the <script> at the bottom of this page. #}
+    <details class="featured-artist" id="artists-this-week-details" open>
+      <summary>Local Artists Playing This Week! <span class="toggle-icon" aria-hidden="true">&#9660;</span></summary>
+      <div class="artist-week-gallery-wrap">
+        <div class="artist-week-gallery" id="artist-week-gallery">
+          {% for spot in artists_this_week %}
+            {% set artist = spot.artist %}
+            {% set e = spot.event %}
+            <div class="artist-week-card">
+              {% if artist.image_url %}
+                <div class="artist-thumb featured-artist-thumb"><img src="{{ artist.image_url }}" alt="" loading="lazy"></div>
+              {% endif %}
+              <p class="meta">
+                At
+                {% if e.venue.website_url %}
+                  <a href="{{ e.venue.website_url }}" target="_blank" rel="noopener">{{ e.venue.name }}</a>
+                {% else %}
+                  {{ e.venue.name }}
+                {% endif %}
+                on {{ e.start_datetime | dtfmt("%a %b %-d, %-I:%M %p") }}
+              </p>
+              <h3>{{ artist.name }}</h3>
+              {% if artist.genre_tags %}
+                <p class="meta">
+                  {% for g in artist.genre_tags %}<span class="genre-tag">{{ g.name }}</span>{% endfor %}
+                </p>
+              {% endif %}
+              {% if artist.embed_code %}
+                <div class="artist-embed">{{ artist.embed_code | safe }}</div>
+              {% endif %}
+              <a class="btn btn-small" href="{{ url_for('artists.detail', artist_id=artist.id) }}">View artist profile &rarr;</a>
             </div>
-          {% endif %}
-          <a class="btn btn-small" href="{{ url_for('artists.detail', artist_id=featured_artist.id) }}">View artist profile &rarr;</a>
+          {% endfor %}
         </div>
+        {% if artists_this_week | length > 1 %}
+          <div class="artist-week-nav">
+            <button type="button" class="btn btn-small btn-secondary" id="artist-week-prev" aria-label="Previous artist">&larr; Prev</button>
+            <span class="artist-week-count" id="artist-week-count"></span>
+            <button type="button" class="btn btn-small btn-secondary" id="artist-week-next" aria-label="Next artist">Next &rarr;</button>
+          </div>
+        {% endif %}
       </div>
     </details>
   {% endif %}
@@ -203,12 +215,13 @@
 
   <script>
     // Remembers whichever open/closed state a visitor last left the
-    // "About this site" and "Featured local artist" panels in, and
-    // restores it on every later page load -- localStorage rather than a
-    // cookie/server session since this is purely a per-browser display
-    // preference with no need to round-trip to the server (and no admin
-    // login is required to have a preference remembered). Each panel is
-    // independent: closing one has no effect on the other's stored state.
+    // "About this site" and "Local Artists Playing This Week!" panels in,
+    // and restores it on every later page load -- localStorage rather
+    // than a cookie/server session since this is purely a per-browser
+    // display preference with no need to round-trip to the server (and no
+    // admin login is required to have a preference remembered). Each
+    // panel is independent: closing one has no effect on the other's
+    // stored state.
     (function () {
       function rememberOpenState(elementId, storageKey) {
         var el = document.getElementById(elementId);
@@ -225,7 +238,58 @@
         });
       }
       rememberOpenState("about-site-details", "pcm_about_site_open");
-      rememberOpenState("featured-artist-details", "pcm_featured_artist_open");
+      rememberOpenState("artists-this-week-details", "pcm_artists_this_week_open");
+    })();
+
+    // Prev/Next buttons for the "Local Artists Playing This Week!" gallery
+    // -- the gallery itself is a plain CSS scroll-snap flex row (see
+    // .artist-week-gallery in style.css), so touch/trackpad swiping and
+    // arrow-key scrolling already work with zero JS. These buttons just
+    // give visitors a more obvious, clickable way to do the same scroll,
+    // one card at a time, and keep a "2 of 5" style counter in sync with
+    // whichever card is currently snapped into view.
+    (function () {
+      var gallery = document.getElementById("artist-week-gallery");
+      if (!gallery) return;
+      var cards = gallery.querySelectorAll(".artist-week-card");
+      if (!cards.length) return;
+
+      var prevBtn = document.getElementById("artist-week-prev");
+      var nextBtn = document.getElementById("artist-week-next");
+      var countEl = document.getElementById("artist-week-count");
+
+      function currentIndex() {
+        // Whichever card's left edge is closest to the gallery's own
+        // current scroll position is "the" current card -- simpler and
+        // more robust than tracking clicks, since it also stays correct
+        // if the visitor scrolls/swipes directly instead of using the
+        // buttons.
+        var scrollLeft = gallery.scrollLeft;
+        var closest = 0;
+        var closestDist = Infinity;
+        cards.forEach(function (card, i) {
+          var dist = Math.abs(card.offsetLeft - gallery.offsetLeft - scrollLeft);
+          if (dist < closestDist) {
+            closestDist = dist;
+            closest = i;
+          }
+        });
+        return closest;
+      }
+
+      function updateCount() {
+        if (countEl) countEl.textContent = (currentIndex() + 1) + " of " + cards.length;
+      }
+
+      function scrollToCard(index) {
+        index = Math.max(0, Math.min(cards.length - 1, index));
+        gallery.scrollTo({ left: cards[index].offsetLeft - gallery.offsetLeft, behavior: "smooth" });
+      }
+
+      if (prevBtn) prevBtn.addEventListener("click", function () { scrollToCard(currentIndex() - 1); });
+      if (nextBtn) nextBtn.addEventListener("click", function () { scrollToCard(currentIndex() + 1); });
+      gallery.addEventListener("scroll", updateCount, { passive: true });
+      updateCount();
     })();
   </script>
 {% endblock %}
