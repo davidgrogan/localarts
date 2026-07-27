@@ -75,6 +75,7 @@ def _load_source_types():
         rendered_html,
         elfsight_jsonld,
         haze_calendar,
+        ludus,
     )
 
     return {
@@ -84,6 +85,7 @@ def _load_source_types():
         "rendered_html": rendered_html,
         "elfsight_jsonld": elfsight_jsonld,
         "haze_calendar": haze_calendar,
+        "ludus": ludus,
     }
 
 

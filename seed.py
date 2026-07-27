@@ -414,6 +414,52 @@ def main():
             # (Comedy/Dance/Tabletop Gaming/etc. tags already exist).
         )
 
+        bombyx = get_or_create_venue(
+            name="BOMBYX Center for Arts & Equity",
+            slug="bombyx-center-for-arts-and-equity",
+            address="130 Pine St.",
+            city="Northampton",
+            state="MA",
+            # bombyx.live is this venue's own marketing site -- its actual
+            # ticketing/event listing lives on a separate Ludus
+            # (ludus.com) install instead, confirmed via the real site.
+            website_url="https://bombyx.live",
+            events_url="https://bombyx.ludus.com/index.php",
+            # See app/scrapers/ludus.py's module docstring for the full
+            # confirmed DOM structure (.show_item > .showtimes_item,
+            # data-show-id/data-showtime-id, etc.). A first real scrape
+            # attempt with a plain requests.get() came back a flat 403
+            # Forbidden -- the same shape of block Quonk's Ticket Tailor
+            # listing hit (see that write-up below), almost certainly a
+            # TLS/header fingerprint check rather than a UA-string one.
+            # fetch_raw() now reuses rendered_html.py's Playwright-based
+            # fetch (headless Chromium + automation-hiding flags) instead,
+            # which is why wait_for_selector/user_agent below are set even
+            # though source_type is "ludus", not "rendered_html" -- see
+            # ludus.py's module docstring for why it borrows that one
+            # function but keeps its own bespoke parse().
+            source_type="ludus",
+            # This is a genuine multi-use community arts space (dance
+            # classes, grant-writing workshops, speed networking, theater)
+            # sharing the same Ludus listing as its real concerts -- David
+            # only wants live music pulled in automatically, the same
+            # tradeoff as 33 Hawley above. category_include filters to
+            # shows whose visible category pill contains "Concert". Real
+            # tradeoff seen in a live listing: a couple of obviously-music
+            # events ("Noho Music Presents: Summer Jam '26", "Choro Camp
+            # 2026") had NO category pill at all and would be silently
+            # excluded by this filter -- worth a look at the scrape
+            # preview once this runs for real, and loosening/removing
+            # category_include if that's happening more than rarely.
+            scrape_config=(
+                '{"category_include": ["Concert"], '
+                '"wait_for_selector": ".show_item", '
+                '"user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+                '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}'
+            ),
+            default_event_type=music_tag,
+        )
+
         artist_1 = get_or_create_artist(
             name="Sample Local Artist",
             slug=slugify("Sample Local Artist"),

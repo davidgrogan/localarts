@@ -388,12 +388,26 @@ Adding a venue means picking one of these `source_type`s:
   date) and `aria-label="Event details: <title>"` per event -- the only
   two things in an otherwise all-Tailwind-utility-classes page that are
   stable regardless of styling changes. No `scrape_config` needed.
+- **`ludus`** -- purpose-built for venues running [Ludus](https://ludus.com)
+  as their ticketing platform (e.g. `bombyx.ludus.com`, a separate site
+  from a venue's own marketing page). Fetches the page the same
+  headless-Chromium way `rendered_html` does (a plain fetch got blocked
+  with a 403 -- see the Bombyx note below), but with its own bespoke
+  parser instead of the generic selector config: each event (`.show_item`)
+  can contain more than one date/session (`.showtimes_item`, e.g. a
+  recurring weekly class), each of which becomes its own event sharing
+  the same title; `data-showtime-id` is used directly as the stable
+  `external_id`. Accepts every `scrape_config` key `rendered_html` does
+  (`wait_for_selector`, `user_agent`, etc.), plus its own
+  `category_include` (list of substrings, case-insensitive, matched
+  against the show's visible category pill text -- see the Bombyx note
+  below for a real tradeoff with this).
 
 Each source type is one small module (`squarespace_json.py`, `ical_feed.py`,
-`html_generic.py`, `rendered_html.py`, `elfsight_jsonld.py`, `haze_calendar.py`)
-exposing `fetch_raw(venue)` and `parse(raw, venue)`. Adding a venue whose site
-doesn't fit any of these means writing one new module and registering it in
-`app/scrapers/base.py`.
+`html_generic.py`, `rendered_html.py`, `elfsight_jsonld.py`, `haze_calendar.py`,
+`ludus.py`) exposing `fetch_raw(venue)` and `parse(raw, venue)`. Adding a venue
+whose site doesn't fit any of these means writing one new module and
+registering it in `app/scrapers/base.py`.
 
 **On the Iron Horse specifically:** its calendar turned out to be an
 [Elfsight "Event Calendar"](https://elfsight.com/event-calendar-widget/)
@@ -671,6 +685,86 @@ back to midnight. Rare enough (one event, currently) not to be worth a
 dedicated heuristic; if it bothers you, edit that show's time by hand
 after it's imported.
 
+**On BOMBYX Center for Arts & Equity (130 Pine St., Florence village,
+Northampton):** its own marketing site is `bombyx.live`, but that's not
+where the actual event listing lives -- ticketing runs on a separate
+[Ludus](https://ludus.com) install at `bombyx.ludus.com/index.php`
+instead, so `events_url` points there, not at `website_url`. Confirmed
+via live browser DOM inspection (a real Network-tab log showed no
+separate XHR/JSON request fetches the event list -- only a POST to
+`/v1/shows/seats-left` for seat-count numbers *after* the page has
+already rendered -- and the page is served from `index.php`, a plain
+PHP page, not a JS framework/SPA):
+
+```
+<div class="show_item" data-show-id="200526944" data-event-categories="1823;">
+  <div class="show_item_category_pills">
+    <span class="event-category-pill show_item_category_pill">Concert</span>
+  </div>
+  <div class="show_item_cover_photo" style="background-image:url('https://ludus.../cg_....');"></div>
+  <h2 class="show_item_title"><span class="patron_heading_label">Sufi-Buddhist Fusion Soundbath</span></h2>
+  <div class="showtimes_item" id="showtimes_item311574" data-showtime-id="311574">
+    <div class="admin_showtimes_item_title">
+      <div class="desktop_copy">
+        <span class="span_link">Sunday, August 9, 2026 <span>12:00 PM</span></span>
+      </div>
+      <!-- .mobile_copy sibling duplicates the same text for responsive layout -- not selected, to avoid double-counting -->
+    </div>
+  </div>
+</div>
+```
+
+One `.show_item` (a titled listing) can contain more than one
+`.showtimes_item` (a date/session) -- e.g. a recurring weekly class with
+five separate Saturday dates -- and each one becomes its own event
+sharing the same title, using its own `data-showtime-id` directly as a
+stable `external_id`.
+
+Two things worth flagging:
+
+1. **A plain `requests.get()` got a flat `403 Forbidden`.** The original
+   version of this scraper used a plain fetch, on the theory that a
+   server-rendered PHP page with no separate list-fetching XHR almost
+   certainly has this markup in the *initial* response too (the same
+   reasoning `squarespace_json.py` uses for Iron Horse) -- but a real
+   scrape attempt came back blocked outright, with no distinguishing
+   body to go on. That's the same shape of failure Quonk's Ticket Tailor
+   listing hit (see that write-up above): almost certainly a TLS/header
+   fingerprint check a plain `requests` call can't fake, not a
+   UA-string check a real browser passes automatically. Rather than
+   spend another live-test round-trip on a smaller fix that already
+   failed to be enough for that identical-shaped Quonk problem,
+   `fetch_raw()` now reuses `rendered_html.py`'s Playwright-based fetch
+   directly (the same headless-Chromium-with-automation-hiding-flags
+   approach already proven against Quonk/Heavy Culture/33 Hawley) --
+   it's a fully generic `fetch_raw(venue)` with no dependency on
+   `html_generic`'s parsing, so it's safe to import and pair with this
+   module's own bespoke `parse()` (which understands Ludus's nested
+   `show_item`/`showtimes_item` shape, not the generic selector config
+   `rendered_html.py`'s own `parse()` expects). `source_type` stays
+   `"ludus"`, not `"rendered_html"`, for exactly that reason.
+   `wait_for_selector: ".show_item"` and a realistic Chrome `user_agent`
+   are set in `scrape_config` even though this isn't `source_type =
+   "rendered_html"` -- every one of that module's config keys still
+   applies, since `ludus.py`'s `fetch_raw` *is* that same function.
+2. **`category_include: ["Concert"]` has a real tradeoff.** BOMBYX is a
+   genuine multi-use community arts space -- dance classes, grant-writing
+   workshops, speed networking, theater -- sharing the same Ludus listing
+   as its actual concerts, so `category_include` filters to just the
+   "Concert" pill, the same call made for 33 Hawley above. But a couple of
+   obviously-musical listings seen live ("Noho Music Presents: Summer Jam
+   '26", "Choro Camp 2026") had **no category pill at all** and would be
+   silently excluded by this filter. Worth a look at the scrape preview
+   once this runs for real -- loosen or drop `category_include` if that's
+   happening more than rarely.
+
+There's no reliable direct "buy tickets" link per show/date in the
+DOM either -- the "Get Tickets" control is a `<div>` (not a link) driving
+an in-page radio-button + form flow rather than navigating anywhere, so
+`ticket_url` falls back to the venue's own Ludus listing page, the same
+fallback `elfsight_jsonld.py` uses when a venue's own widget doesn't
+expose one.
+
 ## Keeping scraped data honest
 
 Scraping isn't just "find new shows" -- venues change times, and sometimes
@@ -733,7 +827,7 @@ source .venv/bin/activate        # .venv\Scripts\activate on Windows
 pip install -r requirements.txt
 playwright install chromium      # one-time browser download, needed for rendered_html venues
 
-python seed.py                   # adds Iron Horse, Parlor Room, Academy of Music, Haze, Luthier's Co-Op, 33 Hawley, The Heavy Culture Cooperative, Quonk, sample artists/shows
+python seed.py                   # adds Iron Horse, Parlor Room, Academy of Music, Haze, Luthier's Co-Op, 33 Hawley, The Heavy Culture Cooperative, Quonk, BOMBYX Center for Arts & Equity, sample artists/shows
 python run.py                    # http://127.0.0.1:5000
 ```
 
