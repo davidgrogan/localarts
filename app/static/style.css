@@ -255,6 +255,17 @@ h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; lett
   flex: 0 0 auto;
   scroll-snap-align: start;
   width: min(320px, 85vw);
+  /* Fixed height (not just equal-stretch) plus a column flex layout --
+     card content varies a lot (no photo/no tags/no embed on some cards),
+     so a fixed height + overflow:hidden is what actually keeps every
+     card the same size regardless of content, and margin-top: auto on
+     the "View artist profile" link (below) pins it to the same spot at
+     the bottom of every card instead of trailing right after whatever
+     content happens to be shortest. */
+  height: 480px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--paper);
@@ -268,7 +279,19 @@ h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; lett
 }
 .artist-week-card .meta { margin: 0; }
 .artist-week-card .artist-embed { margin: 0.5rem 0; }
-.artist-week-card .btn-small { margin-top: 0.4rem; }
+.artist-week-card .btn-small { margin-top: auto; }
+/* Rectangular (not round) photo, just for this gallery -- .artist-thumb's
+   shared base style (used elsewhere: the artist list/detail pages) is
+   circular, but a wide banner-style photo reads more like a show flyer
+   and suits a fixed-height card better than a small circular avatar
+   would. */
+.artist-week-card .featured-artist-thumb {
+  width: 100%;
+  height: 140px;
+  border-radius: 8px;
+  margin-bottom: 0.6rem;
+  flex-shrink: 0;
+}
 .artist-week-nav {
   display: flex;
   align-items: center;
