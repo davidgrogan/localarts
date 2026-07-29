@@ -180,7 +180,21 @@ def new_artist():
 @bp.route("/<int:artist_id>")
 def detail(artist_id):
     artist = Artist.query.get_or_404(artist_id)
-    return render_template("artists/detail.html", artist=artist)
+    # "Upcoming shows" on this public page used to just list *every*
+    # Event ever linked to this artist (artist.events, unfiltered) sorted
+    # by date -- so a show from months ago sorted right in alongside real
+    # upcoming ones, still under an "Upcoming shows" heading. Filtering
+    # here to is_approved (same as every other public listing on this
+    # site -- see _base_query() in main.py) and start_datetime >=
+    # local_now() (not datetime.utcnow(); see app/utils.py's SITE_TIMEZONE
+    # docstring for why that distinction matters) actually makes the
+    # heading true.
+    now = local_now()
+    upcoming_events = sorted(
+        (e for e in artist.events if e.is_approved and e.start_datetime >= now),
+        key=lambda e: e.start_datetime,
+    )
+    return render_template("artists/detail.html", artist=artist, upcoming_events=upcoming_events)
 
 
 @bp.route("/<int:artist_id>/edit", methods=["GET", "POST"])

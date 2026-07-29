@@ -26,10 +26,10 @@
   {% endif %}
 
   <h2>Upcoming shows</h2>
-  {% if artist.events %}
+  {% if upcoming_events %}
     <table class="plain">
       <tr><th>Date</th><th>Show</th><th>Venue</th></tr>
-      {% for e in artist.events | sort(attribute="start_datetime") %}
+      {% for e in upcoming_events %}
         <tr>
           <td>{{ e.start_datetime | dtfmt("%b %-d, %Y %-I:%M %p") }}</td>
           <td>{{ e.title }}</td>
@@ -44,6 +44,6 @@
       {% endfor %}
     </table>
   {% else %}
-    <p class="empty-state">No shows linked yet.</p>
+    <p class="empty-state">No upcoming shows.</p>
   {% endif %}
 {% endblock %}

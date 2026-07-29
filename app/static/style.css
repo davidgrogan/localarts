@@ -112,8 +112,22 @@ body {
   color: var(--muted);
   font-size: 0.85rem;
   padding: 2rem 1rem;
+  border-top: 1px solid var(--line);
 }
 .site-footer a { color: var(--muted); }
+.footer-nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.3rem 1.3rem;
+  margin-bottom: 1rem;
+}
+.footer-nav a {
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+.footer-nav a:hover { color: var(--accent); }
+.footer-tagline { margin: 0; }
 .login-wrap { max-width: 360px; margin: 2rem auto; }
 .footer-form { display: inline; }
 .link-button {
@@ -399,6 +413,11 @@ h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; lett
   border-radius: 8px;
   overflow: hidden;
   background: var(--line);
+  /* Now a link (to the show's own Event Details page), not just a plain
+     div -- these two rules keep it looking exactly like the old
+     non-clickable thumbnail rather than picking up default <a> styling. */
+  display: block;
+  text-decoration: none;
 }
 .event-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .event-thumb-fallback {
@@ -454,6 +473,21 @@ h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; lett
 .event-link { font-size: 0.85rem; margin-top: 0.25rem; }
 .event-link a { color: var(--accent); text-decoration: none; }
 .event-link a:hover { text-decoration: underline; }
+
+/* Single-show page (events/detail.html) -- unlike every thumbnail
+   elsewhere on the site (calendar card, weekly-artist-gallery card),
+   this is the one place meant to show a flyer/image at genuine, uncropped
+   size, since the whole point of clicking through here is to actually
+   see it. object-fit: contain (not cover) + no fixed height is
+   deliberate: a fixed-crop thumbnail would cut off exactly the content
+   someone came here to see. */
+.event-detail-image { margin: 1rem 0; }
+.event-detail-image img { max-width: 100%; max-height: 70vh; border-radius: 8px; display: block; }
+.event-detail-description {
+  white-space: pre-line;
+  line-height: 1.5;
+  margin: 1rem 0;
+}
 .event-actions { font-size: 0.8rem; margin-top: 0.25rem; }
 .event-actions form { display: inline; }
 .event-actions a, .event-actions button {
@@ -508,6 +542,7 @@ form.stacked label {
 }
 form.stacked input[type=text],
 form.stacked input[type=url],
+form.stacked input[type=email],
 form.stacked input[type=datetime-local],
 form.stacked select,
 form.stacked textarea {
@@ -520,12 +555,25 @@ form.stacked textarea {
   font-size: 0.95rem;
   font-family: inherit;
 }
+form.stacked input[type=file] {
+  display: block;
+  width: 100%;
+  padding: 0.4rem 0;
+  font-size: 0.9rem;
+}
 form.stacked textarea { resize: vertical; }
 form.stacked .hint { color: var(--muted); font-size: 0.8rem; margin-top: 0.2rem; }
 form.stacked .checkbox-row { display: flex; align-items: center; gap: 0.4rem; }
 form.stacked .checkbox-row label { display: inline; margin: 0; }
 form.stacked .actions { margin-top: 1.5rem; }
 .hp-field { position: absolute; left: -9999px; top: -9999px; }
+
+/* Flyer thumbnail in the Gig Submissions review table (gigs/review.html)
+   -- rectangular (a flyer is a poster/flyer image, not a headshot),
+   fixed small size so a very tall or very wide upload doesn't blow out
+   the table row. */
+.flyer-thumb { width: 70px; height: 90px; overflow: hidden; border-radius: 4px; background: var(--line); }
+.flyer-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 .artist-checks {
   max-height: 180px;

@@ -22,7 +22,22 @@ DigitalOcean.
 - **Venues** (`/venues`) -- add a venue, tell it how to pull in events (manual,
   Squarespace JSON trick, iCal feed, generic HTML selectors, or headless-browser
   selectors), preview a scrape before importing anything, and see a log of
-  recent scrape runs. Admin-only.
+  recent scrape runs. Public to browse; adding/editing/scraping is admin-only.
+- **Submit a show** (`/gigs/submit`) -- public form for artists/promoters to
+  propose their own show (including DIY one-off shows with no formal venue),
+  reviewed by an admin before it hits the calendar. See "Submit your show"
+  below.
+- **Event Details** (`/show/<id>`) -- a single show's own page: full-size
+  image and full description, neither of which fit on the calendar's
+  card-per-show list (there, the image is a small cropped thumbnail and the
+  description only shows as a hover tooltip). Linked from every calendar
+  card's thumbnail and a new "Event Details" link. Public for approved
+  shows; 404s for anyone who isn't an admin if the show isn't approved yet.
+- **About** (`/about`) -- the site's admin-editable "About this site" copy,
+  linked from the main nav. Used to show inline (collapsed by default) at
+  the top of the calendar page; now lives on its own page instead, so the
+  calendar stays focused on the actual show listings. See "About page and
+  the fixed venue-caution line" below.
 - **Scan** (`/venues/scan`) -- rescrapes every active, non-manual venue on
   demand (the same thing `scrape_all.py`/the `scrape.timer` schedule does).
   The page's JS calls a one-venue-at-a-time JSON endpoint
@@ -178,12 +193,13 @@ The artist's own upcoming shows (`_upcoming_events_for()`) are listed right
 there in the spotlight, not just linked to, so a visitor doesn't have to
 click through to see when/where to catch them.
 
-Both the homepage's "About this site" intro and the featured-artist
-spotlight are wrapped in a native `<details>`/`<summary>` element rather
-than a custom JS toggle -- clicking the header collapses/expands the
-section with no JavaScript needed. Both default open (the `open` attribute
-in `calendar.html`), so nothing changes for a first-time visitor; it just
-lets a returning visitor tuck either one away.
+The featured-artist spotlight is wrapped in a native `<details>`/`<summary>`
+element rather than a custom JS toggle -- clicking the header
+collapses/expands the section with no JavaScript needed. It defaults open
+(the `open` attribute in `calendar.html`), so nothing changes for a
+first-time visitor; it just lets a returning visitor tuck it away. (The
+"About this site" intro used to be a second collapsible section here too --
+see "About page and the fixed venue-caution line" below for where it moved.)
 
 `seed.py` includes two artists exercising this (Comet & the Roadrunners --
 Electronica/New Wave; Ruth & the Backroads -- Americana), each with a
@@ -765,6 +781,140 @@ an in-page radio-button + form flow rather than navigating anywhere, so
 fallback `elfsight_jsonld.py` uses when a venue's own widget doesn't
 expose one.
 
+## Submit your show (`app/routes/gigs.py`, `GigSubmission` model)
+
+A public `/gigs/submit` form -- linked from the main nav as "Submit a show"
+-- lets an artist or promoter propose a show without needing an admin
+account, including DIY one-off shows (house shows, backyard sets, basement
+gigs) that don't belong to any formal venue. Required fields: date &amp;
+time, a free-text location/venue field (not a dropdown -- see "DIY show
+handling" below for why), a free-text box for the bands on the bill and
+their websites (not a structured per-band list -- there's no reliable way
+to auto-parse that into individual Artist records, so an admin reads it
+by hand during conversion), a flyer image upload, and the submitter's own
+name/email (so David can follow up with questions or let them know once
+it's live).
+
+Every submission lands as a **pending `GigSubmission` row**, not an Event
+-- same "keep unvetted input off the public site until a human looks at
+it" idea as a scraped Event's `is_approved=False`, just for a different
+intake path (anyone can fill in this form, with no scrape/venue-feed
+behind it at all). Submitting immediately:
+
+1. Sends the submitter a "flagged for review" confirmation message (a
+   flash message on the same page, not a separate email -- see "No
+   confirmation email" below).
+2. Emails David via `send_admin_email()` (see "Shared admin email" below)
+   with the full submission -- date, location, lineup, submitter contact
+   -- and a direct link to the review queue, so nothing sits unnoticed
+   waiting to be checked.
+
+A honeypot field (`.hp-field` in style.css -- hidden from real visitors,
+tripped only by a bot that fills in every input including hidden ones)
+guards against spam the same way the contact form already did; a caught
+submission gets the same success message with nothing actually saved,
+so a bot has no signal it was caught.
+
+**Admin review (`/gigs/review`, linked from the nav as "Gig Submissions"
+with a pending-count badge, same pattern as the existing "Review" link):**
+a "Pending" table (flyer thumbnail, date, submitted location, lineup,
+submitter contact, actions) plus a capped "Recent history" table of the
+last 50 converted/dismissed submissions (mainly so a dismiss made by
+mistake is easy to find and undo via "Restore to pending").
+
+**Conversion is deliberately not a bespoke form.** "Convert to show" just
+links straight into the existing `events.new_event(from_gig=<id>)` --
+same Add Show form every manually-added show already uses, just
+pre-filled from the submission:
+
+- **Venue** defaults to a shared **"DIY" venue** (seeded in `seed.py`,
+  `slug="diy"`, deliberately no address/city/state of its own) if one
+  exists on the install. Per David's call, the specific address/location
+  text a submitter enters (e.g. "123 Elm St, back porch") is **not**
+  given its own Event column -- there's nothing sensible to put it in
+  that survives every show at a *different* one-off address while still
+  reading as "DIY" for site navigation/filtering, so it's copied into the
+  **description** field instead (see below), and the admin can freely
+  pick a different, real Venue instead if the submitted location
+  actually matches one already in the system.
+- **Description** is pre-filled with the submitter's name/email, the
+  submitted location text verbatim, and the full lineup text -- so
+  nothing from the original submission is lost once the row itself gets
+  marked converted, even though none of that has its own Event column.
+- **Image / flyer URL** -- a brand-new field on the Add/Edit Show form
+  (previously `Event.image_url` existed on the model but had no form
+  field at all, only ever set by scrapers) -- is pre-filled with the
+  uploaded flyer's own on-site URL. This "just works" with zero new
+  upload-serving code: the flyer file already lives in `app/static/`
+  (see "Flyer uploads" below), so its URL is exactly as valid an
+  `image_url` value as any scraper-sourced image URL already was.
+- **Title** is left blank (deliberately -- there's no reliable way to
+  turn a free-text lineup into a good show title automatically) with a
+  placeholder hint suggesting one.
+
+The submission is marked `status = "converted"` and `converted_event_id`
+is linked **only once the form is actually saved** (a `POST` with a
+hidden `from_gig_id` field), not just opened -- abandoning a half-started
+conversion leaves the submission sitting in "Pending" as if nothing
+happened, which is the right behavior.
+
+**Flyer uploads (`app/utils.py`'s `save_flyer_upload()`/`flyer_url()`):**
+the first real file-upload feature in this app -- every other image
+anywhere on the site (`Artist.image_url`, `Event.image_url`) is just a
+URL string typed/pasted in, with zero upload pipeline. A flyer, though,
+genuinely starts as a photo on someone's phone, so this needed real
+`request.files` handling: saved under `app/static/uploads/flyers/` with a
+fresh random (`uuid4`) filename -- never the visitor's own filename, both
+to dodge path-traversal tricks and so two submitters' same-named
+"flyer.jpg" can't collide -- restricted to `png`/`jpg`/`jpeg`/`gif`/`webp`
+extensions. Saved straight into `app/static/` means Flask's own
+static-file serving handles it, no separate download/serve route needed.
+The app's `MAX_CONTENT_LENGTH` config (10MB, set in `app/__init__.py`)
+caps the whole incoming request before the route even runs, so a
+deliberately huge upload gets rejected by Flask/Werkzeug outright rather
+than by any code in this app. Uploaded files aren't tracked in git (see
+`.gitignore`) -- the upload directory is created on demand
+(`os.makedirs(..., exist_ok=True)`), so a fresh clone works fine before
+anyone's ever submitted anything.
+
+**Shared admin email (`app/utils.py`'s `send_admin_email()`):** the
+Gmail SMTP sending code used to live only in `app/routes/contact.py` as a
+module-private `_send_email()`. Pulled out into `app/utils.py` once this
+feature needed the exact same mechanism for its own notification, rather
+than duplicating the SMTP boilerplate in a second blueprint -- the
+contact form's behavior is unchanged, it just calls the shared function
+now. Same env vars as before (`MAIL_USERNAME`/`MAIL_PASSWORD`/
+`CONTACT_EMAIL`/etc., see `.env.example`) -- no new configuration needed
+if the contact form's email was already working.
+
+**No confirmation email to the submitter.** The submission form validates
+the email address is present and looks like an email
+(`name@domain.tld`-shaped -- a loose regex check, not a real
+deliverability check), and it's stored so David can reach out, but no
+automated email is sent back to the submitter on success -- just the
+on-page "flagged for review" message. Worth adding later if it turns out
+people want a receipt, but wasn't part of the initial ask.
+
+## About page and the fixed venue-caution line
+
+The admin-editable "About this site" copy (`SiteSetting.about_html`, edited
+via `/about/edit`) used to show inline on the calendar page, in a
+collapsed-by-default `<details>` panel. It now has its own page (`/about`,
+linked from the main nav) instead, so the calendar stays focused on the
+actual show listings; saving an edit redirects back to `/about` rather than
+the calendar.
+
+Separately, one specific line -- "Venues sometimes change set times,
+lineups, or cancel shows on short notice, so before you head out, it's
+always worth double-checking the details on the venue's own website." --
+always shows on both the calendar page and every show's Event Details page,
+regardless of what the About page's own content currently says. It's a
+fixed Python constant (`VENUE_CAUTION_NOTE` in `app/utils.py`), not part of
+the admin-editable `about_html`, specifically so it can't be accidentally
+edited away or lost if someone rewrites the About copy from scratch --
+`edit_about.html`'s form page says as much, pointing back at
+`app/utils.py` if the wording itself ever needs to change.
+
 ## Keeping scraped data honest
 
 Scraping isn't just "find new shows" -- venues change times, and sometimes
@@ -827,7 +977,7 @@ source .venv/bin/activate        # .venv\Scripts\activate on Windows
 pip install -r requirements.txt
 playwright install chromium      # one-time browser download, needed for rendered_html venues
 
-python seed.py                   # adds Iron Horse, Parlor Room, Academy of Music, Haze, Luthier's Co-Op, 33 Hawley, The Heavy Culture Cooperative, Quonk, BOMBYX Center for Arts & Equity, sample artists/shows
+python seed.py                   # adds Iron Horse, Parlor Room, Academy of Music, Haze, Luthier's Co-Op, 33 Hawley, The Heavy Culture Cooperative, Quonk, BOMBYX Center for Arts & Equity, DIY (catch-all for submitted one-off shows), sample artists/shows
 python run.py                    # http://127.0.0.1:5000
 ```
 

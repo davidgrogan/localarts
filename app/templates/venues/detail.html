@@ -3,7 +3,13 @@
 {% block content %}
   <h1>{{ venue.name }}{% if is_admin %} <span class="source-tag">{{ venue.source_type }}</span>{% endif %}</h1>
   <p class="meta">
-    {% if venue.address %}{{ venue.address }}, {% endif %}{{ venue.city }}{% if venue.state %}, {{ venue.state }}{% endif %}
+    {# venue.city (unlike address/state) used to be printed unconditionally
+       here -- harmless for every real venue, which always has one, but
+       the "DIY" catch-all venue (seed.py; see app/routes/gigs.py) has no
+       city/state/address at all by design, since it's not one physical
+       place. Printing an unset venue.city would render the literal text
+       "None" rather than nothing, so this needs its own guard too. #}
+    {% if venue.address %}{{ venue.address }}, {% endif %}{% if venue.city %}{{ venue.city }}{% if venue.state %}, {{ venue.state }}{% endif %}{% endif %}
     {% if venue.website_url %} &middot; <a href="{{ venue.website_url }}" target="_blank" rel="noopener">website</a>{% endif %}
   </p>
 

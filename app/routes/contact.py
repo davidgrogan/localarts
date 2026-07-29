@@ -5,23 +5,18 @@ Sends a plain email via Gmail SMTP using an account App Password (not
 the real Gmail password) rather than pulling in a whole mail library --
 Python's stdlib smtplib/email modules are enough for one outgoing message
 at low volume. See README.md / .env.example for how to generate one.
-"""
-import os
-import smtplib
-from email.message import EmailMessage
 
+The actual SMTP-sending code used to live here as a module-private
+_send_email() -- it's been pulled out to app.utils.send_admin_email()
+since app/routes/gigs.py's "Submit your show" notifier needed the exact
+same mechanism and there was no reason to duplicate it in a second
+blueprint. Behavior here is unchanged.
+"""
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
-bp = Blueprint("contact", __name__, url_prefix="/contact")
+from app.utils import send_admin_email
 
-CONTACT_EMAIL = os.environ.get("CONTACT_EMAIL", "davidbgrogan@gmail.com")
-MAIL_SERVER = os.environ.get("MAIL_SERVER", "smtp.gmail.com")
-MAIL_PORT = int(os.environ.get("MAIL_PORT", "587"))
-# The Gmail address the message is sent *from* (usually the same address
-# as CONTACT_EMAIL, but kept separate in case that's ever not true), and
-# its App Password -- see README.md for how to generate one.
-MAIL_USERNAME = os.environ.get("MAIL_USERNAME")
-MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD")
+bp = Blueprint("contact", __name__, url_prefix="/contact")
 
 CATEGORIES = [
     ("artist", "Add a local artist"),
@@ -32,29 +27,13 @@ CATEGORIES = [
 
 
 def _send_email(name, reply_to, category_label, message):
-    if not MAIL_USERNAME or not MAIL_PASSWORD:
-        raise RuntimeError(
-            "Email isn't configured on this server yet (MAIL_USERNAME/"
-            "MAIL_PASSWORD aren't set)."
-        )
-
-    msg = EmailMessage()
-    msg["Subject"] = f"Paradise City Music contact form: {category_label}"
-    msg["From"] = MAIL_USERNAME
-    msg["To"] = CONTACT_EMAIL
-    if reply_to:
-        msg["Reply-To"] = reply_to
-    msg.set_content(
+    body = (
         f"Category: {category_label}\n"
         f"Name: {name or '(not provided)'}\n"
         f"Email: {reply_to or '(not provided)'}\n\n"
         f"{message}"
     )
-
-    with smtplib.SMTP(MAIL_SERVER, MAIL_PORT, timeout=10) as smtp:
-        smtp.starttls()
-        smtp.login(MAIL_USERNAME, MAIL_PASSWORD)
-        smtp.send_message(msg)
+    send_admin_email(f"Paradise City Music contact form: {category_label}", body, reply_to=reply_to)
 
 
 @bp.route("/", methods=["GET", "POST"])

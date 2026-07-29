@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}About{% endblock %}
+{% block content %}
+  {# about_html is admin-editable HTML (see main.py's edit_about() and
+     models.py's SiteSetting) -- trusted input, same pattern as an
+     artist's embed_code, so it's rendered unescaped. This used to be
+     shown inline (collapsed by default) on the calendar page; it's now
+     its own page, linked from the main nav, so the calendar can stay
+     focused on the actual show listings. #}
+  {{ about_html | safe }}
+
+  {% if is_admin %}
+    <p class="page-actions"><a class="btn btn-small btn-secondary" href="{{ url_for('main.edit_about') }}">Edit this text</a></p>
+  {% endif %}
+{% endblock %}

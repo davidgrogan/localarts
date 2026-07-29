@@ -84,6 +84,13 @@ def create_app(test_config=None):
         # normal Flask behavior for a single-app-per-domain deployment.
         SESSION_COOKIE_PATH=os.environ.get("SESSION_COOKIE_PATH") or "/",
         SESSION_COOKIE_NAME=os.environ.get("SESSION_COOKIE_NAME") or "session",
+        # Caps the *whole* incoming request (form fields + the uploaded
+        # flyer file together), not just the file -- Flask/Werkzeug reject
+        # anything over this with a 413 before app/routes/gigs.py's
+        # submit_gig() even runs. 10MB comfortably covers a real phone-
+        # camera photo of a flyer without leaving the public submission
+        # form open to someone deliberately uploading huge files.
+        MAX_CONTENT_LENGTH=10 * 1024 * 1024,
     )
     if test_config:
         app.config.update(test_config)
@@ -95,6 +102,7 @@ def create_app(test_config=None):
     from app.routes.artists import bp as artists_bp
     from app.routes.events import bp as events_bp
     from app.routes.contact import bp as contact_bp
+    from app.routes.gigs import bp as gigs_bp
     from app.auth import bp as auth_bp
 
     app.register_blueprint(main_bp)
@@ -102,6 +110,7 @@ def create_app(test_config=None):
     app.register_blueprint(artists_bp)
     app.register_blueprint(events_bp)
     app.register_blueprint(contact_bp)
+    app.register_blueprint(gigs_bp)
     app.register_blueprint(auth_bp)
 
     @app.context_processor
@@ -143,6 +152,18 @@ def create_app(test_config=None):
         ).count()
         return {"pending_count": count}
 
+    @app.context_processor
+    def inject_pending_gigs_count():
+        # Badge count on the nav's "Gig Submissions" link, same pattern
+        # (and same "skip the query for anonymous visitors" reasoning) as
+        # inject_review_count() above.
+        if not session.get("is_admin"):
+            return {}
+        from app.models import GigSubmission
+
+        count = GigSubmission.query.filter_by(status="pending").count()
+        return {"pending_gigs_count": count}
+
     with app.app_context():
         db.create_all()
         _run_sqlite_column_migrations()
@@ -156,5 +177,14 @@ def create_app(test_config=None):
         except ValueError:
             # %-d / %-I aren't supported on all platforms (e.g. Windows)
             return value.strftime("%a %b %d, %Y  %I:%M %p")
+
+    @app.template_filter("flyer_url")
+    def flyer_url_filter(flyer_filename):
+        # A thin Jinja-filter wrapper around app.utils.flyer_url() so
+        # gigs/review.html can write `{{ g.flyer_filename | flyer_url }}`
+        # instead of importing/calling it explicitly per template.
+        from app.utils import flyer_url
+
+        return flyer_url(flyer_filename)
 
     return app

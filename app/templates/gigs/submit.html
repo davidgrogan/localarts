@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Submit your show{% endblock %}
+{% block content %}
+  <h1>Submit your show</h1>
+  <p class="meta">
+    Booking your own show -- a DIY house show, a backyard set, a basement
+    gig, or anything else that isn't already on a venue's own calendar?
+    Tell us about it below. Every submission is reviewed by a real person
+    before it goes on the public calendar, so it may take a day or two to
+    show up.
+  </p>
+
+  <form class="stacked" method="post" enctype="multipart/form-data">
+    {# Honeypot: hidden from real visitors via .hp-field in style.css --
+       a simple bot that fills in every field on the page (including
+       hidden ones) trips this; a real visitor never sees or fills it. #}
+    <div class="hp-field" aria-hidden="true">
+      <label for="website">Leave this field blank</label>
+      <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
+    </div>
+
+    <label for="submitter_name">Your name</label>
+    <input type="text" id="submitter_name" name="submitter_name"
+           value="{{ form.submitter_name if form else '' }}" required>
+
+    <label for="submitter_email">Your email</label>
+    <input type="email" id="submitter_email" name="submitter_email"
+           value="{{ form.submitter_email if form else '' }}" required>
+    <span class="hint">So we can reach out if we have questions, or let you know once it's live.</span>
+
+    <label for="start_datetime">Date &amp; time</label>
+    <input type="datetime-local" id="start_datetime" name="start_datetime"
+           value="{{ form.start_datetime if form else '' }}" required>
+
+    <label for="venue_name">Location / venue</label>
+    <input type="text" id="venue_name" name="venue_name"
+           value="{{ form.venue_name if form else '' }}"
+           placeholder="A venue's name, or the address/description of a DIY spot" required>
+
+    <label for="lineup_text">Bands on the bill (and their websites)</label>
+    <textarea id="lineup_text" name="lineup_text" rows="5"
+              placeholder="e.g.&#10;The Longshots -- thelongshots.bandcamp.com&#10;Comet &amp; the Roadrunners -- cometandtheroadrunners.bandcamp.com" required>{{ form.lineup_text if form else '' }}</textarea>
+
+    <label for="flyer">Flyer image</label>
+    <input type="file" id="flyer" name="flyer" accept="image/png,image/jpeg,image/gif,image/webp" required>
+    <span class="hint">JPG, PNG, GIF, or WEBP.</span>
+
+    <div class="actions">
+      <button class="btn" type="submit">Submit for review</button>
+    </div>
+  </form>
+{% endblock %}

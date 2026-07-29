@@ -460,6 +460,23 @@ def main():
             default_event_type=music_tag,
         )
 
+        diy_venue = get_or_create_venue(
+            name="DIY",
+            slug="diy",
+            # Deliberately no address/city/state -- this is a shared
+            # catch-all "venue" for one-off DIY shows (house shows,
+            # backyard sets, basement gigs) submitted through the public
+            # "Submit your show" form (app/routes/gigs.py), not a real
+            # physical location of its own. The actual address/location
+            # each submitter enters isn't lost, though -- per David's call,
+            # it's copied into the converted Event's own description field
+            # during conversion (see events.py's _gig_prefill()) rather
+            # than given its own Venue/Event column, since the specific
+            # place is different every time but should still all read as
+            # "DIY" in venue listings/filtering.
+            source_type="manual",
+        )
+
         artist_1 = get_or_create_artist(
             name="Sample Local Artist",
             slug=slugify("Sample Local Artist"),

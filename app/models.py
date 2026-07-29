@@ -290,6 +290,81 @@ class ScrapeRun(db.Model):
     venue = db.relationship("Venue", back_populates="scrape_runs")
 
 
+class GigSubmission(db.Model):
+    """A show submitted by an artist/promoter through the public "Submit
+    your show" form (app/routes/gigs.py) -- not an Event yet, deliberately:
+    these are unvetted, free-text submissions (anyone can fill in the
+    form, no login), so they land here for an admin to look over and
+    convert into a real Event (creating/linking a Venue and Artist
+    records as needed) rather than publishing straight to the calendar.
+    Same "keep unvetted input out of the public site until a human looks
+    at it" idea as a scraped Event's is_approved=False, just for a
+    different intake path.
+
+    venue_name is deliberately a free-text field, not a dropdown tied to
+    the Venue table -- lots of real submissions are expected to be
+    one-off DIY shows at someone's house/backyard/basement rather than a
+    listed venue, so there's nothing to pick from. Per David's call, the
+    specific address/location text isn't given its own Event column --
+    it's meant to be manually copied into the converted Event's own
+    description field during conversion (see gigs.py's prefill), while
+    those DIY shows all get grouped under one shared "DIY" Venue record
+    (seeded in seed.py) for site navigation/filtering purposes.
+
+    lineup_text is one free-text box covering both the bands on the bill
+    and their websites together (not a structured per-band list) --
+    there's no reliable way to auto-parse that into individual Artist
+    records, so an admin reads it during conversion and uses the
+    existing "+ Add as local artist" flow (artists.new_artist) per band
+    if/when they want a real Artist page for one.
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    submitted_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    # The show's own proposed date/time -- naive local wall-clock, same
+    # storage convention as Event.start_datetime (see app/utils.py's
+    # SITE_TIMEZONE docstring), since it becomes an Event's start_datetime
+    # as-is once converted.
+    start_datetime = db.Column(db.DateTime, nullable=False)
+
+    venue_name = db.Column(db.String(300), nullable=False)
+    lineup_text = db.Column(db.Text, nullable=False)
+
+    # Filename only (not a full path/URL) -- e.g. "3f2a...9c.jpg" -- under
+    # app/static/uploads/flyers/. Kept as just a filename (like every
+    # other *_filename-style field would be) rather than a full URL so it
+    # isn't tied to whatever domain the site happens to be served from;
+    # app/utils.py's flyer_url() builds the actual URL via url_for at
+    # render time. Required by the submission form, but nullable at the
+    # DB level (defensive: a bad/failed upload shouldn't take down an
+    # otherwise-valid submission -- see gigs.py's submit_gig()).
+    flyer_filename = db.Column(db.String(300))
+
+    submitter_name = db.Column(db.String(200), nullable=False)
+    submitter_email = db.Column(db.String(200), nullable=False)
+
+    # "pending" (awaiting review) -> "converted" (became a real Event) or
+    # "dismissed" (not a real/duplicate/spam submission, kept for the
+    # record rather than deleted outright -- same "keep it, just hide it"
+    # reasoning as Event.is_rejected).
+    status = db.Column(db.String(20), default="pending", nullable=False)
+    reviewed_at = db.Column(db.DateTime)
+
+    # Set once this becomes a real Event (see events.new_event()'s
+    # from_gig handling) -- kept even if that Event is later edited or
+    # deleted, as a "this is where it went" audit trail. Nullable, and
+    # deliberately not a hard foreign-key-cascade situation: if the Event
+    # is deleted, this just becomes a dangling id rather than deleting
+    # the submission record too (ondelete not set to CASCADE).
+    converted_event_id = db.Column(db.Integer, db.ForeignKey("event.id"))
+    converted_event = db.relationship("Event")
+
+    def __repr__(self):
+        return f"<GigSubmission {self.venue_name} @ {self.start_datetime} ({self.status})>"
+
+
 class SiteSetting(db.Model):
     """A single-row table for small pieces of sitewide content an admin
     can edit through the UI instead of needing a code change -- right now

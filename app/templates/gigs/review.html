@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Gig Submissions{% endblock %}
+{% block content %}
+  <h1>Gig Submissions</h1>
+  <p class="meta">Shows submitted through the public "Submit your show" form, waiting on a decision. "Convert to show" opens the normal Add Show form pre-filled from the submission -- edit anything, then save (this also marks the submission converted). "Dismiss" keeps the submission on record without adding a show (spam, a duplicate, or a submission that isn't going to happen).</p>
+
+  <h2 class="section-heading">Pending ({{ pending | length }})</h2>
+  {% if pending %}
+    <table class="plain">
+      <tr><th>Flyer</th><th>Date</th><th>Location (as submitted)</th><th>Lineup</th><th>Submitted by</th><th></th></tr>
+      {% for g in pending %}
+        <tr>
+          <td>
+            {% if g.flyer_filename %}
+              <div class="flyer-thumb"><img src="{{ g.flyer_filename | flyer_url }}" alt=""></div>
+            {% endif %}
+          </td>
+          <td>{{ g.start_datetime | dtfmt("%b %-d, %Y %-I:%M %p") }}</td>
+          <td>{{ g.venue_name }}</td>
+          <td class="meta">{{ g.lineup_text }}</td>
+          <td class="meta">
+            {{ g.submitter_name }}<br>
+            <a href="mailto:{{ g.submitter_email }}">{{ g.submitter_email }}</a>
+          </td>
+          <td>
+            <a class="btn btn-small" href="{{ url_for('events.new_event', from_gig=g.id) }}">Convert to show</a>
+            <form method="post" action="{{ url_for('gigs.dismiss', submission_id=g.id) }}" style="display:inline" onsubmit="return confirm('Dismiss this submission? It won\'t create a show, but stays on record below.');">
+              <button class="btn btn-small btn-danger" type="submit">Dismiss</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <p class="empty-state">No submissions waiting on review.</p>
+  {% endif %}
+
+  <h2 class="section-heading">Recent history</h2>
+  <p class="meta">The last 50 submissions that have already been converted or dismissed.</p>
+  {% if history %}
+    <table class="plain">
+      <tr><th>Reviewed</th><th>Date</th><th>Location (as submitted)</th><th>Submitted by</th><th>Status</th><th></th></tr>
+      {% for g in history %}
+        <tr>
+          <td>{{ g.reviewed_at | dtfmt("%b %-d, %Y") }}</td>
+          <td>{{ g.start_datetime | dtfmt("%b %-d, %Y %-I:%M %p") }}</td>
+          <td>{{ g.venue_name }}</td>
+          <td class="meta">{{ g.submitter_name }}</td>
+          <td>
+            {% if g.status == "converted" and g.converted_event %}
+              <a href="{{ url_for('events.edit_event', event_id=g.converted_event_id) }}">Converted &rarr;</a>
+            {% elif g.status == "converted" %}
+              Converted (show since deleted)
+            {% else %}
+              Dismissed
+            {% endif %}
+          </td>
+          <td>
+            {% if g.status == "dismissed" %}
+              <form method="post" action="{{ url_for('gigs.restore', submission_id=g.id) }}" style="display:inline">
+                <button class="btn btn-small btn-secondary" type="submit">Restore to pending</button>
+              </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <p class="empty-state">Nothing reviewed yet.</p>
+  {% endif %}
+{% endblock %}

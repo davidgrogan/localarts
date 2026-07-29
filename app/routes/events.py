@@ -2,8 +2,8 @@ from datetime import datetime
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 
-from app.models import db, Event, Venue, Artist, EventType
-from app.utils import slugify, get_or_create_event_type
+from app.models import db, Event, Venue, Artist, EventType, GigSubmission
+from app.utils import slugify, get_or_create_event_type, local_now, flyer_url
 from app.auth import require_admin
 
 bp = Blueprint("events", __name__, url_prefix="/events")
@@ -28,11 +28,45 @@ def _resolve_event_types(form):
     return tags
 
 
+def _diy_venue_id():
+    """The shared catch-all "DIY" venue's id (seeded in seed.py), used to
+    default the venue picker when converting a gig submission -- most
+    submissions are expected to be one-off DIY shows with no formal venue
+    of their own. Returns None (leaving the picker unselected) if a "DIY"
+    venue hasn't been created on this install yet, rather than erroring."""
+    diy = Venue.query.filter_by(slug="diy").first()
+    return diy.id if diy else None
+
+
+def _gig_prefill(gig):
+    """Build the description text + placeholder venue/date values used to
+    pre-fill the Add Show form when converting a GigSubmission (see
+    events.new_event()'s from_gig handling). The submitted location text
+    isn't given its own Event column (per David's call -- DIY shows all
+    get grouped under the shared "DIY" venue instead); it's preserved here
+    in the description instead, along with the submitter's contact info,
+    so nothing from the original submission is lost once the row itself
+    gets marked converted."""
+    return (
+        f"Submitted by {gig.submitter_name} ({gig.submitter_email}).\n"
+        f"Location as submitted: {gig.venue_name}\n\n"
+        f"Lineup:\n{gig.lineup_text}"
+    )
+
+
 @bp.route("/new", methods=["GET", "POST"])
 def new_event():
     venues = Venue.query.order_by(Venue.name).all()
     artists = Artist.query.order_by(Artist.name).all()
     event_types = EventType.query.order_by(EventType.name).all()
+
+    # Converting a pending gig submission (see app/routes/gigs.py) into a
+    # real show -- request.values covers both the query string (GET, the
+    # "Convert to show" link's ?from_gig=<id>) and the hidden form field
+    # below (POST, so the submission can be looked up again after submit
+    # without trusting a resubmitted query string).
+    from_gig_id = request.values.get("from_gig", type=int)
+    gig = GigSubmission.query.get(from_gig_id) if from_gig_id else None
 
     if request.method == "POST":
         venue = Venue.query.get_or_404(int(request.form["venue_id"]))
@@ -44,6 +78,7 @@ def new_event():
             description=request.form.get("description", "").strip(),
             ticket_url=request.form.get("ticket_url", "").strip() or None,
             price_info=request.form.get("price_info", "").strip() or None,
+            image_url=request.form.get("image_url", "").strip() or None,
             source="manual",
             is_approved=True,
         )
@@ -67,12 +102,33 @@ def new_event():
         event.event_types = tags if tags else ([venue.default_event_type] if venue.default_event_type else [])
 
         db.session.add(event)
+        db.session.flush()  # assigns event.id before linking the submission below
+
+        # Only reached once the form is actually saved (not just opened via
+        # the "Convert to show" link) -- see gigs.py's review()/module
+        # docstring for why conversion isn't a separate bespoke route.
+        converted_gig_id = request.form.get("from_gig_id", type=int)
+        if converted_gig_id:
+            converted_gig = GigSubmission.query.get(converted_gig_id)
+            if converted_gig:
+                converted_gig.status = "converted"
+                converted_gig.reviewed_at = local_now()
+                converted_gig.converted_event_id = event.id
+
         db.session.commit()
         flash(f"Added show “{event.title}”.", "success")
         return redirect(url_for("main.calendar"))
 
     return render_template(
-        "events/form.html", event=None, venues=venues, artists=artists, event_types=event_types
+        "events/form.html",
+        event=None,
+        venues=venues,
+        artists=artists,
+        event_types=event_types,
+        gig=gig,
+        gig_description=_gig_prefill(gig) if gig else None,
+        gig_default_venue_id=_diy_venue_id() if gig else None,
+        gig_image_url=flyer_url(gig.flyer_filename) if gig else None,
     )
 
 
@@ -95,6 +151,7 @@ def edit_event(event_id):
         event.description = request.form.get("description", "").strip()
         event.ticket_url = request.form.get("ticket_url", "").strip() or None
         event.price_info = request.form.get("price_info", "").strip() or None
+        event.image_url = request.form.get("image_url", "").strip() or None
 
         artist_ids = request.form.getlist("artist_ids")
         event.artists = Artist.query.filter(Artist.id.in_(artist_ids)).all() if artist_ids else []

@@ -1,27 +1,16 @@
 {% extends "base.html" %}
 {% block title %}Calendar{% endblock %}
 {% block content %}
-  {# <details>/<summary> gives a native, no-JS-required collapse toggle.
-     "About this site" defaults CLOSED (no `open` attribute) -- most
-     returning visitors already know what the site is, so this stays out
-     of the way on every load unless they've explicitly opened it before.
-     "Local Artists Playing This Week!" still defaults OPEN. Either default
-     is immediately overridden for a returning visitor by the localStorage
-     script at the bottom of this page, which remembers whichever state
-     each panel was last left in and restores it on every subsequent page
-     load -- these two `id`s are what that script looks for. #}
-  <details class="hero" id="about-site-details">
-    <summary>About this site <span class="toggle-icon" aria-hidden="true">&#9660;</span></summary>
-    <div class="hero-body">
-      {# about_html is admin-editable HTML (see main.py's edit_about() and
-         models.py's SiteSetting) -- trusted input, same pattern as an
-         artist's embed_code, so it's rendered unescaped. #}
-      {{ about_html | safe }}
-      {% if is_admin %}
-        <p><a class="btn btn-small btn-secondary" href="{{ url_for('main.edit_about') }}">Edit this text</a></p>
-      {% endif %}
-    </div>
-  </details>
+  {# The full "About this site" content moved to its own page (see
+     main.py's about_page(), linked from the main nav) -- it used to be
+     shown inline here (collapsed by default) but that kept the calendar's
+     actual point (the show listings) further down the page than it
+     needed to be. This one line stays, though: a fixed caution (not part
+     of the admin-editable About content -- see app/utils.py's
+     VENUE_CAUTION_NOTE) shown here and on every show's own Event Details
+     page, since that's the copy actually useful right where a visitor is
+     deciding what to go see. #}
+  <p class="hero-note" style="margin-bottom: 1.25rem;"><strong>{{ venue_caution_note }}</strong></p>
 
   {% if artists_this_week %}
     {# Every local artist's appearance at a show landing in this same
@@ -143,9 +132,9 @@
           <li class="event-card {{ 'event-card-local' if local_artists else '' }}">
             <div class="event-date">{{ e.start_datetime | dtfmt("%-I:%M %p") }}</div>
             {% if e.image_url %}
-              <div class="event-thumb"><img src="{{ e.image_url }}" alt="" loading="lazy"></div>
+              <a class="event-thumb" href="{{ url_for('main.event_detail', event_id=e.id) }}"><img src="{{ e.image_url }}" alt="" loading="lazy"></a>
             {% else %}
-              <div class="event-thumb event-thumb-fallback"><img src="{{ url_for('static', filename='logo.svg') }}" alt="" loading="lazy"></div>
+              <a class="event-thumb event-thumb-fallback" href="{{ url_for('main.event_detail', event_id=e.id) }}"><img src="{{ url_for('static', filename='logo.svg') }}" alt="" loading="lazy"></a>
             {% endif %}
             <div class="event-main">
               <div class="event-title">
@@ -179,9 +168,12 @@
                   {% endfor %}
                 </div>
               {% endif %}
-              {% if e.ticket_url %}
-                <div class="event-link"><a href="{{ e.ticket_url }}" target="_blank" rel="noopener">View on venue site &rarr;</a></div>
-              {% endif %}
+              <div class="event-link">
+                <a href="{{ url_for('main.event_detail', event_id=e.id) }}">Event Details &rarr;</a>
+                {% if e.ticket_url %}
+                  &middot; <a href="{{ e.ticket_url }}" target="_blank" rel="noopener">View on venue site &rarr;</a>
+                {% endif %}
+              </div>
               {% if is_admin %}
                 <div class="event-actions">
                   {% if not e.artists %}
@@ -215,13 +207,13 @@
 
   <script>
     // Remembers whichever open/closed state a visitor last left the
-    // "About this site" and "Local Artists Playing This Week!" panels in,
-    // and restores it on every later page load -- localStorage rather
-    // than a cookie/server session since this is purely a per-browser
-    // display preference with no need to round-trip to the server (and no
-    // admin login is required to have a preference remembered). Each
-    // panel is independent: closing one has no effect on the other's
-    // stored state.
+    // "Local Artists Playing This Week!" panel in, and restores it on
+    // every later page load -- localStorage rather than a cookie/server
+    // session since this is purely a per-browser display preference with
+    // no need to round-trip to the server (and no admin login is required
+    // to have a preference remembered). ("About this site" used to have
+    // its own remembered panel here too, before that content moved to its
+    // own page -- see main.py's about_page().)
     (function () {
       function rememberOpenState(elementId, storageKey) {
         var el = document.getElementById(elementId);
@@ -237,7 +229,6 @@
           localStorage.setItem(storageKey, el.open ? "1" : "0");
         });
       }
-      rememberOpenState("about-site-details", "pcm_about_site_open");
       rememberOpenState("artists-this-week-details", "pcm_artists_this_week_open");
     })();
 

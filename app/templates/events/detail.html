@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}{{ event.title }}{% endblock %}
+{% block content %}
+  <h1>{{ event.title }}</h1>
+
+  <p class="meta">
+    {{ event.start_datetime | dtfmt("%A, %B %-d, %Y  %-I:%M %p") }}
+    {% if event.price_info %} &middot; {{ event.price_info }}{% endif %}
+  </p>
+  <p class="meta">
+    {% if event.venue.website_url %}
+      <a href="{{ event.venue.website_url }}" target="_blank" rel="noopener">{{ event.venue.name }}</a>
+    {% else %}
+      {{ event.venue.name }}
+    {% endif %}
+    {% if event.venue.city %} &middot; {{ event.venue.city }}, {{ event.venue.state }}{% endif %}
+  </p>
+  {% if event.genre or event.event_types %}
+    <p class="meta">
+      {% if event.genre %}<span class="genre-tag">{{ event.genre }}</span>{% endif %}
+      {% for t in event.event_types %}<span class="type-tag">{{ t.name }}</span>{% endfor %}
+    </p>
+  {% endif %}
+
+  {% if event.image_url %}
+    <div class="event-detail-image"><img src="{{ event.image_url }}" alt=""></div>
+  {% endif %}
+
+  {% if event.description %}
+    <div class="event-detail-description">{{ event.description }}</div>
+  {% endif %}
+
+  {% if event.artists %}
+    <p class="meta">
+      Featuring:
+      {% for a in event.artists %}
+        <a href="{{ url_for('artists.detail', artist_id=a.id) }}">{{ a.name }}</a>{% if not loop.last %}, {% endif %}
+      {% endfor %}
+    </p>
+  {% endif %}
+
+  {% if event.ticket_url %}
+    <div class="page-actions">
+      <a class="btn" href="{{ event.ticket_url }}" target="_blank" rel="noopener">Tickets / more info &rarr;</a>
+    </div>
+  {% endif %}
+
+  {% if not event.is_approved %}
+    <p class="empty-state">This show is still pending review -- it isn't on the public calendar yet. Only visible here to you because you're logged in as admin.</p>
+  {% endif %}
+
+  {% if is_admin %}
+    <div class="page-actions">
+      <a class="btn btn-secondary" href="{{ url_for('events.edit_event', event_id=event.id) }}">Edit show</a>
+    </div>
+  {% endif %}
+
+  {# Fixed caution line (not part of the admin-editable About content --
+     see app/utils.py's VENUE_CAUTION_NOTE), also shown on the calendar
+     page -- worth repeating here since a visitor may land directly on a
+     single show's page without ever seeing the calendar. #}
+  <p class="hero-note" style="margin-top:1.5rem; margin-bottom:1.5rem;"><strong>{{ venue_caution_note }}</strong></p>
+
+  <p class="meta"><a href="{{ url_for('main.calendar') }}">&larr; Back to the calendar</a></p>
+{% endblock %}

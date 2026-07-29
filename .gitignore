@@ -8,3 +8,9 @@ deploy/local-music.env
 deploy/push_to_droplet.env
 .DS_Store
 *.log
+# Real uploaded flyer images (app/routes/gigs.py's "Submit your show"
+# form / app/utils.py's save_flyer_upload()) -- user-submitted files,
+# not source code, so they don't belong in git. The directory itself is
+# created on demand (os.makedirs in save_flyer_upload()), so a fresh
+# clone works fine without it existing yet.
+app/static/uploads/

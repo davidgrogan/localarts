@@ -1,12 +1,12 @@
 from dataclasses import dataclass
 from datetime import timedelta
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
 
 from app.auth import login_required
 from app.models import db, Event, Venue, Artist, EventType
 from app.recurrence import DisplayItem, group_recurring_events
-from app.utils import get_site_setting, local_now
+from app.utils import get_site_setting, local_now, VENUE_CAUTION_NOTE
 
 bp = Blueprint("main", __name__)
 
@@ -179,7 +179,6 @@ def calendar():
     artists = Artist.query.filter_by(is_local=True).order_by(Artist.name).all()
     genres = _distinct_genres()
     artists_this_week = _local_artists_playing_this_week(today, week_end)
-    site_setting = get_site_setting()
 
     return render_template(
         "calendar.html",
@@ -198,15 +197,52 @@ def calendar():
         hide_recurring=hide_recurring,
         only_local_artists=only_local_artists,
         artists_this_week=artists_this_week,
-        about_html=site_setting.about_html,
+        venue_caution_note=VENUE_CAUTION_NOTE,
     )
+
+
+@bp.route("/show/<int:event_id>")
+def event_detail(event_id):
+    """A single show's own page -- the full-size image and full
+    description, neither of which fit on the calendar's card-per-show
+    list (there, an image is a small cropped thumbnail and the
+    description is hidden in a hover tooltip). Deliberately at
+    `/show/<id>` rather than `/events/<id>` -- the `events` blueprint
+    (app/routes/events.py) is an admin-only surface end to end (its own
+    module docstring says so explicitly: "Visitors only ever see events
+    rendered on the public calendar, never through this blueprint"), so a
+    public route belongs on `main`'s own URL space instead of blurring
+    that line, even though Flask itself would technically allow both to
+    coexist without colliding.
+
+    A not-yet-approved event 404s for anyone who isn't logged in as
+    admin -- same "don't leak unvetted content via a guessable URL"
+    reasoning as everywhere else an is_approved check gates public
+    visibility. An admin can still open this page to preview one before
+    approving it (e.g. from the Review queue).
+    """
+    event = Event.query.get_or_404(event_id)
+    if not event.is_approved and not session.get("is_admin"):
+        abort(404)
+    return render_template("events/detail.html", event=event, venue_caution_note=VENUE_CAUTION_NOTE)
+
+
+@bp.route("/about")
+def about_page():
+    """The full "About this site" content -- its own page, linked from the
+    main nav, rather than shown inline (collapsed by default) on the
+    calendar like it used to be. Public: no login needed to *read* it,
+    same as everything else on the public side of the site; editing it
+    still goes through edit_about() below, gated by @login_required."""
+    site_setting = get_site_setting()
+    return render_template("about.html", about_html=site_setting.about_html)
 
 
 @bp.route("/about/edit", methods=["GET", "POST"])
 @login_required
 def edit_about():
-    """Admin-only editor for the "About this site" block on the calendar
-    page. Deliberately a single big HTML textarea (not a rich-text/WYSIWYG
+    """Admin-only editor for the "About this site" page's (main.about_page())
+    content. Deliberately a single big HTML textarea (not a rich-text/WYSIWYG
     editor -- no such dependency exists in this project) since David asked
     for it to "allow HTML markup" directly, same trust model as an
     artist's embed_code field. See models.py's SiteSetting docstring for
@@ -217,5 +253,5 @@ def edit_about():
         setting.about_html = request.form.get("about_html", "")
         db.session.commit()
         flash("Updated “About this site.”", "success")
-        return redirect(url_for("main.calendar"))
+        return redirect(url_for("main.about_page"))
     return render_template("edit_about.html", setting=setting)
