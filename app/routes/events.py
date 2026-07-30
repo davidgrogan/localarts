@@ -3,7 +3,7 @@ from datetime import datetime
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 
 from app.models import db, Event, Venue, Artist, EventType, GigSubmission
-from app.utils import slugify, get_or_create_event_type, local_now, flyer_url
+from app.utils import slugify, get_or_create_event_type, local_now, flyer_url, resolve_uploaded_image_url
 from app.auth import require_admin
 
 bp = Blueprint("events", __name__, url_prefix="/events")
@@ -26,6 +26,50 @@ def _resolve_event_types(form):
             if tag and tag not in tags:
                 tags.append(tag)
     return tags
+
+
+def _resolve_image_url(form, files):
+    """Figures out what Event.image_url should end up as after a manual
+    Add/Edit Show form submission -- either a flyer file uploaded right on
+    this form (see form.html's new "Upload a flyer" field), or the
+    existing "Image / flyer URL" text field (still there for pasting in a
+    URL directly, or because it was pre-filled from a gig-submission
+    conversion's own uploaded flyer -- see _gig_prefill()/new_event()'s
+    from_gig handling).
+
+    An uploaded file always wins over whatever's in the text field, on the
+    theory that if an admin bothered to pick a file, that's the one they
+    actually want used -- so the text field is only a fallback for when no
+    file was chosen this time. Reuses gigs.py's save_flyer_upload(), the
+    same upload pipeline already built for the public "Submit a Show" form
+    (uuid-renamed, saved under app/static/uploads/flyers/, no separate
+    serving route needed) rather than a second one.
+
+    When no file is uploaded, this returns exactly what's in the text
+    field -- including blank, which is how both new_event()/edit_event()
+    have always cleared image_url to None. (On Edit, the text field is
+    pre-filled with the event's current image_url, so leaving it alone in
+    practice preserves it; deliberately clearing that field is still the
+    one way to remove an image, same as before this feature existed.)
+
+    A file *was* chosen but isn't a supported image type: flashes a
+    warning and falls back to the text field instead of blocking the whole
+    save -- unlike the public submission form (where a flyer is required),
+    a flyer here is always optional, so a bad file shouldn't cost the
+    admin the rest of what they just filled in.
+
+    Just a thin wrapper around app/utils.py's resolve_uploaded_image_url()
+    now -- pulled out there once venues.py's Add/Edit Venue form needed
+    the exact same upload-vs-URL precedence logic for a venue's own
+    photo, rather than duplicating it a second time.
+    """
+    return resolve_uploaded_image_url(
+        form, files,
+        bad_file_message=(
+            "That flyer file type isn't supported (JPG, PNG, GIF, or WEBP only) "
+            "-- the show was saved without changing its image."
+        ),
+    )
 
 
 def _diy_venue_id():
@@ -81,7 +125,7 @@ def new_event():
             description=request.form.get("description", "").strip(),
             ticket_url=request.form.get("ticket_url", "").strip() or None,
             price_info=request.form.get("price_info", "").strip() or None,
-            image_url=request.form.get("image_url", "").strip() or None,
+            image_url=_resolve_image_url(request.form, request.files),
             source="manual",
             is_approved=True,
         )
@@ -154,7 +198,7 @@ def edit_event(event_id):
         event.description = request.form.get("description", "").strip()
         event.ticket_url = request.form.get("ticket_url", "").strip() or None
         event.price_info = request.form.get("price_info", "").strip() or None
-        event.image_url = request.form.get("image_url", "").strip() or None
+        event.image_url = _resolve_image_url(request.form, request.files)
 
         artist_ids = request.form.getlist("artist_ids")
         event.artists = Artist.query.filter(Artist.id.in_(artist_ids)).all() if artist_ids else []

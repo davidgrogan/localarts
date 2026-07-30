@@ -137,6 +137,15 @@ class Venue(db.Model):
     default_event_type_id = db.Column(db.Integer, db.ForeignKey("event_type.id"))
     default_event_type = db.relationship("EventType")
 
+    # A photo of the venue itself (its room, marquee, whatever an admin
+    # picks) -- shown on the venue's own detail page, and used as a
+    # fallback image on any of its events that don't have their own
+    # image_url (e.g. a scraped event with no flyer, or a manually-added
+    # show nobody bothered to attach a flyer to). Same upload pipeline as
+    # Event.image_url/the gig-submission flyer -- see
+    # app/utils.py's resolve_uploaded_image_url()/save_flyer_upload().
+    image_url = db.Column(db.String(500))
+
     last_scraped_at = db.Column(db.DateTime)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

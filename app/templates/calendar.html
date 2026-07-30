@@ -131,8 +131,16 @@
           {% set local_artists = e.artists | selectattr("is_local") | list %}
           <li class="event-card {{ 'event-card-local' if local_artists else '' }}">
             <div class="event-date">{{ e.start_datetime | dtfmt("%-I:%M %p") }}</div>
+            {# A show with no flyer of its own falls back to its venue's
+               photo (e.g. the room, the marquee -- see Venue.image_url,
+               set on the venue's own edit page) before falling all the
+               way back to the bare site logo -- so cards for venues that
+               bothered to add a photo don't look as blank as an event
+               that truly has nothing to show. #}
             {% if e.image_url %}
               <a class="event-thumb" href="{{ url_for('main.event_detail', event_id=e.id) }}"><img src="{{ e.image_url }}" alt="" loading="lazy"></a>
+            {% elif e.venue.image_url %}
+              <a class="event-thumb" href="{{ url_for('main.event_detail', event_id=e.id) }}"><img src="{{ e.venue.image_url }}" alt="" loading="lazy"></a>
             {% else %}
               <a class="event-thumb event-thumb-fallback" href="{{ url_for('main.event_detail', event_id=e.id) }}"><img src="{{ url_for('static', filename='logo.svg') }}" alt="" loading="lazy"></a>
             {% endif %}

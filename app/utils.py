@@ -266,6 +266,49 @@ def save_flyer_upload(file_storage):
     return filename
 
 
+def resolve_uploaded_image_url(form, files, file_field="flyer_image", url_field="image_url", bad_file_message=None):
+    """Shared precedence logic for any admin form that offers both a
+    pasted Image URL text field and a direct file upload for the same
+    image -- originally written for events.py's Add/Edit Show form (see
+    _resolve_image_url() there, now a thin wrapper around this), and
+    reused as-is by venues.py's Add/Edit Venue form for a venue's own
+    photo.
+
+    An uploaded file always wins over whatever's in the URL text field,
+    on the theory that if an admin bothered to pick a file, that's the
+    one they actually want used -- the text field is only a fallback for
+    when no file was chosen this time (or a URL was pasted in directly,
+    e.g. one already hosted elsewhere). Reuses save_flyer_upload()/
+    flyer_url() -- the same upload pipeline built for the public "Submit
+    a Show" form (uuid-renamed, saved under app/static/uploads/flyers/,
+    no separate serving route needed) -- rather than a second one; the
+    "flyer" naming there predates this being reused for venue photos too,
+    but the mechanics (save an image file, get back a URL) are identical.
+
+    When no file is uploaded, this returns exactly what's in the URL text
+    field -- including blank, which is how every caller has always
+    cleared an image back to None. A file *was* chosen but isn't a
+    supported image type: flashes a warning (bad_file_message, or a
+    generic default) and falls back to the URL field instead of blocking
+    the whole save.
+    """
+    from flask import flash
+
+    upload = files.get(file_field)
+    if upload is not None and upload.filename:
+        filename = save_flyer_upload(upload)
+        if filename:
+            return flyer_url(filename)
+        flash(
+            bad_file_message or (
+                "That image file type isn't supported (JPG, PNG, GIF, or WEBP only) "
+                "-- this was saved without changing its image."
+            ),
+            "error",
+        )
+    return form.get(url_field, "").strip() or None
+
+
 def flyer_url(flyer_filename):
     """The public URL for a saved flyer filename (see save_flyer_upload()
     above), or None if there isn't one. Needs an active Flask app/request

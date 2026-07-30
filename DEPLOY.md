@@ -198,6 +198,94 @@ If, like `waveyvibe.dev`, the parent site is a separate static homepage
 listing links to each app, add a card there pointing to `/localarts` --
 see that project's own repo for its card markup/style.
 
+## 10. Pointing a custom domain at this deployment
+
+This section covers adding a domain of the site's own (e.g.
+`paradisecitymusic.com`) that reaches this *same* running app on the
+droplet, **alongside** the existing path-mounted `waveyvibe.dev/localarts`
+URL -- both keep working at once, since Caddy can route more than one
+domain/path to the same `localhost:8000` backend.
+
+**a. Buy the domain**, if you don't already own it -- any registrar works
+(Namecheap, Porkbun, Cloudflare Registrar, Google Domains' successor, etc.);
+just search for the name you want and check availability. Nothing about
+the steps below is registrar-specific.
+
+**b. Point its DNS at the droplet.** In the registrar's DNS settings (or
+wherever DNS is managed for the domain, e.g. Cloudflare if it's proxied
+there), add:
+
+```
+Type   Name   Value
+A      @      YOUR_DROPLET_IP
+A      www    YOUR_DROPLET_IP
+```
+
+Find the droplet's public IP from the DigitalOcean control panel, or by
+running `curl -4 icanhazip.com` on the droplet itself. DNS changes are
+often live within minutes but can take longer to propagate everywhere --
+`dig +short paradisecitymusic.com` (from your own machine) confirms once
+it resolves to the droplet's IP.
+
+**c. Add a new Caddy site block** for the domain -- a separate top-level
+block in `/etc/caddy/Caddyfile`, *not* nested inside the existing
+`waveyvibe.dev { ... }` block, since this domain owns its own root rather
+than being mounted under a path:
+
+```bash
+nano /etc/caddy/Caddyfile
+```
+
+```
+paradisecitymusic.com, www.paradisecitymusic.com {
+    reverse_proxy localhost:8000
+}
+```
+
+No `handle_path` wrapper and no `X-Forwarded-Prefix` header this time --
+those exist specifically for the path-mounted case (see step 8) so the
+app knows to prefix its own generated links with `/localarts`; a domain
+serving the app at its own root needs neither. Then:
+
+```bash
+caddy validate --config /etc/caddy/Caddyfile
+systemctl reload caddy
+curl -sI https://paradisecitymusic.com/
+```
+
+Caddy requests and renews a free Let's Encrypt certificate automatically
+the moment it sees a real domain name in a Caddyfile block -- no separate
+certbot step needed -- but that first request will fail if DNS hasn't
+propagated yet or if ports 80/443 aren't reachable from the internet
+(check `sudo ss -tlnp` and the droplet's firewall/DO Cloud Firewall rules
+if it doesn't succeed right away).
+
+**d. Fix `SESSION_COOKIE_PATH` so login works on both URLs.** This is the
+one real gotcha: `deploy/local-music.env`'s `SESSION_COOKIE_PATH=/localarts`
+(added back when this app only ever lived at the path-mounted URL, see
+step 5) scopes the session cookie so the browser only sends it back on
+requests under `/localarts`. A request to the new domain's root (`/`,
+`/venues`, `/events/review`, etc.) never matches that path, so admin
+login would silently appear broken there specifically -- everything else
+on the site still works, since browsing needs no session cookie at all,
+which makes this an easy thing to miss until someone actually tries to
+log in through the new domain.
+
+Fix it by removing (or commenting out) the `SESSION_COOKIE_PATH` line in
+`deploy/local-music.env` entirely -- `app/__init__.py` already falls back
+to `"/"` when it's unset, and a cookie scoped to `"/"` still covers every
+`/localarts/*` request too, so nothing about the existing path-mounted
+URL's login breaks:
+
+```bash
+nano deploy/local-music.env    # delete or comment out the SESSION_COOKIE_PATH line
+systemctl restart local-music.service
+```
+
+**e. Update the `waveyvibe.dev` homepage card (optional)**, if step 9 added
+one, to point at the new domain instead of `/localarts` -- purely
+cosmetic, both URLs keep working either way.
+
 ## Moving locally-accumulated data to the droplet
 
 The intended day-to-day workflow: run scans, do your review/tagging, all

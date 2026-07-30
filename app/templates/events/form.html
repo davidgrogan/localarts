@@ -18,7 +18,7 @@
   {% if not venues %}
     <p class="empty-state">You need at least one venue first. <a href="{{ url_for('venues.new_venue') }}">Add a venue</a>.</p>
   {% else %}
-    <form class="stacked" method="post">
+    <form class="stacked" method="post" enctype="multipart/form-data">
       <input type="hidden" name="next" value="{{ next_url|default('') }}">
       {% if gig %}
         <input type="hidden" name="from_gig_id" value="{{ gig.id }}">
@@ -51,7 +51,11 @@
       {% set current_image_url = event.image_url if event and event.image_url else (gig_image_url if gig_image_url else '') %}
       <label for="image_url">Image / flyer URL</label>
       <input type="url" id="image_url" name="image_url" value="{{ current_image_url }}">
+
+      <label for="flyer_image">Or upload a flyer image</label>
+      <input type="file" id="flyer_image" name="flyer_image" accept="image/png,image/jpeg,image/gif,image/webp">
       <div class="hint">
+        JPG, PNG, GIF, or WEBP -- uploading a file here replaces whatever's in the URL field above once you save.
         {% if gig_image_url %}Prefilled with the flyer uploaded with this submission.{% endif %}
         <br><img id="image_url_preview" src="{{ current_image_url }}" alt=""
                  style="max-width:200px; border-radius:4px; margin-top:0.4rem; {{ '' if current_image_url else 'display:none;' }}">
@@ -114,25 +118,43 @@
     {% endif %}
 
     <script>
-      // Keeps the small preview under Image/flyer URL in sync as the value
-      // changes -- both a prefilled gig-submission flyer on page load, and
-      // any URL typed/pasted in by hand afterward (unlike the artist form's
-      // preview, which only ever updates via its Bandcamp-bookmarklet paste
-      // handler, this field has no such hook, since it's just a plain text
-      // field someone might edit directly).
+      // Keeps the small preview under Image/flyer URL in sync as either
+      // input changes -- a prefilled gig-submission flyer on page load, a
+      // URL typed/pasted into the text field, or a file picked in the new
+      // upload field. The upload field wins if both are set (matching
+      // events.py's _resolve_image_url(), which does the same on save):
+      // choosing a file shows an instant local preview via
+      // URL.createObjectURL() (no upload/round-trip needed just to see
+      // it) and clears the URL field so there's no ambiguity about which
+      // one will actually be used once saved.
       (function () {
-        var input = document.getElementById("image_url");
+        var urlInput = document.getElementById("image_url");
+        var fileInput = document.getElementById("flyer_image");
         var preview = document.getElementById("image_url_preview");
-        if (!input || !preview) return;
-        input.addEventListener("input", function () {
-          var url = input.value.trim();
-          if (url) {
-            preview.src = url;
+        if (!preview) return;
+
+        function showPreview(src) {
+          if (src) {
+            preview.src = src;
             preview.style.display = "";
           } else {
             preview.style.display = "none";
           }
-        });
+        }
+
+        if (urlInput) {
+          urlInput.addEventListener("input", function () {
+            showPreview(urlInput.value.trim());
+          });
+        }
+        if (fileInput) {
+          fileInput.addEventListener("change", function () {
+            var file = fileInput.files && fileInput.files[0];
+            if (!file) return;
+            if (urlInput) urlInput.value = "";
+            showPreview(URL.createObjectURL(file));
+          });
+        }
       })();
     </script>
 

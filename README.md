@@ -50,7 +50,9 @@ DigitalOcean.
   path still ties up one request for the whole scan; if scanning ever gets
   slow enough to matter (several headless-browser venues back to back),
   scheduling more frequent `scrape.timer` runs is the fallback. Admin-only.
-- **Add show** (`/events/new`) -- manual entry, with a quick-add box for a new artist. Admin-only.
+- **Add show** (`/events/new`) -- manual entry, with a quick-add box for a new artist and
+  either a flyer image upload or a pasted image URL (see "Uploading a flyer on the Add/Edit
+  Show form" below). Admin-only.
 - **Review** (`/events/review`) -- one queue for everything a scrape needs a human
   to look at, in four sections: **New** (`is_approved=False`, never seen before --
   approve or discard), **Changed** (already approved and still live, but the venue's
@@ -95,7 +97,11 @@ own laptop and not fine for anything actually deployed.
 
 - `Venue` -- name, address, website, the specific events URL to pull from, a
   `source_type` (see below), a free-form `scrape_config` JSON field for
-  per-venue tuning, and a `default_event_type` tag (see "Event type tags" below).
+  per-venue tuning, a `default_event_type` tag (see "Event type tags" below),
+  and an `image_url` -- a photo of the venue itself, settable via pasted URL
+  or file upload on the Add/Edit Venue form, shown on the venue's detail page
+  and used as a fallback image for any of its events with no image of their
+  own (see "Venue photos, and the event-image fallback" below).
 - `Artist` -- name, hometown, bio, an `image_url` (a photo/promo image --
   just a link to an image hosted elsewhere, same as `Event.image_url`; no
   file upload in this POC), website/Bandcamp/YouTube link, an embed
@@ -921,6 +927,31 @@ runs, so a flyer-attachment hiccup shouldn't also take down the email.
 The contact form doesn't pass these -- there's no file involved there --
 so its behavior is unchanged.
 
+## Uploading a flyer on the Add/Edit Show form
+
+The manual Add/Edit Show form (`/events/new`, `/events/<id>/edit`) can
+now take a flyer image upload directly, not just a pasted URL -- reusing
+`save_flyer_upload()`/`flyer_url()`, the exact same upload pipeline
+already built for the public "Submit a Show" form (uuid-renamed, saved
+under `app/static/uploads/flyers/`, no separate serving route needed).
+The form's `enctype="multipart/form-data"` and a new `flyer_image` file
+input sit right below the existing "Image / flyer URL" text field.
+
+`events.py`'s `_resolve_image_url()` decides what `Event.image_url` ends
+up as: an uploaded file always wins over whatever's in the URL text field
+(on the theory that if an admin bothered to pick a file, that's the one
+they actually meant to use); the text field is only a fallback for when
+no file is chosen this time -- including a blank URL field with no file
+selected, which is still how an image gets cleared from a show, exactly
+as it worked before this feature existed. Choosing a file in the browser
+shows an instant local preview (`URL.createObjectURL()`, no server
+round-trip needed just to see it) and clears the text field so there's no
+ambiguity about which one will actually be used once saved. A file that
+isn't a supported image type (JPG/PNG/GIF/WEBP) doesn't block the save --
+unlike the public submission form, where a flyer is required, one here is
+always optional, so a bad file just flashes a warning and falls back to
+the URL field instead of losing the rest of what was filled in.
+
 **No confirmation email to the submitter.** The submission form validates
 the email address is present and looks like an email
 (`name@domain.tld`-shaped -- a loose regex check, not a real
@@ -928,6 +959,33 @@ deliverability check), and it's stored so David can reach out, but no
 automated email is sent back to the submitter on success -- just the
 on-page "flagged for review" message. Worth adding later if it turns out
 people want a receipt, but wasn't part of the initial ask.
+
+## Venue photos, and the event-image fallback
+
+Venues can now have their own photo too (`Venue.image_url`, added the same
+way as `Event.image_url`/`Artist.image_url` -- a plain URL column, plus
+the `_COLUMN_MIGRATIONS` entry in `app/__init__.py` for existing SQLite
+installs). It's set from the Add/Edit Venue form (`/venues/new`,
+`/venues/<id>/edit`), which offers the same pasted-URL-or-file-upload pair
+of fields as the Add/Edit Show form -- an uploaded file (`venue_image`)
+wins over a pasted URL, a blank URL field with no file clears it, and a
+bad file type flashes a warning and falls back to the URL field instead of
+losing the rest of the save. The upload logic itself was pulled out of
+`events.py`'s `_resolve_image_url()` into a shared
+`resolve_uploaded_image_url()` in `app/utils.py` so both forms use the
+exact same precedence rules rather than duplicating them; each caller
+still gets to customize the file-input name (`flyer_image` vs
+`venue_image`) and the "unsupported file type" flash wording.
+
+Once set, a venue's photo shows on its own detail page (`/venues/<id>`),
+and -- more usefully -- becomes the fallback image for any of that
+venue's shows that don't have their own flyer/image_url: both the
+calendar's event cards and a show's own Event Details page check
+`event.image_url` first, then `event.venue.image_url`, and only fall all
+the way back to the bare site logo (calendar cards) or no image at all
+(Event Details) if neither is set. So a venue that bothers to add one
+photo of its room gets that photo on every one of its shows that would
+otherwise show nothing.
 
 ## About page and the fixed venue-caution line
 

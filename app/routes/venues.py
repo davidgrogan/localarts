@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 
 from app.models import db, Venue, Event, EventType
-from app.utils import slugify, get_or_create_event_type
+from app.utils import slugify, get_or_create_event_type, resolve_uploaded_image_url
 from app.scrapers.base import preview_scrape, run_scrape, ScrapeError
 from app.auth import login_required
 
@@ -104,6 +104,22 @@ def scan_all():
     return redirect(url_for("events.review"))
 
 
+def _resolve_venue_image_url(form, files):
+    """A venue's own photo -- shown on its detail page, and used as a
+    fallback image on any of its events that don't have their own
+    image_url (see calendar.html/events/detail.html). Same upload-vs-URL
+    precedence as events.py's Add/Edit Show form; see
+    app/utils.py's resolve_uploaded_image_url() for the shared logic."""
+    return resolve_uploaded_image_url(
+        form, files,
+        file_field="venue_image",
+        bad_file_message=(
+            "That photo file type isn't supported (JPG, PNG, GIF, or WEBP only) "
+            "-- the venue was saved without changing its photo."
+        ),
+    )
+
+
 def _resolve_default_event_type(form):
     """Turn a submitted venue form's default-tag select + quick-add text
     into an EventType (or None), creating a brand-new one if needed."""
@@ -130,6 +146,7 @@ def new_venue():
             events_url=request.form.get("events_url", "").strip(),
             source_type=request.form.get("source_type", "manual"),
             scrape_config=request.form.get("scrape_config", "").strip() or "{}",
+            image_url=_resolve_venue_image_url(request.form, request.files),
         )
         default_tag = _resolve_default_event_type(request.form)
         venue.default_event_type = default_tag
@@ -168,6 +185,7 @@ def edit_venue(venue_id):
         venue.events_url = request.form.get("events_url", "").strip()
         venue.source_type = request.form.get("source_type", "manual")
         venue.scrape_config = request.form.get("scrape_config", "").strip() or "{}"
+        venue.image_url = _resolve_venue_image_url(request.form, request.files)
         venue.is_active = bool(request.form.get("is_active"))
         venue.default_event_type = _resolve_default_event_type(request.form)
         db.session.commit()

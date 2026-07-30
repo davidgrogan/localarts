@@ -22,8 +22,12 @@
     </p>
   {% endif %}
 
+  {# Falls back to the venue's own photo (Venue.image_url) when this show
+     doesn't have its own -- same fallback as the calendar page's cards. #}
   {% if event.image_url %}
     <div class="event-detail-image"><img src="{{ event.image_url }}" alt=""></div>
+  {% elif event.venue.image_url %}
+    <div class="event-detail-image"><img src="{{ event.venue.image_url }}" alt=""></div>
   {% endif %}
 
   {% if event.description %}

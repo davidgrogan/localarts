@@ -3,7 +3,7 @@
 {% block content %}
   <h1>{{ "Edit " + venue.name if venue else "Add a venue" }}</h1>
 
-  <form class="stacked" method="post">
+  <form class="stacked" method="post" enctype="multipart/form-data">
     <label for="name">Venue name</label>
     <input type="text" id="name" name="name" value="{{ venue.name if venue else '' }}" required>
 
@@ -18,6 +18,19 @@
 
     <label for="website_url">Website</label>
     <input type="url" id="website_url" name="website_url" value="{{ venue.website_url if venue else '' }}" placeholder="https://example.com">
+
+    <label for="image_url">Venue photo URL</label>
+    <input type="url" id="image_url" name="image_url" value="{{ venue.image_url if venue else '' }}">
+
+    <label for="venue_image">Or upload a venue photo</label>
+    <input type="file" id="venue_image" name="venue_image" accept="image/png,image/jpeg,image/gif,image/webp">
+    <div class="hint">
+      JPG, PNG, GIF, or WEBP -- uploading a file here replaces whatever's in the URL field above once you save.
+      Shown on this venue's own page, and used in place of a show's own image on any of its
+      events that don't have one of their own.
+      <br><img id="image_url_preview" src="{{ venue.image_url if venue else '' }}" alt=""
+               style="max-width:200px; border-radius:4px; margin-top:0.4rem; {{ '' if (venue and venue.image_url) else 'display:none;' }}">
+    </div>
 
     <label for="source_type">How should this venue's events be pulled in?</label>
     <select id="source_type" name="source_type">
@@ -86,4 +99,40 @@
       {% if venue %}<a class="btn btn-secondary" href="{{ url_for('venues.detail', venue_id=venue.id) }}">Cancel</a>{% endif %}
     </div>
   </form>
+
+  <script>
+    // Same preview pattern as events/form.html's Image/flyer URL field --
+    // keeps the small preview under Venue photo in sync as either input
+    // changes, with an uploaded file winning over (and clearing) the URL
+    // field, matching _resolve_venue_image_url()'s precedence on save.
+    (function () {
+      var urlInput = document.getElementById("image_url");
+      var fileInput = document.getElementById("venue_image");
+      var preview = document.getElementById("image_url_preview");
+      if (!preview) return;
+
+      function showPreview(src) {
+        if (src) {
+          preview.src = src;
+          preview.style.display = "";
+        } else {
+          preview.style.display = "none";
+        }
+      }
+
+      if (urlInput) {
+        urlInput.addEventListener("input", function () {
+          showPreview(urlInput.value.trim());
+        });
+      }
+      if (fileInput) {
+        fileInput.addEventListener("change", function () {
+          var file = fileInput.files && fileInput.files[0];
+          if (!file) return;
+          if (urlInput) urlInput.value = "";
+          showPreview(URL.createObjectURL(file));
+        });
+      }
+    })();
+  </script>
 {% endblock %}
