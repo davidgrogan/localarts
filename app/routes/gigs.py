@@ -20,6 +20,7 @@ it's actually saved. Reusing the existing show form means artist-linking,
 tagging, and venue selection all come for free instead of needing their
 own bespoke conversion UI.
 """
+import os
 import re
 from datetime import datetime
 
@@ -27,7 +28,7 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 from app.auth import login_required
 from app.models import GigSubmission, db
-from app.utils import local_now, save_flyer_upload, send_admin_email
+from app.utils import FLYER_UPLOAD_DIR, local_now, save_flyer_upload, send_admin_email, slugify
 
 bp = Blueprint("gigs", __name__, url_prefix="/gigs")
 
@@ -111,6 +112,21 @@ def submit_gig():
         # -- but it's still worth telling them the notification part failed,
         # since otherwise "we'll take a look soon" is a promise that quietly
         # depends on David actually noticing the review queue on his own.
+        # Attach the flyer itself (not just a link to it) so David can see
+        # it right in the notification without opening the review queue --
+        # flyer_filename is a uuid-based name (see save_flyer_upload()), so
+        # give the attachment a nicer, human-readable filename instead of
+        # exposing that internal name to the recipient's mail client.
+        # slugify() (already used elsewhere for venue/artist slugs) keeps
+        # this safe as an attachment filename regardless of what odd
+        # characters someone types into the free-text venue_name field.
+        flyer_attachment_path = None
+        flyer_attachment_name = None
+        if flyer_filename:
+            flyer_attachment_path = os.path.join(FLYER_UPLOAD_DIR, flyer_filename)
+            ext = flyer_filename.rsplit(".", 1)[-1]
+            flyer_attachment_name = f"flyer-{slugify(venue_name)}.{ext}"
+
         try:
             send_admin_email(
                 f"New show submitted: {venue_name}",
@@ -121,9 +137,12 @@ def submit_gig():
                     + (f"Genre(s): {genres_text}\n" if genres_text else "")
                     + "\n"
                     f"Lineup:\n{lineup_text}\n\n"
+                    f"Flyer attached below.\n\n"
                     f"Review it here: {url_for('gigs.review', _external=True)}"
                 ),
                 reply_to=submitter_email,
+                attachment_path=flyer_attachment_path,
+                attachment_filename=flyer_attachment_name,
             )
         except Exception as exc:  # noqa: BLE001 -- notification failing shouldn't lose the submission
             flash(

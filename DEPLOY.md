@@ -292,35 +292,57 @@ cd /var/www/localarts
 git pull
 source .venv/bin/activate
 pip install -r requirements.txt   # only if requirements.txt changed
+python3 sync_schema.py            # dry run -- see "Schema drift" below before restarting
 deactivate
 systemctl restart local-music.service
 ```
 
-**If a change adds a new column to an existing model** (like `Event`),
-that's *not* covered by the above on the droplet. Locally/SQLite,
-`app/__init__.py`'s `_run_sqlite_column_migrations()` adds missing
-columns automatically on startup -- but it explicitly skips Postgres
-("use a real migration tool instead"), so on the droplet you need one
-manual `ALTER TABLE` per new column before restarting the service, e.g.:
+### Schema drift: keeping the droplet's Postgres tables in sync (`sync_schema.py`)
+
+Locally/SQLite, `app/__init__.py`'s `_run_sqlite_column_migrations()` adds
+any newly-declared column to an existing table automatically on every
+startup -- but it explicitly skips Postgres ("use a real migration tool
+instead"), so a column added to an already-existing model (`Event.genre`,
+`Artist.image_url`, `GigSubmission.genres_text`, etc.) never shows up on
+the droplet on its own. Brand-new *tables* aren't affected by this --
+`db.create_all()` (runs automatically on every startup, on every backend)
+creates any table that's missing outright, with every one of its columns
+already in place. It's specifically an existing table gaining a new
+column that needs a manual `ALTER TABLE` on Postgres.
+
+This used to mean hand-copying a list of `ALTER TABLE` statements out of
+`app/__init__.py`'s `_COLUMN_MIGRATIONS` dict every time you deployed --
+which works fine right up until that list quietly falls behind (exactly
+what happened here: several columns added over a long stretch of
+local-only work, like `event.genre`/`event.image_url`/
+`artist.embed_code`/`gig_submission.genres_text`, were never manually
+mirrored into this doc's example commands, so a straight `git pull` +
+restart after syncing a big batch of local changes left the droplet's
+Postgres tables missing columns the code now assumes exist -- a 500 on
+the very first request that touched one of them).
+
+`sync_schema.py` (project root) replaces that hand-copied list with an
+actual comparison: it asks the live database what columns each table
+really has (via SQLAlchemy's cross-backend introspection) and compares
+that against what `app/models.py` currently declares, so it can't miss
+anything regardless of how long it's been since the last deploy or how
+many features landed in between. It only ever proposes `ADD COLUMN`
+statements -- never drops or alters an existing column -- so it's safe to
+run repeatedly.
 
 ```bash
-sudo -u postgres psql -d localarts -c 'ALTER TABLE event ADD COLUMN last_seen_at TIMESTAMP;'
-sudo -u postgres psql -d localarts -c 'ALTER TABLE event ADD COLUMN missing_streak INTEGER DEFAULT 0 NOT NULL;'
-sudo -u postgres psql -d localarts -c 'ALTER TABLE event ADD COLUMN needs_review BOOLEAN DEFAULT FALSE NOT NULL;'
-sudo -u postgres psql -d localarts -c 'ALTER TABLE event ADD COLUMN review_note TEXT;'
-sudo -u postgres psql -d localarts -c 'ALTER TABLE venue ADD COLUMN default_event_type_id INTEGER REFERENCES event_type(id);'
-sudo -u postgres psql -d localarts -c 'ALTER TABLE event ADD COLUMN is_rejected BOOLEAN DEFAULT FALSE NOT NULL;'
+source .venv/bin/activate
+set -a; source deploy/local-music.env; set +a   # DATABASE_URL etc.
+python3 sync_schema.py            # dry run: lists what's missing, changes nothing
+python3 sync_schema.py --apply    # actually runs the ALTER TABLE statements
+deactivate
 ```
 
-The event type tags feature also adds two brand-new tables (`event_type`,
-`event_event_types`) -- those *are* covered by the normal `db.create_all()`
-that runs on every app startup (it only skips *existing* tables' missing
-columns, not missing tables entirely), so no manual step needed for those two.
-
-(Check `app/__init__.py`'s `_COLUMN_MIGRATIONS` dict for the current
-list of pending columns and their SQLite types -- Postgres types are
-usually the same or close; `VARCHAR(n)`/`TEXT` are identical, `DATETIME`
-becomes `TIMESTAMP`, `BOOLEAN DEFAULT 0` becomes `BOOLEAN DEFAULT FALSE`.)
+Run the dry run after every `git pull`, before restarting the service --
+if it reports "Nothing to do," you're already current; if it lists
+missing columns, review them and re-run with `--apply` before restarting
+(the service can crash mid-request on any route that reads/writes a
+column the live table doesn't have yet).
 
 ## Admin login
 

@@ -1,3 +1,4 @@
+import mimetypes
 import os
 import re
 import smtplib
@@ -164,12 +165,23 @@ MAIL_USERNAME = os.environ.get("MAIL_USERNAME")
 MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD")
 
 
-def send_admin_email(subject, body, reply_to=None):
+def send_admin_email(subject, body, reply_to=None, attachment_path=None, attachment_filename=None):
     """Send a single plain-text email to the site's admin inbox
     (CONTACT_EMAIL) via Gmail SMTP. Raises RuntimeError if MAIL_USERNAME/
     MAIL_PASSWORD aren't configured, and lets any smtplib exception
     propagate -- every caller is expected to catch it and flash a friendly
     error rather than let it 500, same as the contact form always did.
+
+    attachment_path (optional) attaches one file, read straight off disk --
+    used by gigs.py's submit_gig() to include the submitted flyer image
+    inline in the notification, so David can see it without opening the
+    review queue first. attachment_filename controls the filename the
+    recipient's mail client shows for it (defaults to attachment_path's own
+    basename, which would otherwise be an opaque uuid-based name -- see
+    save_flyer_upload()). A missing/unreadable file is treated as "no
+    attachment" rather than failing the whole email -- the submission
+    itself is already safely saved by the time this runs (see gigs.py), so
+    a flyer-attachment hiccup shouldn't also take down the notification.
     """
     if not MAIL_USERNAME or not MAIL_PASSWORD:
         raise RuntimeError(
@@ -184,6 +196,23 @@ def send_admin_email(subject, body, reply_to=None):
     if reply_to:
         msg["Reply-To"] = reply_to
     msg.set_content(body)
+
+    if attachment_path:
+        try:
+            with open(attachment_path, "rb") as f:
+                data = f.read()
+        except OSError:
+            data = None
+        if data is not None:
+            content_type, _ = mimetypes.guess_type(attachment_path)
+            maintype, subtype = (content_type.split("/", 1) if content_type
+                                  else ("application", "octet-stream"))
+            msg.add_attachment(
+                data,
+                maintype=maintype,
+                subtype=subtype,
+                filename=attachment_filename or os.path.basename(attachment_path),
+            )
 
     with smtplib.SMTP(MAIL_SERVER, MAIL_PORT, timeout=10) as smtp:
         smtp.starttls()

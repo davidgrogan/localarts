@@ -823,8 +823,10 @@ behind it at all). Submitting immediately:
    confirmation email" below).
 2. Emails David via `send_admin_email()` (see "Shared admin email" below)
    with the full submission -- date, location, lineup, submitter contact
-   -- and a direct link to the review queue, so nothing sits unnoticed
-   waiting to be checked.
+   -- **with the submitted flyer image attached directly to the email**
+   (not just a link to it), so it's visible right in the notification
+   without opening the review queue first -- and a direct link to the
+   review queue, so nothing sits unnoticed waiting to be checked.
 
 A honeypot field (`.hp-field` in style.css -- hidden from real visitors,
 tripped only by a bot that fills in every input including hidden ones)
@@ -904,6 +906,20 @@ contact form's behavior is unchanged, it just calls the shared function
 now. Same env vars as before (`MAIL_USERNAME`/`MAIL_PASSWORD`/
 `CONTACT_EMAIL`/etc., see `.env.example`) -- no new configuration needed
 if the contact form's email was already working.
+
+`send_admin_email()` also takes optional `attachment_path`/
+`attachment_filename` arguments -- `gigs.py`'s notification passes the
+submitted flyer's on-disk path (built from `FLYER_UPLOAD_DIR` +
+`flyer_filename`) so it lands as a real attachment on the email itself,
+not just a link the admin has to click through for. The attachment gets
+a human-readable filename (`flyer-<slugified-venue-name>.<ext>`) rather
+than exposing the internal uuid-based filename `save_flyer_upload()`
+actually saves it under. A missing/unreadable flyer file is treated as
+"send with no attachment" rather than failing the whole notification --
+the submission itself is already safely saved in the DB by the time this
+runs, so a flyer-attachment hiccup shouldn't also take down the email.
+The contact form doesn't pass these -- there's no file involved there --
+so its behavior is unchanged.
 
 **No confirmation email to the submitter.** The submission form validates
 the email address is present and looks like an email
