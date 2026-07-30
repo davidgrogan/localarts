@@ -286,6 +286,40 @@ systemctl restart local-music.service
 one, to point at the new domain instead of `/localarts` -- purely
 cosmetic, both URLs keep working either way.
 
+## Shipping a code change + your local data in one go
+
+When you've made an actual code change locally (not just scans/review/
+tagging) and want it live -- code pushed to GitHub, pulled onto the
+droplet, the droplet's Postgres schema brought in line with the new
+`app/models.py`, *then* your local data synced over, then the service
+restarted -- `deploy_all.sh` (or, for Finder, `Deploy Everything.command`)
+does the whole thing in one command, in that order:
+
+1. Commits (prompts for a message) and pushes any uncommitted local
+   changes.
+2. Over one SSH connection to the droplet: `git pull`, `pip install -r
+   requirements.txt`, `python3 sync_schema.py --apply` (see "Schema
+   drift" below -- safe to run every time, since it only ever adds or
+   widens columns, never drops/narrows one), then `systemctl restart
+   local-music.service`.
+3. Runs `migrate_to_postgres.py` through the same connection to sync
+   your local data over (same "type yes to confirm" prompt as
+   `push_to_droplet.sh` below).
+
+The order matters: schema sync has to run *after* the droplet already has
+today's code, or `sync_schema.py` is still comparing against yesterday's
+`app/models.py` and won't see anything that changed.
+
+It reuses `push_to_droplet.sh`'s own `deploy/push_to_droplet.env` (see
+setup below) -- no separate config needed unless your droplet's app
+directory or systemd service name differ from this doc's defaults (see
+the commented-out `DROPLET_APP_DIR`/`DROPLET_SERVICE_NAME` lines in
+`deploy/push_to_droplet.env.example`).
+
+If you've only been scanning/reviewing/tagging locally with no code
+changes to ship, `push_to_droplet.sh` below is the lighter-weight option
+-- data only, no git/schema/restart involved.
+
 ## Moving locally-accumulated data to the droplet
 
 The intended day-to-day workflow: run scans, do your review/tagging, all
@@ -415,8 +449,24 @@ really has (via SQLAlchemy's cross-backend introspection) and compares
 that against what `app/models.py` currently declares, so it can't miss
 anything regardless of how long it's been since the last deploy or how
 many features landed in between. It only ever proposes `ADD COLUMN`
-statements -- never drops or alters an existing column -- so it's safe to
-run repeatedly.
+statements for genuinely missing columns, and `ALTER COLUMN ... TYPE`
+statements to *widen* an existing column that's narrower than the model
+now declares (e.g. `Venue.image_url` growing from `VARCHAR(500)` to
+unbounded `Text` -- see below) -- it never drops a column, narrows one, or
+otherwise touches existing data, so it's safe to run repeatedly.
+
+**The widening case, concretely:** `Venue`/`Event`/`Artist.image_url` all
+used to be `VARCHAR(500)`. Pasting a real Instagram/Facebook photo URL for
+the "Haze" venue (519 characters, mostly a long signed query string) broke
+`migrate_to_postgres.py` with `psycopg2.errors.StringDataRightTruncation:
+value too long for type character varying(500)` -- Postgres enforces that
+length strictly, but local SQLite never did (it stores whatever string you
+give it regardless of a declared `VARCHAR(n)`), which is why this only ever
+showed up syncing *to* the droplet, never locally. All three columns are
+now unbounded `Text` in `app/models.py`; `sync_schema.py`'s dry run will
+report the droplet's existing `VARCHAR(500)` columns as needing widening
+the same way it reports a missing column, and `--apply` runs the
+`ALTER COLUMN ... TYPE TEXT` for each.
 
 ```bash
 source .venv/bin/activate

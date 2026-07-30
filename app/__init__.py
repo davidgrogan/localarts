@@ -23,7 +23,7 @@ load_dotenv()
 _COLUMN_MIGRATIONS = {
     "event": [
         ("genre", "VARCHAR(120)"),
-        ("image_url", "VARCHAR(500)"),
+        ("image_url", "TEXT"),
         ("last_seen_at", "DATETIME"),
         ("missing_streak", "INTEGER DEFAULT 0 NOT NULL"),
         ("needs_review", "BOOLEAN DEFAULT 0 NOT NULL"),
@@ -32,11 +32,11 @@ _COLUMN_MIGRATIONS = {
     ],
     "artist": [
         ("embed_code", "TEXT"),
-        ("image_url", "VARCHAR(500)"),
+        ("image_url", "TEXT"),
     ],
     "venue": [
         ("default_event_type_id", "INTEGER"),
-        ("image_url", "VARCHAR(500)"),
+        ("image_url", "TEXT"),
     ],
     "gig_submission": [
         ("genres_text", "VARCHAR(300)"),

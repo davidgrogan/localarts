@@ -144,7 +144,16 @@ class Venue(db.Model):
     # show nobody bothered to attach a flyer to). Same upload pipeline as
     # Event.image_url/the gig-submission flyer -- see
     # app/utils.py's resolve_uploaded_image_url()/save_flyer_upload().
-    image_url = db.Column(db.String(500))
+    #
+    # Text, not a length-capped String -- originally String(500), widened
+    # after pasting a real Instagram/Facebook photo URL for "Haze" (519
+    # chars, mostly a long signed query string) broke the Postgres sync
+    # with "value too long for type character varying(500)" on the
+    # droplet (SQLite never enforces a VARCHAR(n) length at all, so this
+    # only ever bit Postgres). Event.image_url/Artist.image_url widened
+    # the same way below, on the same reasoning -- any of them could hit
+    # the same wall from a pasted CDN URL just as easily.
+    image_url = db.Column(db.Text)
 
     last_scraped_at = db.Column(db.DateTime)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
@@ -176,8 +185,10 @@ class Artist(db.Model):
     # upload/storage pipeline in this POC), shown on the artist's own page,
     # the Local Artists list, and the homepage's featured-artist spotlight.
     # Falls back to the site logo wherever it's missing, same pattern as
-    # an event with no image_url.
-    image_url = db.Column(db.String(500))
+    # an event with no image_url. Text, not a length-capped String -- see
+    # Venue.image_url's docstring for why (a pasted social-media photo URL
+    # can easily run past 500 characters).
+    image_url = db.Column(db.Text)
     # Artist's own site or Bandcamp page -- whichever they use most.
     website_url = db.Column(db.String(500))
     # Raw embed HTML from Bandcamp's or YouTube's own "Embed" snippet
@@ -216,9 +227,12 @@ class Event(db.Model):
 
     # Optional, venue-feed-dependent extras: a genre/category tag (e.g.
     # "Jazz", "Comedy") and a promo/artist image URL, when the source
-    # actually publishes them (not every venue's feed does).
+    # actually publishes them (not every venue's feed does). image_url is
+    # Text, not a length-capped String -- see Venue.image_url's docstring
+    # for why (a pasted social-media photo URL can easily run past 500
+    # characters).
     genre = db.Column(db.String(120))
-    image_url = db.Column(db.String(500))
+    image_url = db.Column(db.Text)
 
     # "manual" (added by hand in the admin UI) or "scraped".
     source = db.Column(db.String(20), default="manual", nullable=False)
