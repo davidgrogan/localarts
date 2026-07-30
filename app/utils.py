@@ -144,9 +144,19 @@ def get_site_setting():
 # one function. Env vars read the same way contact.py always read them
 # (plain os.environ.get at import time, not app.config), so behavior/config
 # is unchanged for anyone who already has these set.
-CONTACT_EMAIL = os.environ.get("CONTACT_EMAIL", "davidbgrogan@gmail.com")
-MAIL_SERVER = os.environ.get("MAIL_SERVER", "smtp.gmail.com")
-MAIL_PORT = int(os.environ.get("MAIL_PORT", "587"))
+#
+# `os.environ.get(KEY, default)`'s default only kicks in when KEY is
+# completely absent from the environment -- but .env.example (and any .env
+# copied from it) ships these as blank-but-present lines (e.g.
+# "CONTACT_EMAIL="), which python-dotenv loads as the empty string, not as
+# "unset." That silently defeated the default below (CONTACT_EMAIL always
+# came out "" for anyone who left it blank, same as they're told to for "use
+# the default"). SECRET_KEY just below already sidesteps this with
+# `os.environ.get(...) or default`; MAIL_SERVER/MAIL_PORT/CONTACT_EMAIL now
+# use the same guard against an empty string.
+CONTACT_EMAIL = os.environ.get("CONTACT_EMAIL") or "davidbgrogan@gmail.com"
+MAIL_SERVER = os.environ.get("MAIL_SERVER") or "smtp.gmail.com"
+MAIL_PORT = int(os.environ.get("MAIL_PORT") or "587")
 # The Gmail address the message is sent *from* (usually the same address as
 # CONTACT_EMAIL, but kept separate in case that's ever not true), and its App
 # Password -- see README.md for how to generate one.

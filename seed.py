@@ -6,6 +6,7 @@ Safe to re-run: looks up by slug/title before inserting.
 Usage:
     python seed.py
 """
+import os
 from datetime import timedelta
 
 from app import create_app
@@ -574,9 +575,33 @@ def main():
         # on every run -- same "reapply on every seed.py run" pattern
         # already used above for artist_3/artist_4's tags -- keeps these
         # useful as an always-current demo instead of a one-time snapshot.
+        #
+        # That refresh-on-every-run behavior had its own bug, though: once
+        # an admin actually deletes one of these placeholder rows for real
+        # (e.g. "Sample Show -- Haze", once real Haze content is in), the
+        # very next `python seed.py` run saw "no row with this title" and
+        # cheerfully recreated it from scratch -- indistinguishable, from
+        # seed.py's point of view, from a genuinely fresh install that's
+        # never seen this title before. A deleted-on-purpose placeholder
+        # kept coming back forever. `_SAMPLE_SHOWS_MARKER` (a plain empty
+        # file next to the sqlite db, in the same `instance/` folder that
+        # already holds per-install state) records "seed.py has placed
+        # these placeholders at least once on this install" -- once that
+        # marker exists, a missing title means "deleted on purpose," not
+        # "never created," and _upsert_sample_show leaves it alone instead
+        # of recreating it. Existing rows still get their dates refreshed
+        # every run exactly as before; only the recreate-if-missing branch
+        # is now gated on this being a genuinely first-ever run.
+        _SAMPLE_SHOWS_MARKER = os.path.join(app.instance_path, ".sample_shows_seeded")
+        _sample_shows_seeded_before = os.path.exists(_SAMPLE_SHOWS_MARKER)
+
         def _upsert_sample_show(title, venue_id, days_out, hours_out, artists, event_types=None):
             event = Event.query.filter_by(title=title).first()
             if not event:
+                if _sample_shows_seeded_before:
+                    # Already placed once on this install and no longer
+                    # exists -- an admin deleted it on purpose. Respect that.
+                    return None
                 event = Event(title=title, venue_id=venue_id, source="manual")
                 db.session.add(event)
             # local_now(), not datetime.utcnow() -- keeps these placeholder
@@ -599,6 +624,9 @@ def main():
         # homepage's featured-artist spotlight.
         _upsert_sample_show("Sample Show -- Academy of Music", academy_of_music.id, 3, 4, [artist_3], [music_tag])
         _upsert_sample_show("Sample Show -- Haze", haze.id, 6, 5, [artist_4], [music_tag])
+
+        os.makedirs(app.instance_path, exist_ok=True)
+        open(_SAMPLE_SHOWS_MARKER, "a").close()
 
         db.session.commit()
         print("Seed complete:")

@@ -23,7 +23,7 @@ DigitalOcean.
   Squarespace JSON trick, iCal feed, generic HTML selectors, or headless-browser
   selectors), preview a scrape before importing anything, and see a log of
   recent scrape runs. Public to browse; adding/editing/scraping is admin-only.
-- **Submit a show** (`/gigs/submit`) -- public form for artists/promoters to
+- **Submit a Show** (`/gigs/submit`) -- public form for artists/promoters to
   propose their own show (including DIY one-off shows with no formal venue),
   reviewed by an admin before it hits the calendar. See "Submit your show"
   below.
@@ -210,6 +210,18 @@ the Backroads deliberately doesn't, so both states -- an artist photo, and
 the fallback to the site logo used everywhere an artist has none -- are
 visible in the demo (Local Artists list, artist detail page, and the
 homepage's featured-artist spotlight).
+
+These four placeholder shows ("Sample Show -- Iron Horse", "-- Parlor Room",
+"-- Academy of Music", "-- Haze") get their dates refreshed on every
+`seed.py` run so they don't quietly roll into the past over time (see the
+comment above `_upsert_sample_show` in `seed.py`), but that used to mean
+deleting one for real (e.g. once a venue has actual scraped/added shows and
+the placeholder is just noise) never stuck -- the next `seed.py` run saw no
+row with that title and recreated it, indistinguishable from a genuinely
+fresh install. A marker file (`instance/.sample_shows_seeded`, next to the
+sqlite db) now records "these have been placed at least once on this
+install"; once it exists, a missing placeholder title means it was deleted
+on purpose, and `seed.py` leaves it gone instead of bringing it back.
 
 ## Import from Bandcamp (bookmarklet -- `app/bandcamp_bookmarklet.py`, `app/static/bandcamp_bookmarklet.js`)
 
@@ -783,7 +795,7 @@ expose one.
 
 ## Submit your show (`app/routes/gigs.py`, `GigSubmission` model)
 
-A public `/gigs/submit` form -- linked from the main nav as "Submit a show"
+A public `/gigs/submit` form -- linked from the main nav as "Submit a Show"
 -- lets an artist or promoter propose a show without needing an admin
 account, including DIY one-off shows (house shows, backyard sets, basement
 gigs) that don't belong to any formal venue. Required fields: date &amp;
@@ -793,7 +805,12 @@ their websites (not a structured per-band list -- there's no reliable way
 to auto-parse that into individual Artist records, so an admin reads it
 by hand during conversion), a flyer image upload, and the submitter's own
 name/email (so David can follow up with questions or let them know once
-it's live).
+it's live). An optional free-text "Genre(s)" field (`GigSubmission.genres_text`)
+lets a submitter list the show's genre(s) (e.g. "Punk, Folk, Jazz") --
+optional since not every submitter will think to fill it in, and not tied
+to any pick-list, since there's no manual-add-show form field for
+`Event.genre` to prefill from anyway (see the conversion prefill note
+below).
 
 Every submission lands as a **pending `GigSubmission` row**, not an Event
 -- same "keep unvetted input off the public site until a human looks at
@@ -838,9 +855,10 @@ pre-filled from the submission:
   pick a different, real Venue instead if the submitted location
   actually matches one already in the system.
 - **Description** is pre-filled with the submitter's name/email, the
-  submitted location text verbatim, and the full lineup text -- so
-  nothing from the original submission is lost once the row itself gets
-  marked converted, even though none of that has its own Event column.
+  submitted location text verbatim, the submitted genre(s) (if any were
+  given), and the full lineup text -- so nothing from the original
+  submission is lost once the row itself gets marked converted, even
+  though none of that has its own Event column.
 - **Image / flyer URL** -- a brand-new field on the Add/Edit Show form
   (previously `Event.image_url` existed on the model but had no form
   field at all, only ever set by scrapers) -- is pre-filled with the

@@ -317,6 +317,16 @@ class GigSubmission(db.Model):
     records, so an admin reads it during conversion and uses the
     existing "+ Add as local artist" flow (artists.new_artist) per band
     if/when they want a real Artist page for one.
+
+    genres_text is similarly one free-text box, not tied to Event.genre
+    or a GenreTag/EventType pick-list -- a submitter typing "punk, noise
+    rock" shouldn't be blocked on matching this install's exact existing
+    tag spellings, and there's no manual-add-show form field for
+    Event.genre to prefill anyway (see events.py's _gig_prefill(), which
+    folds this into the converted Event's description alongside the
+    location and lineup, same as those). Optional: not every submitter
+    will think to fill it in, and it's a nice-to-have for the admin
+    during conversion, not a blocker on getting the show submitted.
     """
 
     id = db.Column(db.Integer, primary_key=True)
@@ -331,6 +341,7 @@ class GigSubmission(db.Model):
 
     venue_name = db.Column(db.String(300), nullable=False)
     lineup_text = db.Column(db.Text, nullable=False)
+    genres_text = db.Column(db.String(300))
 
     # Filename only (not a full path/URL) -- e.g. "3f2a...9c.jpg" -- under
     # app/static/uploads/flyers/. Kept as just a filename (like every

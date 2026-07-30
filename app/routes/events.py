@@ -46,10 +46,13 @@ def _gig_prefill(gig):
     get grouped under the shared "DIY" venue instead); it's preserved here
     in the description instead, along with the submitter's contact info,
     so nothing from the original submission is lost once the row itself
-    gets marked converted."""
+    gets marked converted. Same reasoning for genres_text -- there's no
+    manual-add-show form field for Event.genre to prefill instead."""
+    genre_line = f"Genre(s) as submitted: {gig.genres_text}\n" if gig.genres_text else ""
     return (
         f"Submitted by {gig.submitter_name} ({gig.submitter_email}).\n"
-        f"Location as submitted: {gig.venue_name}\n\n"
+        f"Location as submitted: {gig.venue_name}\n"
+        f"{genre_line}\n"
         f"Lineup:\n{gig.lineup_text}"
     )
 

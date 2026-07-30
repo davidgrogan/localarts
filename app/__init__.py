@@ -37,6 +37,9 @@ _COLUMN_MIGRATIONS = {
     "venue": [
         ("default_event_type_id", "INTEGER"),
     ],
+    "gig_submission": [
+        ("genres_text", "VARCHAR(300)"),
+    ],
 }
 
 

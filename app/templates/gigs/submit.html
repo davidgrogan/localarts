@@ -41,6 +41,12 @@
     <textarea id="lineup_text" name="lineup_text" rows="5"
               placeholder="e.g.&#10;The Longshots -- thelongshots.bandcamp.com&#10;Comet &amp; the Roadrunners -- cometandtheroadrunners.bandcamp.com" required>{{ form.lineup_text if form else '' }}</textarea>
 
+    <label for="genres_text">Genre(s)</label>
+    <input type="text" id="genres_text" name="genres_text"
+           value="{{ form.genres_text if form else '' }}"
+           placeholder="e.g. Punk, Folk, Jazz">
+    <span class="hint">Optional -- helps us tag and describe the show once it's up.</span>
+
     <label for="flyer">Flyer image</label>
     <input type="file" id="flyer" name="flyer" accept="image/png,image/jpeg,image/gif,image/webp" required>
     <span class="hint">JPG, PNG, GIF, or WEBP.</span>

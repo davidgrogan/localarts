@@ -53,6 +53,9 @@ def submit_gig():
         submitter_email = request.form.get("submitter_email", "").strip()
         venue_name = request.form.get("venue_name", "").strip()
         lineup_text = request.form.get("lineup_text", "").strip()
+        # Optional -- see models.py's GigSubmission.genres_text docstring
+        # for why this isn't required.
+        genres_text = request.form.get("genres_text", "").strip()
         start_raw = request.form.get("start_datetime", "").strip()
         flyer_file = request.files.get("flyer")
 
@@ -94,6 +97,7 @@ def submit_gig():
             start_datetime=start_dt,
             venue_name=venue_name,
             lineup_text=lineup_text,
+            genres_text=genres_text or None,
             flyer_filename=flyer_filename,
             submitter_name=submitter_name,
             submitter_email=submitter_email,
@@ -113,7 +117,9 @@ def submit_gig():
                 (
                     f"Submitted by: {submitter_name} ({submitter_email})\n"
                     f"Date/time: {start_dt.strftime('%b %-d, %Y %-I:%M %p')}\n"
-                    f"Location/venue (as submitted): {venue_name}\n\n"
+                    f"Location/venue (as submitted): {venue_name}\n"
+                    + (f"Genre(s): {genres_text}\n" if genres_text else "")
+                    + "\n"
                     f"Lineup:\n{lineup_text}\n\n"
                     f"Review it here: {url_for('gigs.review', _external=True)}"
                 ),
