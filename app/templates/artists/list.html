@@ -9,6 +9,39 @@
     </div>
   {% endif %}
 
+  {# A random local artist, picked fresh on every page load (see
+     list_artists() -- always drawn from the full local roster, not
+     whatever the genre filter below narrows the grid down to). Purely a
+     "look who's on here" discovery nudge for a roster that's grown past
+     a single scrollable glance -- not a permanent/sticky pick. #}
+  {% if hero_artist %}
+    <div class="artist-hero">
+      <div class="artist-hero-thumb">
+        {% if hero_artist.image_url %}
+          <img src="{{ hero_artist.image_url }}" alt="" loading="lazy">
+        {% else %}
+          <img src="{{ url_for('static', filename='logo.svg') }}" alt="" loading="lazy" class="artist-thumb-fallback-img">
+        {% endif %}
+      </div>
+      <div class="artist-hero-body">
+        <p class="meta artist-hero-kicker">Spotlight</p>
+        <h2><a href="{{ url_for('artists.detail', artist_id=hero_artist.id) }}">{{ hero_artist.name }}</a></h2>
+        <p class="meta">
+          {% for g in hero_artist.genre_tags %}<span class="genre-tag">{{ g.name }}</span>{% endfor %}
+          {% if hero_artist.hometown %} &middot; {{ hero_artist.hometown }}{% endif %}
+        </p>
+        <p class="meta">
+          {% if hero_next_show %}
+            Playing {{ hero_next_show.start_datetime | dtfmt("%b %-d") }} at {{ hero_next_show.venue.name }}
+          {% else %}
+            No upcoming shows listed right now.
+          {% endif %}
+        </p>
+        <a class="btn btn-small" href="{{ url_for('artists.detail', artist_id=hero_artist.id) }}">View artist profile &rarr;</a>
+      </div>
+    </div>
+  {% endif %}
+
   <form class="filters" method="get">
     <select name="genre" onchange="this.form.submit()">
       <option value="">All genres</option>
@@ -16,47 +49,69 @@
         <option value="{{ g.id }}" {% if g.id == selected_genre %}selected{% endif %}>{{ g.name }}</option>
       {% endfor %}
     </select>
-    <select name="category" onchange="this.form.submit()">
-      <option value="">All categories</option>
-      {% for c in category_tags %}
-        <option value="{{ c.id }}" {% if c.id == selected_category %}selected{% endif %}>{{ c.name }}</option>
-      {% endfor %}
-    </select>
-    <label class="recurring-toggle">
-      <input type="checkbox" name="upcoming" value="1" {% if upcoming_only %}checked{% endif %} onchange="this.form.submit()">
-      Only show artists with upcoming shows
-    </label>
-    {% if selected_genre or selected_category or upcoming_only %}
+    {% if selected_genre %}
       <a class="clear" href="{{ url_for('artists.list_artists') }}">Clear filters</a>
     {% endif %}
   </form>
 
   {% if artists %}
-    {% for a in artists %}
-      <div class="artist-card">
-        <div class="artist-thumb">
-          {% if a.image_url %}
-            <img src="{{ a.image_url }}" alt="" loading="lazy">
-          {% else %}
-            <img src="{{ url_for('static', filename='logo.svg') }}" alt="" loading="lazy" class="artist-thumb-fallback-img">
-          {% endif %}
-        </div>
-        <div class="artist-card-main">
-          <div>
-            <a href="{{ url_for('artists.detail', artist_id=a.id) }}"><strong>{{ a.name }}</strong></a>
-            {% if not a.is_local %}<span class="source-tag">touring</span>{% endif %}
+    {# Client-side only -- filters the grid below by name as you type,
+       no page reload. Separate from the <form> above (which does a real
+       GET) since this never needs to touch the server. #}
+    <input type="text" id="artist-search" class="artist-search" placeholder="Search artists by name...">
+
+    {# Letters with no artist render as an unclickable placeholder rather
+       than being skipped, so the bar's spacing doesn't jump around as
+       the roster grows -- see available_letters in list_artists(). #}
+    <div class="az-jump">
+      {% for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ" %}
+        {% if letter in available_letters %}
+          <a href="#letter-{{ letter }}">{{ letter }}</a>
+        {% else %}
+          <span class="az-disabled">{{ letter }}</span>
+        {% endif %}
+      {% endfor %}
+    </div>
+
+    <div class="artist-grid" id="artist-grid">
+      {% set ns = namespace(current_letter=None) %}
+      {% for a in artists %}
+        {% set letter = a.name[0].upper() if a.name else "" %}
+        {% if letter != ns.current_letter %}
+          {% set ns.current_letter = letter %}
+          <span id="letter-{{ letter }}" class="az-anchor" aria-hidden="true"></span>
+        {% endif %}
+        <a class="artist-tile" href="{{ url_for('artists.detail', artist_id=a.id) }}" data-name="{{ a.name|lower }}">
+          <div class="artist-tile-photo">
+            {% if a.image_url %}
+              <img src="{{ a.image_url }}" alt="" loading="lazy">
+            {% else %}
+              <img src="{{ url_for('static', filename='logo.svg') }}" alt="" loading="lazy" class="artist-tile-fallback-img">
+            {% endif %}
+            {% if not a.is_local %}<span class="source-tag artist-tile-badge">touring</span>{% endif %}
           </div>
-          <div class="meta">
-            {% for g in a.genre_tags %}<span class="genre-tag">{{ g.name }}</span>{% endfor %}
-            {% for c in a.category_tags %}<span class="type-tag">{{ c.name }}</span>{% endfor %}
-            {% if a.hometown %} &middot; {{ a.hometown }}{% endif %}
+          <div class="artist-tile-body">
+            <strong>{{ a.name }}</strong>
+            {% if a.genre_tags %}
+              <div class="meta">
+                {% for g in a.genre_tags %}<span class="genre-tag">{{ g.name }}</span>{% endfor %}
+              </div>
+            {% endif %}
+            <div class="meta artist-tile-next">
+              {% set next_show = next_shows.get(a.id) %}
+              {% if next_show %}
+                Playing {{ next_show.start_datetime | dtfmt("%b %-d") }}
+              {% else %}
+                No upcoming shows
+              {% endif %}
+            </div>
           </div>
-        </div>
-      </div>
-    {% endfor %}
+        </a>
+      {% endfor %}
+    </div>
   {% else %}
     <p class="empty-state">
-      {% if selected_genre or selected_category or upcoming_only %}
+      {% if selected_genre %}
         No artists match those filters. <a href="{{ url_for('artists.list_artists') }}">Clear filters</a>.
       {% elif is_admin %}
         No artists yet. <a href="{{ url_for('artists.new_artist') }}">Add the first one</a>.
@@ -65,4 +120,25 @@
       {% endif %}
     </p>
   {% endif %}
+
+  <script>
+    // Live name search over the grid below -- plain substring match
+    // against each tile's data-name (already lowercased server-side).
+    // Deliberately simple: doesn't try to keep the A-Z jump bar's
+    // clickable/disabled letters in sync with what's currently visible,
+    // since combining both at once is a rare case and not worth the
+    // extra bookkeeping for this size of roster.
+    (function () {
+      var input = document.getElementById("artist-search");
+      var tiles = document.querySelectorAll(".artist-tile");
+      if (!input || !tiles.length) return;
+      input.addEventListener("input", function () {
+        var q = input.value.trim().toLowerCase();
+        tiles.forEach(function (tile) {
+          var match = !q || tile.dataset.name.indexOf(q) !== -1;
+          tile.style.display = match ? "" : "none";
+        });
+      });
+    })();
+  </script>
 {% endblock %}

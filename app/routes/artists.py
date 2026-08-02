@@ -1,3 +1,5 @@
+import random
+
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 
 from app.models import db, Artist, Event, GenreTag, EventType
@@ -77,37 +79,62 @@ def _find_artist_matching_title(title):
     return None
 
 
+def _upcoming_events_for(artist, now):
+    """Every future, approved show linked to this artist, soonest first --
+    shared by the artist detail page's "Upcoming shows" list and the
+    artist index's per-card/hero "next show" line, so both use the exact
+    same is_approved/start_datetime>=now filtering (previously duplicated
+    inline on the detail page only). See detail()'s original comment for
+    why is_approved and local_now() (not datetime.utcnow(); see
+    app/utils.py's SITE_TIMEZONE docstring) both matter here."""
+    return sorted(
+        (e for e in artist.events if e.is_approved and e.start_datetime >= now),
+        key=lambda e: e.start_datetime,
+    )
+
+
 @bp.route("/")
 def list_artists():
     genre_tag_id = request.args.get("genre", type=int)
-    category_tag_id = request.args.get("category", type=int)
-    # Toggle rather than a tri-state filter -- visitors either want "just
-    # the ones with something coming up" or everyone; there's no real use
-    # case for the inverse ("only artists with nothing booked").
-    upcoming_only = request.args.get("upcoming") == "1"
 
     query = Artist.query.order_by(Artist.name)
     if genre_tag_id:
         query = query.filter(Artist.genre_tags.any(GenreTag.id == genre_tag_id))
-    if category_tag_id:
-        query = query.filter(Artist.category_tags.any(EventType.id == category_tag_id))
-    if upcoming_only:
-        # .any() (an EXISTS subquery) rather than a join -- a join here
-        # would duplicate an artist once per upcoming show they have.
-        # local_now(), not datetime.utcnow() -- see app/utils.py's
-        # SITE_TIMEZONE docstring (Event.start_datetime is naive local
-        # wall-clock, not true UTC).
-        query = query.filter(Artist.events.any(Event.start_datetime >= local_now()))
     artists = query.all()
+
+    now = local_now()
+    next_shows = {}
+    for a in artists:
+        upcoming = _upcoming_events_for(a, now)
+        next_shows[a.id] = upcoming[0] if upcoming else None
+
+    # A-Z jump bar only needs to know which letters actually have an
+    # artist -- everything else renders as an unclickable placeholder so
+    # the bar's width/spacing stays constant regardless of the roster.
+    available_letters = {a.name[0].upper() for a in artists if a.name}
+
+    # Spotlight pick: always drawn from the *full* local roster, not
+    # whatever the genre filter above narrowed "artists" down to -- so
+    # applying a filter doesn't make the spotlight disappear or feel
+    # arbitrarily tied to it. Restricted to is_local artists (this page's
+    # whole point is surfacing local acts; touring artists only end up
+    # listed here because they played a show with a local act on the
+    # bill), falling back to literally anyone if an install somehow has
+    # zero local artists yet, rather than showing no spotlight at all.
+    local_roster = Artist.query.filter_by(is_local=True).all()
+    hero_pool = local_roster or Artist.query.all()
+    hero_artist = random.choice(hero_pool) if hero_pool else None
+    hero_upcoming = _upcoming_events_for(hero_artist, now) if hero_artist else []
 
     return render_template(
         "artists/list.html",
         artists=artists,
         genre_tags=GenreTag.query.order_by(GenreTag.name).all(),
-        category_tags=EventType.query.order_by(EventType.name).all(),
         selected_genre=genre_tag_id,
-        selected_category=category_tag_id,
-        upcoming_only=upcoming_only,
+        next_shows=next_shows,
+        available_letters=available_letters,
+        hero_artist=hero_artist,
+        hero_next_show=hero_upcoming[0] if hero_upcoming else None,
     )
 
 
@@ -184,16 +211,10 @@ def detail(artist_id):
     # Event ever linked to this artist (artist.events, unfiltered) sorted
     # by date -- so a show from months ago sorted right in alongside real
     # upcoming ones, still under an "Upcoming shows" heading. Filtering
-    # here to is_approved (same as every other public listing on this
-    # site -- see _base_query() in main.py) and start_datetime >=
-    # local_now() (not datetime.utcnow(); see app/utils.py's SITE_TIMEZONE
-    # docstring for why that distinction matters) actually makes the
-    # heading true.
-    now = local_now()
-    upcoming_events = sorted(
-        (e for e in artist.events if e.is_approved and e.start_datetime >= now),
-        key=lambda e: e.start_datetime,
-    )
+    # to is_approved (same as every other public listing on this site --
+    # see _base_query() in main.py) and start_datetime >= now actually
+    # makes the heading true -- see _upcoming_events_for()'s docstring.
+    upcoming_events = _upcoming_events_for(artist, local_now())
     return render_template("artists/detail.html", artist=artist, upcoming_events=upcoming_events)
 
 

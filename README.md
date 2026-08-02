@@ -8,13 +8,15 @@ DigitalOcean.
 ## What's here
 
 - **Calendar** (`/`) -- upcoming approved shows, filterable by venue, event
-  type, or a "show only events with local artists" toggle; also spotlights one
-  randomly-picked local artist with an upcoming show at the top of the page
-  (see "Local artist Genre/Category Tags" below). Public -- this and the
-  artist roster below are the only things anonymous visitors see.
+  type, or a "show only events with local artists" toggle; also has a
+  "Local Artists Playing This Week!" gallery -- one card per local artist
+  actually playing a show in the next 7 days (see "Local artist Genre/
+  Category Tags" below). Public -- this and the artist roster below are
+  the only things anonymous visitors see.
 - **Artists** (`/artists`) -- roster of local artists, alphabetical by name,
-  filterable by Genre Tag, Category Tag, or an "only artists with upcoming
-  shows" toggle. Linked to the shows they're playing. Public. The add/edit
+  filterable by Genre Tag, with a random-local-artist spotlight at the top,
+  a live name-search box, and an A-Z jump bar (see "Local Artists index
+  layout" below). Linked to the shows they're playing. Public. The add/edit
   forms (admin-only) have an "Import from Bandcamp" bookmarklet + paste box
   that prefills name/location/bio/photo/embed/tags for review before saving
   -- see "Import from Bandcamp" below for why it's a bookmarklet rather than
@@ -176,11 +178,12 @@ different tables under the hood:
 The old single `Artist.genre` free-text column is left in place but no longer
 written to by the form -- new/edited artists use `genre_tags` instead.
 
-The Local Artists page (`/artists`) filters by Genre Tag, Category Tag, and an
-"only artists with upcoming shows" toggle (`Artist.events.any(Event.start_datetime
->= now)`, via an `EXISTS` subquery rather than a join so an artist with
-several upcoming shows isn't listed more than once), always sorted
-alphabetically by name regardless of which filters are active.
+The Local Artists page (`/artists`) filters by Genre Tag only -- it used to
+also have a Category Tag dropdown and an "only artists with upcoming shows"
+toggle, both removed since they added more filter UI than the roster's size
+actually justified. Always sorted alphabetically by name regardless of
+whether a filter's active. See "Local Artists index layout" below for the
+spotlight/grid/search/A-Z-jump built around that same alphabetical sort.
 
 The calendar's "show only events with local artists" toggle
 (`?only_local_artists=1`) works the same way one level up: `Event.artists.any(Artist.is_local.is_(True))`,
@@ -189,23 +192,25 @@ venue/type filters -- distinct from the single-artist dropdown
 (`?artist=<id>`, still wired up server-side but not currently shown on the
 calendar UI).
 
-The homepage's featured-artist spotlight (`_pick_featured_artist()` in
-`app/routes/main.py`) picks one random `is_local` artist with at least one
-upcoming, approved show, recomputed on every page load rather than a
-scheduled rotation -- per David's ask, this keeps it to one query with no
-extra scheduling/state to maintain. Renders nothing if there's no eligible
-artist yet (e.g. a fresh install with no shows linked to a local artist).
-The artist's own upcoming shows (`_upcoming_events_for()`) are listed right
-there in the spotlight, not just linked to, so a visitor doesn't have to
-click through to see when/where to catch them.
+The homepage used to spotlight one random `is_local` artist with an
+upcoming show; `_local_artists_playing_this_week()` in `app/routes/main.py`
+replaced that single-pick spotlight with a "Local Artists Playing This
+Week!" gallery -- a card for every local artist actually playing an
+approved, Music-tagged show in the next 7 days (same window as the
+calendar's own "week" view), since that's more useful to a visitor
+deciding what to go see than one random pick. Renders nothing if no local
+artist has a show landing in that window.
 
-The featured-artist spotlight is wrapped in a native `<details>`/`<summary>`
-element rather than a custom JS toggle -- clicking the header
-collapses/expands the section with no JavaScript needed. It defaults open
-(the `open` attribute in `calendar.html`), so nothing changes for a
-first-time visitor; it just lets a returning visitor tuck it away. (The
-"About this site" intro used to be a second collapsible section here too --
-see "About page and the fixed venue-caution line" below for where it moved.)
+The gallery is wrapped in a native `<details>`/`<summary>` element rather
+than a custom JS toggle -- clicking the header collapses/expands the
+section with no JavaScript needed. It defaults open (the `open` attribute
+in `calendar.html`), so nothing changes for a first-time visitor; it just
+lets a returning visitor tuck it away. (The "About this site" intro used
+to be a second collapsible section here too -- see "About page and the
+fixed venue-caution line" below for where it moved. The Local Artists
+index's own, separate random-artist spotlight -- see "Local Artists index
+layout" below -- is unrelated to this gallery; it always picks one artist
+regardless of whether they have a show this week.)
 
 `seed.py` includes two artists exercising this (Comet & the Roadrunners --
 Electronica/New Wave; Ruth & the Backroads -- Americana), each with a
@@ -214,8 +219,8 @@ show, so all of the above is visible before any real artist data is entered.
 Comet & the Roadrunners also has a placeholder `image_url` set, and Ruth &
 the Backroads deliberately doesn't, so both states -- an artist photo, and
 the fallback to the site logo used everywhere an artist has none -- are
-visible in the demo (Local Artists list, artist detail page, and the
-homepage's featured-artist spotlight).
+visible in the demo (Local Artists list/index spotlight, artist detail
+page, and the calendar's "Local Artists Playing This Week!" gallery).
 
 These four placeholder shows ("Sample Show -- Iron Horse", "-- Parlor Room",
 "-- Academy of Music", "-- Haze") get their dates refreshed on every
@@ -228,6 +233,39 @@ fresh install. A marker file (`instance/.sample_shows_seeded`, next to the
 sqlite db) now records "these have been placed at least once on this
 install"; once it exists, a missing placeholder title means it was deleted
 on purpose, and `seed.py` leaves it gone instead of bringing it back.
+
+## Local Artists index layout (`/artists`)
+
+Replaced the old category-dropdown + "only upcoming shows" toggle (both
+removed -- see the "Local artist Genre/Category Tags" section above) with a
+layout meant to hold up as the roster grows past a single scrollable list:
+
+- **Spotlight**: a random `is_local` artist, re-picked on every page load
+  (`list_artists()` in `app/routes/artists.py`) -- always drawn from the
+  *full* local roster, not whatever the genre filter narrows the grid
+  below down to, so applying a filter doesn't make the spotlight
+  disappear or feel tied to it. Falls back to picking from literally any
+  artist if an install somehow has zero local ones yet, rather than
+  showing nothing. Unrelated to the calendar's "Local Artists Playing
+  This Week!" gallery above -- this always shows one artist regardless of
+  whether they have a show this week.
+- **Photo grid, not a list**: each artist is a square photo tile (falls
+  back to the site logo, same as everywhere else) with their name, genre
+  tags, and next upcoming show (or "No upcoming shows") -- a `touring`
+  badge still marks non-local artists, same as the old list view.
+- **Live search**: a plain-JS, no-reload text input that filters the grid
+  by name as you type (matches each tile's `data-name` attribute) --
+  entirely client-side, doesn't touch the genre filter or reload the page.
+- **A-Z jump bar**: every letter renders, even ones with no artist yet
+  (as an unclickable placeholder) so the bar's width doesn't shift as the
+  roster grows; a letter with at least one artist links to an invisible
+  anchor placed right before that letter's first tile in the grid.
+
+`_upcoming_events_for()` (moved into `app/routes/artists.py`, alongside
+`list_artists()`) computes each tile's "next show" -- the same
+is_approved/`start_datetime >= now` filtering the artist detail page's own
+"Upcoming shows" list already used, pulled out into one shared helper so
+both stay in sync rather than maintaining two copies of the same logic.
 
 ## Import from Bandcamp (bookmarklet -- `app/bandcamp_bookmarklet.py`, `app/static/bandcamp_bookmarklet.js`)
 
