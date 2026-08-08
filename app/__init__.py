@@ -191,4 +191,19 @@ def create_app(test_config=None):
 
         return flyer_url(flyer_filename)
 
+    @app.template_filter("resolve_image_url")
+    def resolve_image_url_filter(value):
+        # A thin Jinja-filter wrapper around app.utils.resolve_image_url()
+        # -- apply this to every Event.image_url/Venue.image_url render
+        # site (never Artist.image_url, which is always a pasted external
+        # URL with no local-upload path -- see that column's docstring in
+        # models.py). Re-derives the URL for a locally-uploaded image
+        # fresh, in the current request, instead of trusting whatever got
+        # stored -- see resolve_image_url()'s own docstring for why that
+        # matters when local dev and the droplet are mounted under
+        # different URL prefixes.
+        from app.utils import resolve_image_url
+
+        return resolve_image_url(value)
+
     return app

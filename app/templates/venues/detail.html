@@ -14,7 +14,7 @@
   </p>
 
   {% if venue.image_url %}
-    <div class="event-detail-image"><img src="{{ venue.image_url }}" alt=""></div>
+    <div class="event-detail-image"><img src="{{ venue.image_url | resolve_image_url }}" alt=""></div>
   {% endif %}
 
   {% if is_admin %}

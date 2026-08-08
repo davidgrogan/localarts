@@ -138,9 +138,9 @@
                bothered to add a photo don't look as blank as an event
                that truly has nothing to show. #}
             {% if e.image_url %}
-              <a class="event-thumb" href="{{ url_for('main.event_detail', event_id=e.id) }}"><img src="{{ e.image_url }}" alt="" loading="lazy"></a>
+              <a class="event-thumb" href="{{ url_for('main.event_detail', event_id=e.id) }}"><img src="{{ e.image_url | resolve_image_url }}" alt="" loading="lazy"></a>
             {% elif e.venue.image_url %}
-              <a class="event-thumb" href="{{ url_for('main.event_detail', event_id=e.id) }}"><img src="{{ e.venue.image_url }}" alt="" loading="lazy"></a>
+              <a class="event-thumb" href="{{ url_for('main.event_detail', event_id=e.id) }}"><img src="{{ e.venue.image_url | resolve_image_url }}" alt="" loading="lazy"></a>
             {% else %}
               <a class="event-thumb event-thumb-fallback" href="{{ url_for('main.event_detail', event_id=e.id) }}"><img src="{{ url_for('static', filename='logo.svg') }}" alt="" loading="lazy"></a>
             {% endif %}

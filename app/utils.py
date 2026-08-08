@@ -320,19 +320,27 @@ def flyer_url(flyer_filename):
     Deliberately relative (no scheme+host) -- this used to pass
     _external=True, which seemed harmless (an absolute URL "just works"
     wherever it's rendered) but actually baked in whatever host happened
-    to be serving the request at *upload* time. That's permanent once
-    it's saved into Event.image_url/Venue.image_url: uploading on local
-    dev stores "http://127.0.0.1:5050/static/uploads/flyers/x.jpg" in the
-    database, which is meaningless on the droplet once that same row gets
-    copied over by migrate_to_postgres.py -- the image silently 404s
-    there even after the underlying file itself is present (see
-    push_to_droplet.sh's rsync step, added alongside this fix, for
-    getting the files there in the first place). A relative URL resolves
-    correctly against whichever domain is actually serving the page, both
-    locally and on the droplet, exactly like GigSubmission.flyer_filename
-    was already designed to (see that column's own docstring in
-    models.py) -- Event.image_url/Venue.image_url just weren't following
-    the same rule.
+    to be serving the request at *upload* time: uploading on local dev
+    stored "http://127.0.0.1:5050/static/uploads/flyers/x.jpg" straight
+    into Event.image_url/Venue.image_url, meaningless once that row got
+    copied to the droplet by migrate_to_postgres.py.
+
+    Dropping _external=True fixes the host, but on its own isn't enough
+    to make this value *portable* between local dev (served at the
+    domain root) and the droplet (served under a URL prefix, e.g.
+    waveyvibe.dev/localarts -- see DEPLOY.md's Caddy/ProxyFix setup): a
+    plain "/static/uploads/flyers/x.jpg" is only correct for whichever
+    install has no mount prefix. url_for() *does* account for the
+    current request's prefix automatically (that's the whole point of
+    ProxyFix reading X-Forwarded-Prefix) -- but only at the moment this
+    function actually runs. The bug was calling it once at *upload* time
+    and then storing the resulting string as a permanent, frozen value:
+    that value is only ever correct for whatever install did the
+    uploading, and stays wrong forever once copied anywhere else. See
+    resolve_image_url() below, which re-derives this fresh at *render*
+    time instead of trusting whatever got stored -- that's what actually
+    makes an uploaded image portable between installs with different
+    mount prefixes, not this function alone.
 
     This does mean the "Image / flyer URL" text fields it prefills
     (events/form.html, venues/form.html) can no longer be
@@ -346,3 +354,42 @@ def flyer_url(flyer_filename):
     from flask import url_for
 
     return url_for("static", filename=f"uploads/flyers/{flyer_filename}")
+
+
+# The literal path fragment every locally-uploaded flyer/photo's URL
+# contains, no matter which install (or which URL prefix) it was uploaded
+# on -- see save_flyer_upload()'s FLYER_UPLOAD_DIR. Shared between
+# flyer_url() (builds it) and resolve_image_url() below (recognizes it).
+_FLYER_URL_MARKER = "/static/uploads/flyers/"
+
+
+def resolve_image_url(value):
+    """Turn a stored Event.image_url/Venue.image_url value into the URL
+    to actually put in an `<img src="...">` (or a form field's prefilled
+    value) *right now*, in *this* request -- rather than trusting the
+    stored string as-is.
+
+    Why this needs to exist at all: those two columns hold two genuinely
+    different kinds of value, and only one of them is safe to render
+    directly --
+
+    - A pasted external URL (Facebook/Instagram CDN, a venue's own
+      hosted flyer image, etc.) is already a complete, portable, correct
+      URL no matter where it's rendered. Passed through unchanged.
+    - A locally-uploaded flyer/photo's URL (computed once by flyer_url()
+      at upload time, then saved as-is) is only correct on whichever
+      install did the uploading -- see flyer_url()'s docstring. Detected
+      here by the shared /static/uploads/flyers/ path fragment
+      (_FLYER_URL_MARKER) every such value contains regardless of
+      install/prefix, then *recomputed* via a fresh flyer_url() call --
+      which, running now, correctly picks up wherever *this* request is
+      actually being served from (local dev at the domain root, or the
+      droplet under /localarts -- see ProxyFix/X-Forwarded-Prefix in
+      DEPLOY.md) instead of wherever the upload happened to occur.
+
+    None/empty values pass through unchanged (nothing to resolve).
+    """
+    if not value or _FLYER_URL_MARKER not in value:
+        return value
+    filename = value.rsplit(_FLYER_URL_MARKER, 1)[-1]
+    return flyer_url(filename)

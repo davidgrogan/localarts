@@ -48,7 +48,7 @@
       <label for="price_info">Price</label>
       <input type="text" id="price_info" name="price_info" value="{{ event.price_info if event and event.price_info else '' }}" placeholder="e.g. $15 / $20 day of">
 
-      {% set current_image_url = event.image_url if event and event.image_url else (gig_image_url if gig_image_url else '') %}
+      {% set current_image_url = (event.image_url if event and event.image_url else (gig_image_url if gig_image_url else '')) | resolve_image_url %}
       <label for="image_url">Image / flyer URL</label>
       {# type="text", not "url" -- a value prefilled from a locally-
          uploaded flyer is now a relative path (see app/utils.py's

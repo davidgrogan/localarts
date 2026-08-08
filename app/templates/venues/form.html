@@ -24,7 +24,7 @@
        a value prefilled from a locally-uploaded photo is now a relative
        path, which type="url"'s native browser validation would reject
        outright. #}
-    <input type="text" id="image_url" name="image_url" value="{{ venue.image_url if venue else '' }}">
+    <input type="text" id="image_url" name="image_url" value="{{ (venue.image_url if venue else '') | resolve_image_url }}">
 
     <label for="venue_image">Or upload a venue photo</label>
     <input type="file" id="venue_image" name="venue_image" accept="image/png,image/jpeg,image/gif,image/webp">
@@ -32,7 +32,7 @@
       JPG, PNG, GIF, or WEBP -- uploading a file here replaces whatever's in the URL field above once you save.
       Shown on this venue's own page, and used in place of a show's own image on any of its
       events that don't have one of their own.
-      <br><img id="image_url_preview" src="{{ venue.image_url if venue else '' }}" alt=""
+      <br><img id="image_url_preview" src="{{ (venue.image_url if venue else '') | resolve_image_url }}" alt=""
                style="max-width:200px; border-radius:4px; margin-top:0.4rem; {{ '' if (venue and venue.image_url) else 'display:none;' }}">
     </div>
 

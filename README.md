@@ -995,6 +995,21 @@ correctly against whichever domain actually serves the page either way,
 matching how `GigSubmission.flyer_filename` was already designed to work
 (see that column's docstring in `models.py`).
 
+Dropping `_external=True` fixed the *host*, but not fully: the droplet
+serves this site under a URL prefix (`waveyvibe.dev/localarts`, not the
+domain root -- see "Deploying behind Caddy at a sub-path" below), and a
+plain `/static/uploads/flyers/x.jpg` computed once at upload time on local
+dev (which has no prefix) doesn't carry that prefix when copied to the
+droplet's database and rendered there later. `app/utils.py`'s
+`resolve_image_url()` -- wired up as the `resolve_image_url` Jinja filter
+in `app/__init__.py`, applied everywhere `Event.image_url`/
+`Venue.image_url` is rendered as an `<img src>` or prefilled form value
+(never `Artist.image_url`, which is always a pasted external URL with no
+local-upload path) -- fixes this by re-deriving the URL fresh, via
+`flyer_url()`, at *render* time instead of trusting the stored string. An
+already-absolute pasted URL (`http://`/`https://`) passes through
+unchanged either way.
+
 `events.py`'s `_resolve_image_url()` decides what `Event.image_url` ends
 up as: an uploaded file always wins over whatever's in the URL text field
 (on the theory that if an admin bothered to pick a file, that's the one
