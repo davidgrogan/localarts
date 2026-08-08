@@ -317,19 +317,32 @@ def flyer_url(flyer_filename):
     avoid pulling Flask into every other function in this file that
     doesn't need it.
 
-    _external=True matters here, not just cosmetically: this value gets
-    dropped straight into the Add Show form's Image/flyer URL field
-    (events.py's new_event() from_gig prefill), which is an
-    `<input type="url">` -- a browser's built-in validation for that input
-    type requires a fully-qualified absolute URL (scheme + host), and
-    rejects a bare site-relative path like "/static/uploads/flyers/x.jpg"
-    outright with "Please enter a URL", blocking the whole form from
-    submitting. Every other Event.image_url value already in this app
-    (scraper-sourced) is a full absolute URL too, so this also just
-    matches that existing convention rather than being a special case.
+    Deliberately relative (no scheme+host) -- this used to pass
+    _external=True, which seemed harmless (an absolute URL "just works"
+    wherever it's rendered) but actually baked in whatever host happened
+    to be serving the request at *upload* time. That's permanent once
+    it's saved into Event.image_url/Venue.image_url: uploading on local
+    dev stores "http://127.0.0.1:5050/static/uploads/flyers/x.jpg" in the
+    database, which is meaningless on the droplet once that same row gets
+    copied over by migrate_to_postgres.py -- the image silently 404s
+    there even after the underlying file itself is present (see
+    push_to_droplet.sh's rsync step, added alongside this fix, for
+    getting the files there in the first place). A relative URL resolves
+    correctly against whichever domain is actually serving the page, both
+    locally and on the droplet, exactly like GigSubmission.flyer_filename
+    was already designed to (see that column's own docstring in
+    models.py) -- Event.image_url/Venue.image_url just weren't following
+    the same rule.
+
+    This does mean the "Image / flyer URL" text fields it prefills
+    (events/form.html, venues/form.html) can no longer be
+    `<input type="url">` -- that input type's native browser validation
+    requires a fully-qualified absolute URL and would reject this
+    relative value outright, blocking the form from submitting even
+    without the admin touching the field. Both are `type="text"` now.
     """
     if not flyer_filename:
         return None
     from flask import url_for
 
-    return url_for("static", filename=f"uploads/flyers/{flyer_filename}", _external=True)
+    return url_for("static", filename=f"uploads/flyers/{flyer_filename}")

@@ -20,7 +20,11 @@
     <input type="url" id="website_url" name="website_url" value="{{ venue.website_url if venue else '' }}" placeholder="https://example.com">
 
     <label for="image_url">Venue photo URL</label>
-    <input type="url" id="image_url" name="image_url" value="{{ venue.image_url if venue else '' }}">
+    {# type="text", not "url" -- see app/utils.py's flyer_url() docstring:
+       a value prefilled from a locally-uploaded photo is now a relative
+       path, which type="url"'s native browser validation would reject
+       outright. #}
+    <input type="text" id="image_url" name="image_url" value="{{ venue.image_url if venue else '' }}">
 
     <label for="venue_image">Or upload a venue photo</label>
     <input type="file" id="venue_image" name="venue_image" accept="image/png,image/jpeg,image/gif,image/webp">

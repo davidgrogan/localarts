@@ -973,7 +973,27 @@ now take a flyer image upload directly, not just a pasted URL -- reusing
 already built for the public "Submit a Show" form (uuid-renamed, saved
 under `app/static/uploads/flyers/`, no separate serving route needed).
 The form's `enctype="multipart/form-data"` and a new `flyer_image` file
-input sit right below the existing "Image / flyer URL" text field.
+input sit right below the existing "Image / flyer URL" text field, which
+is `type="text"` rather than `type="url"` -- a value prefilled from an
+upload is a relative path (`/static/uploads/flyers/<uuid>.ext`, see
+`flyer_url()`'s docstring below), and `type="url"`'s native browser
+validation would reject that outright.
+
+`flyer_url()` deliberately returns a relative URL, not an absolute one --
+it used to pass `_external=True` (looked harmless: an absolute URL "just
+works" wherever it's rendered), but that baked in whatever host happened
+to be serving the request at *upload* time. Uploading locally stored
+`http://127.0.0.1:5050/static/uploads/flyers/x.jpg` straight into
+`Event.image_url`/`Venue.image_url` -- permanent, and meaningless once
+that row got copied to the droplet by `migrate_to_postgres.py`, so the
+image silently 404'd there even once the file itself existed (see
+"Moving locally-accumulated data to the droplet" below for the matching
+fix on that side -- `push_to_droplet.sh`/`deploy_all.sh` now rsync
+`app/static/uploads/flyers/` itself, since a relative URL alone doesn't
+help if the file was never copied over). A relative URL resolves
+correctly against whichever domain actually serves the page either way,
+matching how `GigSubmission.flyer_filename` was already designed to work
+(see that column's docstring in `models.py`).
 
 `events.py`'s `_resolve_image_url()` decides what `Event.image_url` ends
 up as: an uploaded file always wins over whatever's in the URL text field

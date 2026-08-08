@@ -25,10 +25,15 @@
 #      missing columns, widens any that need it -- see sync_schema.py's
 #      own docstring; never drops or narrows anything), then restarts
 #      the systemd service.
-#   3. Runs migrate_to_postgres.py through the same tunnel to copy your
-#      local venue/artist/event data over (still asks you to type "yes"
-#      before wiping the droplet's existing rows -- see
-#      migrate_to_postgres.py's own docstring for why).
+#   3. Rsyncs app/static/uploads/flyers/ (locally-uploaded flyer/venue-
+#      photo images -- gitignored, so `git pull` above never puts these
+#      there) to the droplet, then runs migrate_to_postgres.py through
+#      the same tunnel to copy your local venue/artist/event data over
+#      (still asks you to type "yes" before wiping the droplet's existing
+#      rows -- see migrate_to_postgres.py's own docstring for why). The
+#      rsync has to happen before the data sync, not after -- otherwise
+#      an Event/Venue row pointing at a locally-uploaded image could go
+#      live on the droplet slightly before the file itself is there.
 #
 # Requires password-based SSH to work the same way it does when you SSH
 # in by hand -- you'll be prompted once, right when the connection opens.
@@ -53,6 +58,7 @@ source "$ENV_FILE"
 LOCAL_TUNNEL_PORT="${LOCAL_TUNNEL_PORT:-5433}"
 DROPLET_APP_DIR="${DROPLET_APP_DIR:-/var/www/localarts}"
 DROPLET_SERVICE_NAME="${DROPLET_SERVICE_NAME:-local-music.service}"
+FLYER_DIR="app/static/uploads/flyers"
 
 # --- Step 1: commit + push local code changes -------------------------------
 
@@ -132,8 +138,19 @@ if ! nc -z localhost "$LOCAL_TUNNEL_PORT" 2>/dev/null; then
   exit 1
 fi
 
+# Nothing to sync yet on a brand-new local install -- rsync would
+# otherwise error on a missing source directory rather than just finding
+# zero files.
+mkdir -p "$FLYER_DIR"
+
+echo "Syncing uploaded flyer/venue-photo images..."
+ssh -S "$CONTROL_SOCKET" "${DROPLET_SSH_USER}@${DROPLET_IP}" \
+  "mkdir -p '${DROPLET_APP_DIR}/${FLYER_DIR}'"
+rsync -az -e "ssh -S $CONTROL_SOCKET" \
+  "${FLYER_DIR}/" "${DROPLET_SSH_USER}@${DROPLET_IP}:${DROPLET_APP_DIR}/${FLYER_DIR}/"
+
 python3 migrate_to_postgres.py \
   "postgresql://localarts:${DROPLET_PG_PASSWORD}@localhost:${LOCAL_TUNNEL_PORT}/localarts"
 
 echo
-echo "All done: code pushed + pulled, schema synced, data synced, service restarted."
+echo "All done: code pushed + pulled, schema synced, images + data synced, service restarted."

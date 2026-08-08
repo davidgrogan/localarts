@@ -302,9 +302,11 @@ does the whole thing in one command, in that order:
    drift" below -- safe to run every time, since it only ever adds or
    widens columns, never drops/narrows one), then `systemctl restart
    local-music.service`.
-3. Runs `migrate_to_postgres.py` through the same connection to sync
-   your local data over (same "type yes to confirm" prompt as
-   `push_to_droplet.sh` below).
+3. Rsyncs `app/static/uploads/flyers/` (locally-uploaded flyer/venue-
+   photo images -- gitignored, so step 2's `git pull` never puts these
+   there) to the droplet, then runs `migrate_to_postgres.py` through the
+   same connection to sync your local data over (same "type yes to
+   confirm" prompt as `push_to_droplet.sh` below).
 
 The order matters: schema sync has to run *after* the droplet already has
 today's code, or `sync_schema.py` is still comparing against yesterday's
@@ -330,9 +332,22 @@ re-scraping or manual re-entry on the live site.
 
 `push_to_droplet.sh` (and, for Finder, `Push to Droplet.command` --
 double-click it like any other app) automates the whole dance below: it
-opens the SSH tunnel, waits for it to actually be up, runs
-`migrate_to_postgres.py` through it, and closes the tunnel again
-afterward whether the migration succeeded or failed.
+opens the SSH tunnel, waits for it to actually be up, rsyncs
+`app/static/uploads/flyers/` (any locally-uploaded flyer/venue-photo
+images) over, runs `migrate_to_postgres.py` through the tunnel, and
+closes the connection again afterward whether either step succeeded or
+failed.
+
+The rsync step matters on its own, separately from the database sync:
+`app/static/uploads/flyers/` is gitignored (real uploaded images, not
+something to commit), so a `git pull` on the droplet never puts an
+uploaded file there -- without this, an Event/Venue row pointing at a
+locally-uploaded image would sync over fine and still 404 on the live
+site, because the file itself never did. (Uploaded-image URLs are also
+relative now rather than baking in whatever host happened to be serving
+the page at upload time -- see `app/utils.py`'s `flyer_url()` docstring
+-- but that fix alone doesn't help if the file was never copied over in
+the first place; this rsync is the other half of it.)
 
 One-time setup:
 
