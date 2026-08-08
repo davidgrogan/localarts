@@ -97,7 +97,14 @@ def _upcoming_events_for(artist, now):
 def list_artists():
     genre_tag_id = request.args.get("genre", type=int)
 
-    query = Artist.query.order_by(Artist.name)
+    # db.func.lower(), not just Artist.name -- a plain ORDER BY sorts by
+    # byte value, which puts every capitalized name before any lowercase
+    # one regardless of letter (e.g. "Zeta" before "alice") on both
+    # SQLite and Postgres. That also used to scatter the same starting
+    # letter across more than one place in the list, which broke the A-Z
+    # jump bar's assumption that each letter's artists are contiguous
+    # (see list.html's single "current letter changed" anchor per letter).
+    query = Artist.query.order_by(db.func.lower(Artist.name))
     if genre_tag_id:
         query = query.filter(Artist.genre_tags.any(GenreTag.id == genre_tag_id))
     artists = query.all()
