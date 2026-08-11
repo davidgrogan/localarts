@@ -79,7 +79,14 @@
         {% set letter = a.name[0].upper() if a.name else "" %}
         {% if letter != ns.current_letter %}
           {% set ns.current_letter = letter %}
-          <span id="letter-{{ letter }}" class="az-anchor" aria-hidden="true"></span>
+          {# Sits in the grid as its own cell right before this letter's
+             first tile -- both the A-Z jump bar's scroll target (see
+             #letter-X links above) and a visible section marker, so the
+             cell it occupies shows something instead of just sitting
+             empty (which is what a zero-height anchor here used to look
+             like). aria-hidden since it's a redundant visual cue -- a
+             screen reader already gets each artist's name in order. #}
+          <div id="letter-{{ letter }}" class="artist-letter-marker" aria-hidden="true">{{ letter }}</div>
         {% endif %}
         <a class="artist-tile" href="{{ url_for('artists.detail', artist_id=a.id) }}" data-name="{{ a.name|lower }}">
           <div class="artist-tile-photo">

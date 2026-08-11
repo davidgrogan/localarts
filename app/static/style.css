@@ -700,14 +700,30 @@ form.stacked .actions { margin-top: 1.5rem; }
 }
 .az-jump a:hover { background: var(--accent); color: var(--paper); }
 .az-disabled { color: var(--muted); opacity: 0.4; }
-/* Zero-height marker, not a visible element -- just gives the A-Z bar's
-   links something to scroll to right above each new letter's first tile. */
-.az-anchor { display: block; height: 0; }
-
 .artist-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 1rem;
+}
+/* Occupies its own grid cell right before each new letter's first tile --
+   both the A-Z jump bar's scroll target and a visible "you're now in the
+   G's" marker, so that cell shows something instead of sitting empty.
+   Grid items stretch to the row's full height by default, so this
+   matches whatever height the tallest tile in its row happens to be;
+   min-height is just a floor for the rare case it ends up alone in a row
+   with nothing taller next to it. */
+.artist-letter-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 160px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 3rem;
+  font-weight: 800;
+  line-height: 1;
+  user-select: none;
 }
 .artist-tile {
   display: flex;
