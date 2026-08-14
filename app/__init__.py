@@ -206,4 +206,15 @@ def create_app(test_config=None):
 
         return resolve_image_url(value)
 
+    @app.template_filter("artist_letter")
+    def artist_letter_filter(name):
+        # A thin Jinja-filter wrapper around app.utils.artist_display_letter()
+        # so artists/list.html's per-tile "did the letter change" grouping
+        # uses the exact same "The " stripped alphabetizing rule as
+        # list_artists()'s own available_letters computation, instead of
+        # each re-deriving it slightly differently.
+        from app.utils import artist_display_letter
+
+        return artist_display_letter(name)
+
     return app

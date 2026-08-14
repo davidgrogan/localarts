@@ -39,6 +39,46 @@ def slugify(text):
     return text.strip("-") or "item"
 
 
+def artist_sort_key(name):
+    """Sort key for alphabetizing artist names: a leading "The " (any
+    case -- "the", "The", "THE" all match) is ignored, so "The Mountain
+    Movers" sorts and groups under M right alongside a hypothetical
+    "Mountain Movers", not off by itself under T -- matching how a real
+    venue marquee or record-store bin would alphabetize band names.
+    Sorting is done here in Python (see list_artists()/events.py's form
+    routes, which now do `sorted(..., key=artist_sort_key)` instead of an
+    ORDER BY) rather than as a SQL expression -- stripping a
+    case-insensitive prefix portably across SQLite and Postgres in SQL
+    is fiddlier than it's worth at this site's artist-count scale.
+
+    Deliberately requires the trailing space ("the " with 4 characters,
+    not just "the") so a band actually named exactly "The" isn't stripped
+    down to an empty-string sort key.
+    """
+    if not name:
+        return ""
+    stripped = name.strip()
+    lowered = stripped.lower()
+    if lowered.startswith("the "):
+        return stripped[4:].lower()
+    return lowered
+
+
+def artist_display_letter(name):
+    """The letter the /artists index's A-Z jump bar and its per-letter
+    section markers group an artist under -- the first letter of
+    artist_sort_key(), so "The Mountain Movers" shows up under M (right
+    where a visitor looking for that band would actually look) rather
+    than every "The ..." act clustering under T. Registered as the
+    `artist_letter` Jinja filter in app/__init__.py so list.html's
+    per-tile grouping and list_artists()'s available_letters computation
+    share this exact same rule instead of each re-deriving it slightly
+    differently.
+    """
+    key = artist_sort_key(name)
+    return key[0].upper() if key else ""
+
+
 def get_or_create_event_type(name):
     """Look up an EventType by name, case-insensitively, creating it if
     it doesn't exist yet. Shared by the event form's and venue form's

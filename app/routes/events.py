@@ -3,7 +3,14 @@ from datetime import datetime
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 
 from app.models import db, Event, Venue, Artist, EventType, GigSubmission
-from app.utils import slugify, get_or_create_event_type, local_now, flyer_url, resolve_uploaded_image_url
+from app.utils import (
+    slugify,
+    get_or_create_event_type,
+    local_now,
+    flyer_url,
+    resolve_uploaded_image_url,
+    artist_sort_key,
+)
 from app.auth import require_admin
 
 bp = Blueprint("events", __name__, url_prefix="/events")
@@ -104,7 +111,10 @@ def _gig_prefill(gig):
 @bp.route("/new", methods=["GET", "POST"])
 def new_event():
     venues = Venue.query.order_by(Venue.name).all()
-    artists = Artist.query.order_by(Artist.name).all()
+    # artist_sort_key() (not a plain ORDER BY) so a "The ..." band's
+    # checkbox lines up alphabetically here the same way it does on the
+    # /artists index -- see that key's own docstring in app/utils.py.
+    artists = sorted(Artist.query.all(), key=lambda a: artist_sort_key(a.name))
     event_types = EventType.query.order_by(EventType.name).all()
 
     # Converting a pending gig submission (see app/routes/gigs.py) into a
@@ -183,7 +193,10 @@ def new_event():
 def edit_event(event_id):
     event = Event.query.get_or_404(event_id)
     venues = Venue.query.order_by(Venue.name).all()
-    artists = Artist.query.order_by(Artist.name).all()
+    # artist_sort_key() (not a plain ORDER BY) so a "The ..." band's
+    # checkbox lines up alphabetically here the same way it does on the
+    # /artists index -- see that key's own docstring in app/utils.py.
+    artists = sorted(Artist.query.all(), key=lambda a: artist_sort_key(a.name))
     event_types = EventType.query.order_by(EventType.name).all()
     # Where "Save changes" should return to -- e.g. the Review page's Edit
     # links pass ?next=/events/review so editing a pending show returns

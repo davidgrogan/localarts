@@ -3,7 +3,14 @@ import random
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 
 from app.models import db, Artist, Event, GenreTag, EventType
-from app.utils import slugify, get_or_create_genre_tag, get_or_create_event_type, local_now
+from app.utils import (
+    slugify,
+    get_or_create_genre_tag,
+    get_or_create_event_type,
+    local_now,
+    artist_sort_key,
+    artist_display_letter,
+)
 from app.auth import login_required
 
 bp = Blueprint("artists", __name__, url_prefix="/artists")
@@ -97,17 +104,19 @@ def _upcoming_events_for(artist, now):
 def list_artists():
     genre_tag_id = request.args.get("genre", type=int)
 
-    # db.func.lower(), not just Artist.name -- a plain ORDER BY sorts by
-    # byte value, which puts every capitalized name before any lowercase
-    # one regardless of letter (e.g. "Zeta" before "alice") on both
-    # SQLite and Postgres. That also used to scatter the same starting
-    # letter across more than one place in the list, which broke the A-Z
-    # jump bar's assumption that each letter's artists are contiguous
-    # (see list.html's single "current letter changed" anchor per letter).
-    query = Artist.query.order_by(db.func.lower(Artist.name))
+    query = Artist.query
     if genre_tag_id:
         query = query.filter(Artist.genre_tags.any(GenreTag.id == genre_tag_id))
-    artists = query.all()
+    # Sorted in Python via artist_sort_key(), not a SQL ORDER BY -- that
+    # key both lowercases (a plain ORDER BY sorts by byte value, which
+    # puts every capitalized name before any lowercase one regardless of
+    # letter, e.g. "Zeta" before "alice") and ignores a leading "The " so
+    # "The Mountain Movers" sorts under M, not T. Either inconsistency
+    # used to (or would) scatter a single letter's artists across more
+    # than one place in the list, which breaks the A-Z jump bar's
+    # assumption that each letter's artists are contiguous (see
+    # list.html's single "current letter changed" anchor per letter).
+    artists = sorted(query.all(), key=lambda a: artist_sort_key(a.name))
 
     now = local_now()
     next_shows = {}
@@ -118,7 +127,9 @@ def list_artists():
     # A-Z jump bar only needs to know which letters actually have an
     # artist -- everything else renders as an unclickable placeholder so
     # the bar's width/spacing stays constant regardless of the roster.
-    available_letters = {a.name[0].upper() for a in artists if a.name}
+    # artist_display_letter(), not a.name[0], so a "The ..." artist counts
+    # toward the letter it's actually alphabetized/grouped under.
+    available_letters = {artist_display_letter(a.name) for a in artists if a.name}
 
     # Spotlight pick: always drawn from the *full* local roster, not
     # whatever the genre filter above narrowed "artists" down to -- so

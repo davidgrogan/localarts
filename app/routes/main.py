@@ -6,7 +6,7 @@ from flask import Blueprint, abort, flash, redirect, render_template, request, s
 from app.auth import login_required
 from app.models import db, Event, Venue, Artist, EventType
 from app.recurrence import DisplayItem, group_recurring_events
-from app.utils import get_site_setting, local_now, VENUE_CAUTION_NOTE
+from app.utils import get_site_setting, local_now, VENUE_CAUTION_NOTE, artist_sort_key
 
 bp = Blueprint("main", __name__)
 
@@ -176,7 +176,12 @@ def calendar():
         items = [item for item in items if item.event.start_datetime < week_end]
 
     venues = Venue.query.order_by(Venue.name).all()
-    artists = Artist.query.filter_by(is_local=True).order_by(Artist.name).all()
+    # artist_sort_key() (not a plain ORDER BY) so a "The ..." band lines up
+    # alphabetically here the same way it does on the /artists index --
+    # see that key's own docstring in app/utils.py.
+    artists = sorted(
+        Artist.query.filter_by(is_local=True).all(), key=lambda a: artist_sort_key(a.name)
+    )
     genres = _distinct_genres()
     artists_this_week = _local_artists_playing_this_week(today, week_end)
 

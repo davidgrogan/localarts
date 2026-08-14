@@ -76,7 +76,11 @@
     <div class="artist-grid" id="artist-grid">
       {% set ns = namespace(current_letter=None) %}
       {% for a in artists %}
-        {% set letter = a.name[0].upper() if a.name else "" %}
+        {# artist_letter, not a.name[0] -- a leading "The " is ignored,
+           so "The Mountain Movers" groups under M, matching how the
+           roster is now alphabetized (see artist_sort_key() in
+           app/utils.py). #}
+        {% set letter = a.name | artist_letter if a.name else "" %}
         {% if letter != ns.current_letter %}
           {% set ns.current_letter = letter %}
           {# Sits in the grid as its own cell right before this letter's

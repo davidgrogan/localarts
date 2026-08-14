@@ -258,14 +258,34 @@ layout meant to hold up as the roster grows past a single scrollable list:
   entirely client-side, doesn't touch the genre filter or reload the page.
 - **A-Z jump bar**: every letter renders, even ones with no artist yet
   (as an unclickable placeholder) so the bar's width doesn't shift as the
-  roster grows; a letter with at least one artist links to an invisible
-  anchor placed right before that letter's first tile in the grid.
+  roster grows; a letter with at least one artist links to a big-letter
+  marker (`.artist-letter-marker`) that sits in its own grid cell right
+  before that letter's first tile -- both the jump bar's scroll target
+  and a visible "you're now in the G's" divider, rather than an invisible
+  zero-height anchor that used to just leave that cell looking blank.
 
 `_upcoming_events_for()` (moved into `app/routes/artists.py`, alongside
 `list_artists()`) computes each tile's "next show" -- the same
 is_approved/`start_datetime >= now` filtering the artist detail page's own
 "Upcoming shows" list already used, pulled out into one shared helper so
 both stay in sync rather than maintaining two copies of the same logic.
+
+**Alphabetizing ignores a leading "The "** -- `app/utils.py`'s
+`artist_sort_key()`/`artist_display_letter()` strip a case-insensitive
+"The " prefix before comparing, so "The Mountain Movers" sorts and groups
+under M (right where a visitor looking for that band would actually
+look), not off on its own under T. `artist_display_letter()` is also
+registered as the `artist_letter` Jinja filter so list.html's per-tile
+"did the letter change" grouping and `list_artists()`'s own
+`available_letters` computation both apply the exact same rule rather
+than each re-deriving it. Sorting is done in Python (`sorted(..., key=
+artist_sort_key)`), not a SQL `ORDER BY` -- portably stripping a
+case-insensitive prefix in SQL across both SQLite and Postgres is
+fiddlier than it's worth at this site's artist-count scale. The same key
+is used for every other artist listing that used to do a plain
+`ORDER BY Artist.name` too (the calendar page's artist dropdown, the
+Add/Edit Show form's "Featured local artists" checkboxes), so a "The ..."
+band lines up the same way everywhere its name is listed.
 
 ## Import from Bandcamp (bookmarklet -- `app/bandcamp_bookmarklet.py`, `app/static/bandcamp_bookmarklet.js`)
 
