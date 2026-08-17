@@ -3,9 +3,11 @@ import os
 import re
 import smtplib
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from zoneinfo import ZoneInfo
+
+from icalendar import Calendar, Event as ICSEvent
 
 # Every venue feed and every manually-entered show stores Event.start_datetime
 # as a plain, naive "wall clock" value copied straight from whatever the
@@ -433,3 +435,84 @@ def resolve_image_url(value):
         return value
     filename = value.rsplit(_FLYER_URL_MARKER, 1)[-1]
     return flyer_url(filename)
+
+
+# How long a show is assumed to run when Event.end_datetime was never set
+# (the Add/Edit Show form has no end-time field -- most scraped venue
+# feeds don't publish one either) -- long enough to cover a typical
+# multi-band bill without the calendar entry looking like it ends in the
+# middle of the show, short enough that it doesn't visibly bleed into the
+# next morning on a calendar app's day view.
+DEFAULT_EVENT_DURATION = timedelta(hours=3)
+
+
+def build_event_ics(event):
+    """A single-event .ics file (RFC 5545) for the "Add to calendar"
+    button on events/detail.html -- built fresh on every request, from
+    the live Event row, the same "recompute now, don't trust anything
+    baked in earlier" principle as resolve_image_url() above (see that
+    docstring): the file's URL/UID never depend on whatever host or
+    mount-prefix happened to be in play when someone else downloaded it
+    first, only on *this* request's.
+
+    DTSTART/DTEND are converted to real UTC before handing them to
+    icalendar, rather than attaching SITE_TIMEZONE's "America/New_York"
+    Olson id directly and emitting a TZID parameter -- a bare UTC
+    timestamp needs no accompanying VTIMEZONE block to be unambiguous,
+    where a TZID one technically does (some calendar apps tolerate a
+    missing VTIMEZONE for a well-known id, but it's not guaranteed by the
+    spec). Event.start_datetime is stored as naive local wall-clock time
+    (see SITE_TIMEZONE's docstring) so it has to be told what timezone it
+    actually is (`.replace(tzinfo=SITE_TIMEZONE)`, not a real conversion,
+    since it carries no tzinfo of its own yet) before it can be converted
+    to UTC.
+
+    UID is `event-<id>@paradisecitymusic` -- stable across re-downloads
+    and independent of the serving domain (unlike the DESCRIPTION/URL
+    fields below, which *should* reflect wherever this request is being
+    served from) -- so a calendar app that re-imports the same show later
+    recognizes it as the same event rather than creating a duplicate.
+    """
+    from flask import url_for
+
+    start_local = event.start_datetime.replace(tzinfo=SITE_TIMEZONE)
+    start_utc = start_local.astimezone(timezone.utc)
+    if event.end_datetime:
+        end_utc = event.end_datetime.replace(tzinfo=SITE_TIMEZONE).astimezone(timezone.utc)
+    else:
+        end_utc = start_utc + DEFAULT_EVENT_DURATION
+
+    detail_url = url_for("main.event_detail", event_id=event.id, _external=True)
+
+    location_parts = [event.venue.name]
+    if event.venue.address:
+        location_parts.append(event.venue.address)
+    city_state = ", ".join(p for p in (event.venue.city, event.venue.state) if p)
+    if city_state:
+        location_parts.append(city_state)
+
+    description_lines = []
+    if event.description:
+        description_lines.append(event.description)
+    if event.price_info:
+        description_lines.append(f"Price: {event.price_info}")
+    if event.ticket_url:
+        description_lines.append(f"Tickets: {event.ticket_url}")
+    description_lines.append(f"Full listing: {detail_url}")
+
+    vevent = ICSEvent()
+    vevent.add("uid", f"event-{event.id}@paradisecitymusic")
+    vevent.add("dtstamp", datetime.now(timezone.utc))
+    vevent.add("dtstart", start_utc)
+    vevent.add("dtend", end_utc)
+    vevent.add("summary", event.title)
+    vevent.add("location", ", ".join(location_parts))
+    vevent.add("description", "\n".join(description_lines))
+    vevent.add("url", detail_url)
+
+    cal = Calendar()
+    cal.add("prodid", "-//Paradise City Music//paradisecitymusic//EN")
+    cal.add("version", "2.0")
+    cal.add("calscale", "GREGORIAN")
+    cal.add_component(vevent)
+    return cal.to_ical()

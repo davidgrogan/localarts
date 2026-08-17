@@ -43,11 +43,12 @@
     </p>
   {% endif %}
 
-  {% if event.ticket_url %}
-    <div class="page-actions">
+  <div class="page-actions">
+    {% if event.ticket_url %}
       <a class="btn" href="{{ event.ticket_url }}" target="_blank" rel="noopener">Tickets / more info &rarr;</a>
-    </div>
-  {% endif %}
+    {% endif %}
+    <a class="btn btn-secondary" href="{{ url_for('main.event_ics', event_id=event.id) }}">Add to calendar</a>
+  </div>
 
   {% if not event.is_approved %}
     <p class="empty-state">This show is still pending review -- it isn't on the public calendar yet. Only visible here to you because you're logged in as admin.</p>

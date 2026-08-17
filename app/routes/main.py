@@ -1,12 +1,19 @@
 from dataclasses import dataclass
 from datetime import timedelta
 
-from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
+from flask import Blueprint, Response, abort, flash, redirect, render_template, request, session, url_for
 
 from app.auth import login_required
 from app.models import db, Event, Venue, Artist, EventType
 from app.recurrence import DisplayItem, group_recurring_events
-from app.utils import get_site_setting, local_now, VENUE_CAUTION_NOTE, artist_sort_key
+from app.utils import (
+    get_site_setting,
+    local_now,
+    VENUE_CAUTION_NOTE,
+    artist_sort_key,
+    build_event_ics,
+    slugify,
+)
 
 bp = Blueprint("main", __name__)
 
@@ -230,6 +237,27 @@ def event_detail(event_id):
     if not event.is_approved and not session.get("is_admin"):
         abort(404)
     return render_template("events/detail.html", event=event, venue_caution_note=VENUE_CAUTION_NOTE)
+
+
+@bp.route("/show/<int:event_id>.ics")
+def event_ics(event_id):
+    """The event detail page's "Add to calendar" button -- a downloadable
+    single-event .ics file, built fresh on every request by
+    build_event_ics() (see that function's own docstring in app/utils.py
+    for why it's computed per-request rather than cached/stored). Same
+    visibility rule as event_detail() just above: a not-yet-approved
+    event's calendar file 404s for anyone who isn't logged in as admin,
+    rather than letting a guessable URL leak an unvetted show.
+    """
+    event = Event.query.get_or_404(event_id)
+    if not event.is_approved and not session.get("is_admin"):
+        abort(404)
+    ics_bytes = build_event_ics(event)
+    return Response(
+        ics_bytes,
+        mimetype="text/calendar",
+        headers={"Content-Disposition": f'attachment; filename="{slugify(event.title)}.ics"'},
+    )
 
 
 @bp.route("/about")

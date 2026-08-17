@@ -35,6 +35,9 @@ DigitalOcean.
   description only shows as a hover tooltip). Linked from every calendar
   card's thumbnail and a new "Event Details" link. Public for approved
   shows; 404s for anyone who isn't an admin if the show isn't approved yet.
+  Has an "Add to calendar" button (`/show/<id>.ics`) that downloads the
+  show as a single-event .ics file for Google/Apple/Outlook -- see "Add to
+  calendar" below.
 - **About** (`/about`) -- the site's admin-editable "About this site" copy,
   linked from the main nav. Used to show inline (collapsed by default) at
   the top of the calendar page; now lives on its own page instead, so the
@@ -984,6 +987,46 @@ the submission itself is already safely saved in the DB by the time this
 runs, so a flyer-attachment hiccup shouldn't also take down the email.
 The contact form doesn't pass these -- there's no file involved there --
 so its behavior is unchanged.
+
+## Add to calendar (`/show/<id>.ics`)
+
+Every show's Event Details page has an "Add to calendar" button next to
+"Tickets / more info" (or on its own if the show has no ticket link) --
+downloads that one show as a standard `.ics` file that Google Calendar,
+Apple Calendar, and Outlook all understand natively, no plugin or
+account-linking needed. The same link also sits on each show's card on
+the calendar page itself (`calendar.html`'s `.event-link` row, alongside
+"Event Details" and "View on venue site"), so a visitor never has to open
+the Event Details page just to add a show to their own calendar -- for a
+grouped recurring series, it links that one specific occurrence's date,
+not the whole series' date range. Built by `app/utils.py`'s
+`build_event_ics()`
+using the `icalendar` package (already a dependency -- `ical_feed.py`'s
+scraper already used it to *read* other venues' feeds; this is the same
+library used the other direction, to *write* one) and served by
+`main.py`'s `event_ics()` route.
+
+The file is generated fresh on every request straight from the live
+`Event` row, not cached or written to disk anywhere -- same principle as
+`resolve_image_url()` above: nothing about it (its URL, its UID) should
+depend on whatever host or mount-prefix happened to be in play when
+someone downloaded it. `Event.start_datetime` is stored as naive local
+wall-clock time (see `SITE_TIMEZONE`'s docstring), so it's tagged with
+that timezone and converted to a real UTC instant before being handed to
+`icalendar` -- a bare UTC timestamp needs no accompanying `VTIMEZONE`
+block to be unambiguous, which is one less thing to get wrong than
+emitting a raw `America/New_York` `TZID`. A show with no `end_datetime`
+set (the Add/Edit Show form has no end-time field, and most scraped venue
+feeds don't publish one either) falls back to a 3-hour default
+(`DEFAULT_EVENT_DURATION`) rather than leaving `DTEND` unset.
+
+The calendar entry's description includes the show's own description,
+price, and ticket link (whichever are set) plus a link back to the show's
+own page on the site, so anyone who imported it can always get back to
+the full listing. Same visibility rule as the Event Details page itself:
+a not-yet-approved show's `.ics` 404s for anyone who isn't logged in as
+admin, so a guessable URL can't leak an unvetted show onto someone's
+calendar before it's been reviewed.
 
 ## Uploading a flyer on the Add/Edit Show form
 

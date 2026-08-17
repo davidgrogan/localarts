@@ -181,6 +181,13 @@
                 {% if e.ticket_url %}
                   &middot; <a href="{{ e.ticket_url }}" target="_blank" rel="noopener">View on venue site &rarr;</a>
                 {% endif %}
+                {# Links this one occurrence, not the whole recurring series
+                   (see item.is_series below) -- a series' own start/end
+                   date range isn't a single calendar-app-importable event,
+                   just this card's specific date/time, same as
+                   "Event Details" above already only ever points at this
+                   one occurrence's own Event row. #}
+                &middot; <a href="{{ url_for('main.event_ics', event_id=e.id) }}">Add to calendar</a>
               </div>
               {% if is_admin %}
                 <div class="event-actions">
