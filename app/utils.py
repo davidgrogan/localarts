@@ -2,6 +2,7 @@ import mimetypes
 import os
 import re
 import smtplib
+import threading
 import uuid
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
@@ -207,12 +208,38 @@ MAIL_USERNAME = os.environ.get("MAIL_USERNAME")
 MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD")
 
 
+# Hard wall-clock ceiling on how long send_admin_email() itself is ever
+# allowed to block a request for -- see that function's docstring for
+# the real incident this exists to prevent (a WORKER TIMEOUT on
+# 2026-08-17 that killed an entire gunicorn worker, not just the one
+# request, because this function hung inside smtplib far longer than the
+# timeout=10 already passed to smtplib.SMTP() below should have allowed).
+# Chosen to comfortably clear that timeout=10 (giving the connection a
+# real chance to succeed) while staying well under gunicorn's own
+# request timeout (deploy/local-music.service sets no explicit --timeout
+# flag, so it's gunicorn's default of 30 seconds) -- if this were set
+# *equal to or above* gunicorn's timeout, the worker could still get
+# killed before this function ever got the chance to give up cleanly.
+EMAIL_SEND_TIMEOUT = 15
+
+
+def _send_admin_email_now(msg):
+    """The actual blocking SMTP conversation -- split out of
+    send_admin_email() below purely so it can be run on a background
+    thread with a hard deadline (see EMAIL_SEND_TIMEOUT's docstring)."""
+    with smtplib.SMTP(MAIL_SERVER, MAIL_PORT, timeout=10) as smtp:
+        smtp.starttls()
+        smtp.login(MAIL_USERNAME, MAIL_PASSWORD)
+        smtp.send_message(msg)
+
+
 def send_admin_email(subject, body, reply_to=None, attachment_path=None, attachment_filename=None):
     """Send a single plain-text email to the site's admin inbox
     (CONTACT_EMAIL) via Gmail SMTP. Raises RuntimeError if MAIL_USERNAME/
-    MAIL_PASSWORD aren't configured, and lets any smtplib exception
-    propagate -- every caller is expected to catch it and flash a friendly
-    error rather than let it 500, same as the contact form always did.
+    MAIL_PASSWORD aren't configured, and re-raises any smtplib exception
+    (or TimeoutError -- see below) -- every caller is expected to catch it
+    and flash a friendly error rather than let it 500, same as the contact
+    form always did.
 
     attachment_path (optional) attaches one file, read straight off disk --
     used by gigs.py's submit_gig() to include the submitted flyer image
@@ -224,6 +251,32 @@ def send_admin_email(subject, body, reply_to=None, attachment_path=None, attachm
     attachment" rather than failing the whole email -- the submission
     itself is already safely saved by the time this runs (see gigs.py), so
     a flyer-attachment hiccup shouldn't also take down the notification.
+
+    The actual SMTP conversation (_send_admin_email_now()) runs on a
+    background thread rather than directly on the caller's -- this
+    function only ever waits up to EMAIL_SEND_TIMEOUT seconds for it via
+    thread.join(), then raises TimeoutError if it's still not done. This
+    isn't just a lower timeout number: smtplib.SMTP()'s own timeout=10
+    only bounds the socket connect() step, not the DNS lookup for
+    MAIL_SERVER that happens first (Python's socket/smtplib layer has no
+    way to bound that at all) -- so a slow or unreachable DNS resolver
+    can hang indefinitely no matter what timeout is passed to smtplib
+    itself. That's exactly what happened on 2026-08-17: this call sat
+    stuck long enough that gunicorn's own request timeout fired first and
+    SIGABRT'd the *entire worker process* (see the WORKER TIMEOUT in that
+    incident's log) mid-request -- worse than any exception this
+    function could have raised, since it took down every other request
+    that worker happened to be mid-handling too, not just this one.
+    Running the SMTP work on a background thread with its own join()
+    deadline means send_admin_email() itself can never block longer than
+    EMAIL_SEND_TIMEOUT, regardless of what's actually hanging underneath
+    it. The background thread is daemon=True and left running if it
+    times out rather than being forcibly killed (Python has no clean way
+    to kill a thread stuck in a C-level network call anyway) -- if the
+    connection does eventually succeed a few seconds later, the email
+    still goes out, just late; if it never does, it quietly leaks one
+    thread, which is a far better failure mode than losing a whole
+    worker process over one slow mail server.
     """
     if not MAIL_USERNAME or not MAIL_PASSWORD:
         raise RuntimeError(
@@ -256,10 +309,25 @@ def send_admin_email(subject, body, reply_to=None, attachment_path=None, attachm
                 filename=attachment_filename or os.path.basename(attachment_path),
             )
 
-    with smtplib.SMTP(MAIL_SERVER, MAIL_PORT, timeout=10) as smtp:
-        smtp.starttls()
-        smtp.login(MAIL_USERNAME, MAIL_PASSWORD)
-        smtp.send_message(msg)
+    caught = []
+
+    def _run():
+        try:
+            _send_admin_email_now(msg)
+        except Exception as exc:  # noqa: BLE001 -- handed back to the caller's own thread below
+            caught.append(exc)
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    thread.join(EMAIL_SEND_TIMEOUT)
+
+    if thread.is_alive():
+        raise TimeoutError(
+            f"Timed out after {EMAIL_SEND_TIMEOUT}s trying to reach the mail server "
+            f"({MAIL_SERVER}:{MAIL_PORT}) -- it may still go out in the background."
+        )
+    if caught:
+        raise caught[0]
 
 
 # ---------------------------------------------------------------------------

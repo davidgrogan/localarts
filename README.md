@@ -988,6 +988,37 @@ runs, so a flyer-attachment hiccup shouldn't also take down the email.
 The contact form doesn't pass these -- there's no file involved there --
 so its behavior is unchanged.
 
+**Hardened against a hung mail server taking down the whole site
+(2026-08-17 incident):** a real production outage traced back to
+`send_admin_email()` -- the droplet's connection attempt to
+`MAIL_SERVER` hung (most likely a slow/unreachable DNS lookup for
+`smtp.gmail.com`, which is not covered by the `timeout=10` already
+passed to `smtplib.SMTP()`, since that only bounds the socket
+`connect()` step, not the DNS resolution before it) for longer than
+gunicorn's own request timeout (30s, the default -- `local-music.service`
+sets no `--timeout` override). Gunicorn responded by SIGABRT-ing the
+*entire worker process* mid-request (a `WORKER TIMEOUT` in the systemd
+journal), which took down every other request that worker happened to
+be handling too -- not just the "Submit a Show" one that triggered it.
+
+`send_admin_email()` now runs the actual SMTP conversation
+(`_send_admin_email_now()`) on a background thread and only waits up to
+`EMAIL_SEND_TIMEOUT` (15s -- comfortably under gunicorn's 30s) via
+`thread.join()`, raising a plain `TimeoutError` if it's not done by
+then rather than blocking indefinitely. That's still just a normal,
+catchable exception, so `gigs.py`/`contact.py`'s existing
+`try/except` around every call needed zero changes -- a submitter now
+gets the same "your show was submitted, but the notification email
+didn't go out" flash they'd get for any other send failure, in under a
+second, instead of the whole site hanging for 30 seconds and then
+500ing. The background thread is left running (daemon, so it can't block
+process shutdown) rather than killed outright -- Python has no clean way
+to kill a thread stuck in a C-level network call -- so if the connection
+does eventually succeed a few seconds later, the email still goes out
+just slightly late; if it never does, it just quietly leaks one thread,
+which is a far better failure mode than losing a whole worker over one
+slow mail server.
+
 ## Add to calendar (`/show/<id>.ics`)
 
 Every show's Event Details page has an "Add to calendar" button next to
