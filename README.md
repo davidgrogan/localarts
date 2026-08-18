@@ -71,18 +71,18 @@ DigitalOcean.
   brand new. See "Keeping scraped data honest" below for how that bookkeeping works.
   Admin-only.
 - **Contact** (`/contact`) -- public form for visitors to request an artist/show/venue
-  be added, or flag something wrong. Emails `CONTACT_EMAIL` via Gmail SMTP (see below).
+  be added, or flag something wrong. Emails `CONTACT_EMAIL` via Resend's HTTPS API (see below).
 
 ## Contact form email
 
-`app/routes/contact.py` sends via Gmail SMTP using an account **App
-Password** (not the real Gmail password) -- see `.env.example` for the
-exact steps to generate one (turn on 2-Step Verification, then
-generate an App Password at https://myaccount.google.com/apppasswords).
-Set `MAIL_USERNAME` (the Gmail address) and `MAIL_PASSWORD` (the App
-Password); `CONTACT_EMAIL` defaults to davidbgrogan@gmail.com. Without
-those set, the form still renders but shows an error instead of quietly
-failing to send.
+`app/routes/contact.py` sends via [Resend](https://resend.com), a
+transactional email API over HTTPS -- see `.env.example` for the exact
+steps to get an API key (sign up, then generate one at
+https://resend.com/api-keys). Set `RESEND_API_KEY`; `CONTACT_EMAIL`
+defaults to davidbgrogan@gmail.com. Without `RESEND_API_KEY` set, the
+form still renders but shows an error instead of quietly failing to
+send. (This used to be direct Gmail SMTP -- see "Hardened against a
+hung mail server" below for why that was abandoned.)
 
 ## Admin login
 
@@ -965,14 +965,15 @@ than by any code in this app. Uploaded files aren't tracked in git (see
 anyone's ever submitted anything.
 
 **Shared admin email (`app/utils.py`'s `send_admin_email()`):** the
-Gmail SMTP sending code used to live only in `app/routes/contact.py` as a
+email-sending code used to live only in `app/routes/contact.py` as a
 module-private `_send_email()`. Pulled out into `app/utils.py` once this
 feature needed the exact same mechanism for its own notification, rather
-than duplicating the SMTP boilerplate in a second blueprint -- the
-contact form's behavior is unchanged, it just calls the shared function
-now. Same env vars as before (`MAIL_USERNAME`/`MAIL_PASSWORD`/
-`CONTACT_EMAIL`/etc., see `.env.example`) -- no new configuration needed
-if the contact form's email was already working.
+than duplicating it in a second blueprint -- the contact form's behavior
+is unchanged, it just calls the shared function now. Sends via
+[Resend](https://resend.com)'s HTTPS API (`RESEND_API_KEY`/
+`RESEND_FROM_EMAIL`/`CONTACT_EMAIL`, see `.env.example`) -- see
+"Hardened against a hung mail server" below for why this isn't direct
+SMTP.
 
 `send_admin_email()` also takes optional `attachment_path`/
 `attachment_filename` arguments -- `gigs.py`'s notification passes the
@@ -990,34 +991,52 @@ so its behavior is unchanged.
 
 **Hardened against a hung mail server taking down the whole site
 (2026-08-17 incident):** a real production outage traced back to
-`send_admin_email()` -- the droplet's connection attempt to
-`MAIL_SERVER` hung (most likely a slow/unreachable DNS lookup for
-`smtp.gmail.com`, which is not covered by the `timeout=10` already
-passed to `smtplib.SMTP()`, since that only bounds the socket
-`connect()` step, not the DNS resolution before it) for longer than
-gunicorn's own request timeout (30s, the default -- `local-music.service`
-sets no `--timeout` override). Gunicorn responded by SIGABRT-ing the
-*entire worker process* mid-request (a `WORKER TIMEOUT` in the systemd
-journal), which took down every other request that worker happened to
-be handling too -- not just the "Submit a Show" one that triggered it.
+`send_admin_email()` -- back when it used direct Gmail SMTP, the
+droplet's connection attempt to `smtp.gmail.com:587` hung for longer
+than gunicorn's own request timeout (30s, the default --
+`local-music.service` sets no `--timeout` override). Gunicorn responded
+by SIGABRT-ing the *entire worker process* mid-request (a
+`WORKER TIMEOUT` in the systemd journal), which took down every other
+request that worker happened to be handling too -- not just the
+"Submit a Show" one that triggered it.
 
-`send_admin_email()` now runs the actual SMTP conversation
-(`_send_admin_email_now()`) on a background thread and only waits up to
-`EMAIL_SEND_TIMEOUT` (15s -- comfortably under gunicorn's 30s) via
-`thread.join()`, raising a plain `TimeoutError` if it's not done by
-then rather than blocking indefinitely. That's still just a normal,
-catchable exception, so `gigs.py`/`contact.py`'s existing
-`try/except` around every call needed zero changes -- a submitter now
-gets the same "your show was submitted, but the notification email
-didn't go out" flash they'd get for any other send failure, in under a
-second, instead of the whole site hanging for 30 seconds and then
-500ing. The background thread is left running (daemon, so it can't block
-process shutdown) rather than killed outright -- Python has no clean way
-to kill a thread stuck in a C-level network call -- so if the connection
-does eventually succeed a few seconds later, the email still goes out
-just slightly late; if it never does, it just quietly leaks one thread,
-which is a far better failure mode than losing a whole worker over one
-slow mail server.
+The first fix was a background-thread timeout: run the actual send on a
+daemon thread and only wait up to `EMAIL_SEND_TIMEOUT` (15s) via
+`thread.join()`, raising a plain `TimeoutError` if it's not done by then
+rather than blocking indefinitely. That's still just a normal, catchable
+exception, so `gigs.py`/`contact.py`'s existing `try/except` around
+every call needed zero changes -- a submitter now got the same "your
+show was submitted, but the notification email didn't go out" flash
+they'd get for any other send failure, in under a second, instead of the
+whole site hanging for 30 seconds and then 500ing.
+
+That fix stopped the crash, but a real submission afterward still hit
+the timeout every time, which meant the underlying connection was still
+broken, not just occasionally slow. Diagnosing directly on the droplet
+(`getent hosts smtp.gmail.com`, `nc -4`/`nc -6 -zv smtp.gmail.com
+587`/`465`, `ufw status`, checking DigitalOcean's Cloud Firewall
+dashboard) ruled out DNS (fast), general outbound HTTPS (works --
+`nc`'d 443 against google.com instantly), any local firewall (`ufw`
+inactive), and any DigitalOcean Cloud Firewall (none attached) -- but
+direct TCP connections to `smtp.gmail.com` on both port 587 and port 465
+hung indefinitely with no response at all, on both IPv4 and IPv6. The
+exact cause was never pinned down (suspected datacenter- or Gmail-side
+blocking of the droplet's IP range for anti-spam reasons), but every
+locally-fixable explanation was conclusively ruled out.
+
+Rather than keep chasing an opaque network block outside this app's
+control, `send_admin_email()` was rewritten to stop using SMTP
+altogether: it now POSTs to [Resend](https://resend.com)'s HTTPS API
+(`_send_admin_email_now()`), reusing port 443, which was already proven
+to work. The background-thread/`EMAIL_SEND_TIMEOUT` safety net from the
+first fix was kept in place as cheap insurance even though an HTTPS call
+is far less likely to hang the way that SMTP connection did. The
+external signature of `send_admin_email()` didn't change, so `gigs.py`/
+`contact.py` needed no further changes beyond the one-time env var swap
+(`MAIL_USERNAME`/`MAIL_PASSWORD` &rarr; `RESEND_API_KEY`, see
+`.env.example`). The old Gmail App Password should be revoked from the
+Google account once Resend is confirmed working in production, since
+it'll otherwise remain a valid, unused credential.
 
 ## Add to calendar (`/show/<id>.ics`)
 

@@ -1,13 +1,12 @@
-import mimetypes
+import base64
 import os
 import re
-import smtplib
 import threading
 import uuid
 from datetime import datetime, timedelta, timezone
-from email.message import EmailMessage
 from zoneinfo import ZoneInfo
 
+import requests
 from icalendar import Calendar, Event as ICSEvent
 
 # Every venue feed and every manually-entered show stores Event.start_datetime
@@ -179,67 +178,89 @@ def get_site_setting():
 
 
 # ---------------------------------------------------------------------------
-# Admin email notifications (Gmail SMTP)
+# Admin email notifications (Resend HTTP API)
 # ---------------------------------------------------------------------------
 # Originally lived only in app/routes/contact.py (the contact form). Pulled
 # out here once the gig-submission notifier (app/routes/gigs.py) needed to
 # send its own admin email through the exact same mechanism -- rather than
-# duplicating the SMTP boilerplate in a second blueprint, both now share this
-# one function. Env vars read the same way contact.py always read them
-# (plain os.environ.get at import time, not app.config), so behavior/config
-# is unchanged for anyone who already has these set.
+# duplicating the sending boilerplate in a second blueprint, both now share
+# this one function.
+#
+# This used to talk Gmail SMTP directly via smtplib -- switched to Resend's
+# plain HTTPS API after a 2026-08-17 production incident (see
+# send_admin_email()'s own docstring, and the README's "Hardened against a
+# hung mail server" section) where the droplet's outbound connections to
+# smtp.gmail.com on port 587 turned out to be silently blocked/dropped by
+# something upstream of the box itself -- confirmed by direct `nc` tests: an
+# ordinary HTTPS connection (port 443, to an unrelated host) succeeded
+# instantly, while smtp.gmail.com on both 587 and 465 just hung with no
+# response at all, and neither `ufw` nor a DigitalOcean Cloud Firewall was
+# actually configured to explain it. Root cause never fully identified (some
+# combination of the datacenter's network and/or Gmail treating that IP range
+# as a likely spam source seems most likely) -- rather than keep chasing an
+# opaque, upstream-of-the-droplet network block, moving to an HTTPS-based
+# provider sidesteps the entire failure class: it uses the exact same port
+# (443) that was already confirmed to work fine.
 #
 # `os.environ.get(KEY, default)`'s default only kicks in when KEY is
 # completely absent from the environment -- but .env.example (and any .env
 # copied from it) ships these as blank-but-present lines (e.g.
 # "CONTACT_EMAIL="), which python-dotenv loads as the empty string, not as
-# "unset." That silently defeated the default below (CONTACT_EMAIL always
-# came out "" for anyone who left it blank, same as they're told to for "use
-# the default"). SECRET_KEY just below already sidesteps this with
-# `os.environ.get(...) or default`; MAIL_SERVER/MAIL_PORT/CONTACT_EMAIL now
-# use the same guard against an empty string.
+# "unset." That silently defeated a plain `os.environ.get(KEY, default)`
+# (CONTACT_EMAIL always came out "" for anyone who left it blank, same as
+# they're told to for "use the default"). SECRET_KEY above already sidesteps
+# this with `os.environ.get(...) or default`; CONTACT_EMAIL uses the same
+# guard against an empty string.
 CONTACT_EMAIL = os.environ.get("CONTACT_EMAIL") or "davidbgrogan@gmail.com"
-MAIL_SERVER = os.environ.get("MAIL_SERVER") or "smtp.gmail.com"
-MAIL_PORT = int(os.environ.get("MAIL_PORT") or "587")
-# The Gmail address the message is sent *from* (usually the same address as
-# CONTACT_EMAIL, but kept separate in case that's ever not true), and its App
-# Password -- see README.md for how to generate one.
-MAIL_USERNAME = os.environ.get("MAIL_USERNAME")
-MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD")
+# See README.md / .env.example for how to get one -- resend.com's free tier
+# (a few thousand emails/month) is comfortably more than this site needs.
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
+# Resend requires sending "from" an address on a domain you've verified with
+# them -- or, with zero setup at all, their own onboarding@resend.dev sender,
+# which is what this defaults to so email sending works immediately without
+# first walking through domain verification. Switch this once
+# waveyvibe.dev (or a subdomain of it) is verified in Resend's dashboard, for
+# a from-address visitors will actually recognize.
+RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL") or "Paradise City Music <onboarding@resend.dev>"
 
 
 # Hard wall-clock ceiling on how long send_admin_email() itself is ever
-# allowed to block a request for -- see that function's docstring for
-# the real incident this exists to prevent (a WORKER TIMEOUT on
-# 2026-08-17 that killed an entire gunicorn worker, not just the one
-# request, because this function hung inside smtplib far longer than the
-# timeout=10 already passed to smtplib.SMTP() below should have allowed).
-# Chosen to comfortably clear that timeout=10 (giving the connection a
-# real chance to succeed) while staying well under gunicorn's own
-# request timeout (deploy/local-music.service sets no explicit --timeout
-# flag, so it's gunicorn's default of 30 seconds) -- if this were set
-# *equal to or above* gunicorn's timeout, the worker could still get
-# killed before this function ever got the chance to give up cleanly.
+# allowed to block a request for -- see that function's docstring for the
+# real incident this exists to prevent (a WORKER TIMEOUT on 2026-08-17 that
+# killed an entire gunicorn worker, not just the one request, because this
+# function hung far longer than the network layer's own timeout should have
+# allowed). Kept in place even after switching off SMTP (see the module
+# comment above) as cheap insurance -- an HTTPS call to Resend is far less
+# likely to hang the way that SMTP connection did, but "far less likely"
+# isn't "impossible," and this costs nothing to leave in place. Chosen to
+# stay comfortably under gunicorn's own request timeout (deploy/
+# local-music.service sets no explicit --timeout flag, so it's gunicorn's
+# default of 30 seconds) -- if this were set *equal to or above* that, the
+# worker could still get killed before this function ever got the chance to
+# give up cleanly.
 EMAIL_SEND_TIMEOUT = 15
 
 
-def _send_admin_email_now(msg):
-    """The actual blocking SMTP conversation -- split out of
+def _send_admin_email_now(payload):
+    """The actual blocking HTTPS call to Resend's API -- split out of
     send_admin_email() below purely so it can be run on a background
     thread with a hard deadline (see EMAIL_SEND_TIMEOUT's docstring)."""
-    with smtplib.SMTP(MAIL_SERVER, MAIL_PORT, timeout=10) as smtp:
-        smtp.starttls()
-        smtp.login(MAIL_USERNAME, MAIL_PASSWORD)
-        smtp.send_message(msg)
+    resp = requests.post(
+        "https://api.resend.com/emails",
+        headers={"Authorization": f"Bearer {RESEND_API_KEY}"},
+        json=payload,
+        timeout=10,
+    )
+    resp.raise_for_status()
 
 
 def send_admin_email(subject, body, reply_to=None, attachment_path=None, attachment_filename=None):
     """Send a single plain-text email to the site's admin inbox
-    (CONTACT_EMAIL) via Gmail SMTP. Raises RuntimeError if MAIL_USERNAME/
-    MAIL_PASSWORD aren't configured, and re-raises any smtplib exception
-    (or TimeoutError -- see below) -- every caller is expected to catch it
-    and flash a friendly error rather than let it 500, same as the contact
-    form always did.
+    (CONTACT_EMAIL) via Resend's HTTP API. Raises RuntimeError if
+    RESEND_API_KEY isn't configured, and re-raises any request failure (a
+    non-2xx response, e.g. a bad/revoked API key) or TimeoutError -- see
+    below -- every caller is expected to catch it and flash a friendly
+    error rather than let it 500, same as the contact form always did.
 
     attachment_path (optional) attaches one file, read straight off disk --
     used by gigs.py's submit_gig() to include the submitted flyer image
@@ -251,46 +272,36 @@ def send_admin_email(subject, body, reply_to=None, attachment_path=None, attachm
     attachment" rather than failing the whole email -- the submission
     itself is already safely saved by the time this runs (see gigs.py), so
     a flyer-attachment hiccup shouldn't also take down the notification.
+    Resend's API takes attachment bytes base64-encoded inside the JSON
+    payload itself (no multipart upload), so that's all this does with the
+    file's contents -- no separate request or storage involved.
 
-    The actual SMTP conversation (_send_admin_email_now()) runs on a
-    background thread rather than directly on the caller's -- this
-    function only ever waits up to EMAIL_SEND_TIMEOUT seconds for it via
-    thread.join(), then raises TimeoutError if it's still not done. This
-    isn't just a lower timeout number: smtplib.SMTP()'s own timeout=10
-    only bounds the socket connect() step, not the DNS lookup for
-    MAIL_SERVER that happens first (Python's socket/smtplib layer has no
-    way to bound that at all) -- so a slow or unreachable DNS resolver
-    can hang indefinitely no matter what timeout is passed to smtplib
-    itself. That's exactly what happened on 2026-08-17: this call sat
-    stuck long enough that gunicorn's own request timeout fired first and
-    SIGABRT'd the *entire worker process* (see the WORKER TIMEOUT in that
-    incident's log) mid-request -- worse than any exception this
-    function could have raised, since it took down every other request
-    that worker happened to be mid-handling too, not just this one.
-    Running the SMTP work on a background thread with its own join()
-    deadline means send_admin_email() itself can never block longer than
-    EMAIL_SEND_TIMEOUT, regardless of what's actually hanging underneath
-    it. The background thread is daemon=True and left running if it
-    times out rather than being forcibly killed (Python has no clean way
-    to kill a thread stuck in a C-level network call anyway) -- if the
-    connection does eventually succeed a few seconds later, the email
-    still goes out, just late; if it never does, it quietly leaks one
-    thread, which is a far better failure mode than losing a whole
-    worker process over one slow mail server.
+    The actual HTTPS call (_send_admin_email_now()) runs on a background
+    thread rather than directly on the caller's -- this function only ever
+    waits up to EMAIL_SEND_TIMEOUT seconds for it via thread.join(), then
+    raises TimeoutError if it's still not done, rather than blocking
+    indefinitely. See EMAIL_SEND_TIMEOUT's own docstring for why this is
+    still worth keeping even after moving off the SMTP connection that
+    actually caused the 2026-08-17 incident. The background thread is
+    daemon=True and left running if it times out rather than being
+    forcibly killed (Python has no clean way to kill a thread stuck in a
+    C-level network call anyway) -- if the request does eventually
+    complete a few seconds later, the email still goes out, just late; if
+    it never does, it quietly leaks one thread, which is a far better
+    failure mode than losing a whole worker process over one slow network
+    call.
     """
-    if not MAIL_USERNAME or not MAIL_PASSWORD:
-        raise RuntimeError(
-            "Email isn't configured on this server yet (MAIL_USERNAME/"
-            "MAIL_PASSWORD aren't set)."
-        )
+    if not RESEND_API_KEY:
+        raise RuntimeError("Email isn't configured on this server yet (RESEND_API_KEY isn't set).")
 
-    msg = EmailMessage()
-    msg["Subject"] = subject
-    msg["From"] = MAIL_USERNAME
-    msg["To"] = CONTACT_EMAIL
+    payload = {
+        "from": RESEND_FROM_EMAIL,
+        "to": [CONTACT_EMAIL],
+        "subject": subject,
+        "text": body,
+    }
     if reply_to:
-        msg["Reply-To"] = reply_to
-    msg.set_content(body)
+        payload["reply_to"] = reply_to
 
     if attachment_path:
         try:
@@ -299,21 +310,16 @@ def send_admin_email(subject, body, reply_to=None, attachment_path=None, attachm
         except OSError:
             data = None
         if data is not None:
-            content_type, _ = mimetypes.guess_type(attachment_path)
-            maintype, subtype = (content_type.split("/", 1) if content_type
-                                  else ("application", "octet-stream"))
-            msg.add_attachment(
-                data,
-                maintype=maintype,
-                subtype=subtype,
-                filename=attachment_filename or os.path.basename(attachment_path),
-            )
+            payload["attachments"] = [{
+                "filename": attachment_filename or os.path.basename(attachment_path),
+                "content": base64.b64encode(data).decode("ascii"),
+            }]
 
     caught = []
 
     def _run():
         try:
-            _send_admin_email_now(msg)
+            _send_admin_email_now(payload)
         except Exception as exc:  # noqa: BLE001 -- handed back to the caller's own thread below
             caught.append(exc)
 
@@ -323,8 +329,8 @@ def send_admin_email(subject, body, reply_to=None, attachment_path=None, attachm
 
     if thread.is_alive():
         raise TimeoutError(
-            f"Timed out after {EMAIL_SEND_TIMEOUT}s trying to reach the mail server "
-            f"({MAIL_SERVER}:{MAIL_PORT}) -- it may still go out in the background."
+            f"Timed out after {EMAIL_SEND_TIMEOUT}s trying to reach Resend's API -- "
+            "it may still go out in the background."
         )
     if caught:
         raise caught[0]

@@ -1,16 +1,18 @@
 """Public contact form -- lets visitors ask for an artist, show, or venue
 to be added (or flag something wrong) without needing an admin account.
 
-Sends a plain email via Gmail SMTP using an account App Password (not
-the real Gmail password) rather than pulling in a whole mail library --
-Python's stdlib smtplib/email modules are enough for one outgoing message
-at low volume. See README.md / .env.example for how to generate one.
+Sends a plain email via Resend's HTTPS API (a transactional email
+provider) rather than direct SMTP -- see README.md's "Hardened against a
+hung mail server" section for why: Gmail SMTP turned out to be silently
+blocked outbound from the droplet, and even before that was discovered,
+a hung SMTP connection once took down an entire gunicorn worker. See
+README.md / .env.example for how to get a RESEND_API_KEY.
 
-The actual SMTP-sending code used to live here as a module-private
-_send_email() -- it's been pulled out to app.utils.send_admin_email()
-since app/routes/gigs.py's "Submit your show" notifier needed the exact
-same mechanism and there was no reason to duplicate it in a second
-blueprint. Behavior here is unchanged.
+The actual send-and-build-payload code used to live here as a
+module-private _send_email() -- it's been pulled out to
+app.utils.send_admin_email() since app/routes/gigs.py's "Submit your
+show" notifier needed the exact same mechanism and there was no reason
+to duplicate it in a second blueprint. Behavior here is unchanged.
 """
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
