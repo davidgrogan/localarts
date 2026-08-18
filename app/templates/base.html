@@ -4,7 +4,34 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Paradise City Music{% endblock %} · Northampton</title>
+
+  <!-- Icons: SVG for modern browser tabs, PNG fallbacks for anything that
+       doesn't render SVG favicons/icons (notably iOS home-screen icons and
+       most link-preview/"unfurl" crawlers used for text/social sharing
+       cards -- see og:image below for why a static PNG matters there too). -->
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='logo.svg') }}">
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
+
+  <!-- Open Graph / Twitter Card: controls the title, description, and image
+       shown in the preview card when a link to this site is shared (iMessage,
+       WhatsApp, Slack, Facebook, Twitter/X, etc.). Without these, most of
+       those surfaces fall back to guessing from <title> and whatever image
+       they can find, often with unpredictable results -- explicit tags make
+       the "Paradise City Music" title and logo show up reliably instead.
+       og:image points at a real PNG (not logo.svg) since SVG isn't reliably
+       rendered by link-preview crawlers, most notably iMessage's. -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Paradise City Music">
+  <meta property="og:title" content="{% block og_title %}Paradise City Music{% endblock %}">
+  <meta property="og:description" content="{% block og_description %}Live music calendar for Northampton, MA -- aggregated from local venue listings, with a spotlight on local artists.{% endblock %}">
+  <meta property="og:image" content="{{ url_for('static', filename='og-image.png', _external=True) }}">
+  <meta property="og:url" content="{{ request.url }}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{% block twitter_title %}Paradise City Music{% endblock %}">
+  <meta name="twitter:description" content="{% block twitter_description %}Live music calendar for Northampton, MA -- aggregated from local venue listings, with a spotlight on local artists.{% endblock %}">
+  <meta name="twitter:image" content="{{ url_for('static', filename='og-image.png', _external=True) }}">
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
