@@ -244,14 +244,27 @@ EMAIL_SEND_TIMEOUT = 15
 def _send_admin_email_now(payload):
     """The actual blocking HTTPS call to Resend's API -- split out of
     send_admin_email() below purely so it can be run on a background
-    thread with a hard deadline (see EMAIL_SEND_TIMEOUT's docstring)."""
+    thread with a hard deadline (see EMAIL_SEND_TIMEOUT's docstring).
+
+    Deliberately doesn't use resp.raise_for_status() -- that only puts
+    the bare status code in the exception message (e.g. "403 Client
+    Error: Forbidden for url: ..."), discarding the JSON body Resend
+    actually sends explaining *why* (e.g. "You can only send testing
+    emails to your own email address... please verify a domain"). That
+    body is the whole story for diagnosing a send failure, so it's
+    folded into the raised message instead of thrown away."""
     resp = requests.post(
         "https://api.resend.com/emails",
         headers={"Authorization": f"Bearer {RESEND_API_KEY}"},
         json=payload,
         timeout=10,
     )
-    resp.raise_for_status()
+    if not resp.ok:
+        try:
+            detail = resp.json().get("message") or resp.text
+        except ValueError:  # response body wasn't JSON
+            detail = resp.text
+        raise RuntimeError(f"Resend API returned {resp.status_code}: {detail}")
 
 
 def send_admin_email(subject, body, reply_to=None, attachment_path=None, attachment_filename=None):
