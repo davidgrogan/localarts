@@ -35,10 +35,10 @@
               {% endif %}
               <p class="meta">
                 At
-                {% if e.venue.website_url %}
-                  <a href="{{ e.venue.website_url }}" target="_blank" rel="noopener">{{ e.venue.name }}</a>
+                {% if e.display_venue_link %}
+                  <a href="{{ e.display_venue_link }}" target="_blank" rel="noopener">{{ e.display_venue_name }}</a>
                 {% else %}
-                  {{ e.venue.name }}
+                  {{ e.display_venue_name }}
                 {% endif %}
                 on {{ e.start_datetime | dtfmt("%a %b %-d, %-I:%M %p") }}
               </p>
@@ -161,12 +161,16 @@
                    purely a display cleanup. #}
               </div>
               <div class="event-venue">
-                {% if e.venue.website_url %}
-                  <a href="{{ e.venue.website_url }}" target="_blank" rel="noopener">{{ e.venue.name }}</a>
+                {% if e.display_venue_link %}
+                  <a href="{{ e.display_venue_link }}" target="_blank" rel="noopener">{{ e.display_venue_name }}</a>
                 {% else %}
-                  {{ e.venue.name }}
+                  {{ e.display_venue_name }}
                 {% endif %}
-                {% if e.venue.city %} &middot; {{ e.venue.city }}, {{ e.venue.state }}{% endif %}
+                {# City/state belong to the placeholder Venue (e.g. "DIY"),
+                   not the one-off spot itself, so they're suppressed once
+                   custom_venue_name is set -- same reasoning as
+                   display_venue_link's docstring in models.py. #}
+                {% if e.venue.city and not e.custom_venue_name %} &middot; {{ e.venue.city }}, {{ e.venue.state }}{% endif %}
               </div>
               {% if e.artists %}
                 <div class="event-artists">

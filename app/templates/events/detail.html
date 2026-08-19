@@ -8,12 +8,12 @@
     {% if event.price_info %} &middot; {{ event.price_info }}{% endif %}
   </p>
   <p class="meta">
-    {% if event.venue.website_url %}
-      <a href="{{ event.venue.website_url }}" target="_blank" rel="noopener">{{ event.venue.name }}</a>
+    {% if event.display_venue_link %}
+      <a href="{{ event.display_venue_link }}" target="_blank" rel="noopener">{{ event.display_venue_name }}</a>
     {% else %}
-      {{ event.venue.name }}
+      {{ event.display_venue_name }}
     {% endif %}
-    {% if event.venue.city %} &middot; {{ event.venue.city }}, {{ event.venue.state }}{% endif %}
+    {% if event.venue.city and not event.custom_venue_name %} &middot; {{ event.venue.city }}, {{ event.venue.state }}{% endif %}
   </p>
   {% if event.genre or event.event_types %}
     <p class="meta">

@@ -35,6 +35,16 @@
         <span class="hint">No "DIY" venue exists yet on this install -- pick one, or add a "DIY" venue first for one-off shows like this.</span>
       {% endif %}
 
+      <label for="custom_venue_name">One-off location name (optional)</label>
+      <input type="text" id="custom_venue_name" name="custom_venue_name"
+             value="{{ event.custom_venue_name if event and event.custom_venue_name else '' }}"
+             placeholder="e.g. Florence Fest -- Main Stage, or Main St. Street Fair">
+      <div class="hint">
+        For a festival stage, street fair, or other spot that isn't a real listed venue.
+        Pick "DIY" above just to file this show under something for site navigation --
+        this name is what visitors will actually see instead of the venue above.
+      </div>
+
       <label for="title">Show title</label>
       <input type="text" id="title" name="title" value="{{ event.title if event else '' }}" placeholder="{{ 'e.g. ' ~ gig.venue_name ~ ' show' if gig else 'e.g. Album release show' }}" required>
 

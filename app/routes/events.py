@@ -130,6 +130,11 @@ def new_event():
         start_dt = datetime.strptime(request.form["start_datetime"], "%Y-%m-%dT%H:%M")
         event = Event(
             venue_id=venue.id,
+            # One-off location override (festival stage, street fair,
+            # etc.) -- see Event.custom_venue_name's docstring. Blank is
+            # the overwhelmingly common case (a real, listed venue was
+            # picked above), so this stays None rather than "" then.
+            custom_venue_name=request.form.get("custom_venue_name", "").strip() or None,
             title=request.form["title"].strip(),
             start_datetime=start_dt,
             description=request.form.get("description", "").strip(),
@@ -206,6 +211,7 @@ def edit_event(event_id):
 
     if request.method == "POST":
         event.venue_id = int(request.form["venue_id"])
+        event.custom_venue_name = request.form.get("custom_venue_name", "").strip() or None
         event.title = request.form["title"].strip()
         event.start_datetime = datetime.strptime(request.form["start_datetime"], "%Y-%m-%dT%H:%M")
         event.description = request.form.get("description", "").strip()

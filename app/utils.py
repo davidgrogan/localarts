@@ -591,12 +591,20 @@ def build_event_ics(event):
 
     detail_url = url_for("main.event_detail", event_id=event.id, _external=True)
 
-    location_parts = [event.venue.name]
-    if event.venue.address:
-        location_parts.append(event.venue.address)
-    city_state = ", ".join(p for p in (event.venue.city, event.venue.state) if p)
-    if city_state:
-        location_parts.append(city_state)
+    # display_venue_name, not event.venue.name -- a one-off location (see
+    # Event.custom_venue_name's docstring in models.py) has its own name
+    # that should show up here instead. Its address/city/state belong to
+    # the placeholder Venue (e.g. "DIY") this event is filed under, not the
+    # actual one-off spot, so they'd be actively wrong/misleading here --
+    # skipped entirely once custom_venue_name is set, same reasoning as
+    # the calendar/detail templates suppressing city/state in that case.
+    location_parts = [event.display_venue_name]
+    if not event.custom_venue_name:
+        if event.venue.address:
+            location_parts.append(event.venue.address)
+        city_state = ", ".join(p for p in (event.venue.city, event.venue.state) if p)
+        if city_state:
+            location_parts.append(city_state)
 
     description_lines = []
     if event.description:

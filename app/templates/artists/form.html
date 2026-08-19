@@ -9,7 +9,7 @@
         “{{ artist.name }}” is already in the local artists list &mdash; saving
         will link them to “{{ source_event.title }}” too, without creating a duplicate.
       {% else %}
-        Adding from “{{ source_event.title }}” at {{ source_event.venue.name }},
+        Adding from “{{ source_event.title }}” at {{ source_event.display_venue_name }},
         {{ source_event.start_datetime | dtfmt("%a %b %-d, %Y") }} &mdash;
         saving will link this artist to that show.
       {% endif %}

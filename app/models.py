@@ -217,6 +217,23 @@ class Event(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     venue_id = db.Column(db.Integer, db.ForeignKey("venue.id"), nullable=False)
 
+    # An optional free-text override for one-off locations that aren't a
+    # real, reusable Venue -- a festival with several differently-named
+    # stages (e.g. "Florence Fest -- Main Stage" vs "...-- Second Stage"),
+    # a street fair, a pop-up show at a spot that'll likely never host
+    # another one. venue_id is still required (see above) and is meant to
+    # just point at the shared "DIY" Venue (seeded in seed.py, same one
+    # GigSubmission conversions default to for house shows -- see
+    # events.py's _diy_venue_id()) purely so this event has *something*
+    # to file under for site navigation/filtering; it is *not* meant to
+    # be shown to visitors once custom_venue_name is set. Wherever a
+    # show's venue is displayed, use display_venue_name/display_venue_link
+    # below instead of venue.name/venue.website_url directly -- those
+    # prefer this field and deliberately suppress the (irrelevant, since
+    # it belongs to the placeholder Venue, not this specific one-off spot)
+    # venue link once it's set.
+    custom_venue_name = db.Column(db.String(300))
+
     title = db.Column(db.String(300), nullable=False)
     start_datetime = db.Column(db.DateTime, nullable=False)
     end_datetime = db.Column(db.DateTime)
@@ -285,6 +302,26 @@ class Event(db.Model):
 
     def __repr__(self):
         return f"<Event {self.title} @ {self.start_datetime}>"
+
+    @property
+    def display_venue_name(self):
+        """What to actually show as this event's venue -- custom_venue_name
+        when it's a one-off location (see that column's docstring above),
+        otherwise the linked Venue's own name. Use this everywhere a show's
+        venue is displayed, instead of venue.name directly."""
+        return self.custom_venue_name or self.venue.name
+
+    @property
+    def display_venue_link(self):
+        """The URL display_venue_name above should link to, or None for
+        plain (unlinked) text. Always None once custom_venue_name is set --
+        venue.website_url belongs to the placeholder Venue (e.g. "DIY")
+        this event is filed under for navigation purposes, not to the
+        actual one-off spot, so linking it would point visitors somewhere
+        unrelated to what they just clicked on."""
+        if self.custom_venue_name:
+            return None
+        return self.venue.website_url
 
 
 class ScrapeRun(db.Model):

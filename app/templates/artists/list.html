@@ -32,7 +32,7 @@
         </p>
         <p class="meta">
           {% if hero_next_show %}
-            Playing {{ hero_next_show.start_datetime | dtfmt("%b %-d") }} at {{ hero_next_show.venue.name }}
+            Playing {{ hero_next_show.start_datetime | dtfmt("%b %-d") }} at {{ hero_next_show.display_venue_name }}
           {% else %}
             No upcoming shows listed right now.
           {% endif %}

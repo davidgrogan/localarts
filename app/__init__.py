@@ -29,6 +29,7 @@ _COLUMN_MIGRATIONS = {
         ("needs_review", "BOOLEAN DEFAULT 0 NOT NULL"),
         ("review_note", "TEXT"),
         ("is_rejected", "BOOLEAN DEFAULT 0 NOT NULL"),
+        ("custom_venue_name", "VARCHAR(300)"),
     ],
     "artist": [
         ("embed_code", "TEXT"),

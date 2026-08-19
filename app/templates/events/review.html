@@ -12,12 +12,18 @@
         <tr>
           <td>{{ e.start_datetime | dtfmt("%b %-d, %Y %-I:%M %p") }}</td>
           <td>{{ e.title }}</td>
-          <td><a href="{{ url_for('venues.detail', venue_id=e.venue.id) }}">{{ e.venue.name }}</a></td>
+          <td>
+            {% if e.custom_venue_name %}
+              {{ e.display_venue_name }}
+            {% else %}
+              <a href="{{ url_for('venues.detail', venue_id=e.venue.id) }}">{{ e.venue.name }}</a>
+            {% endif %}
+          </td>
           <td>
             {% if e.ticket_url %}
               <a href="{{ e.ticket_url }}" target="_blank" rel="noopener">View on venue site &rarr;</a>
-            {% elif e.venue.website_url %}
-              <a href="{{ e.venue.website_url }}" target="_blank" rel="noopener">Venue site &rarr;</a>
+            {% elif e.display_venue_link %}
+              <a href="{{ e.display_venue_link }}" target="_blank" rel="noopener">Venue site &rarr;</a>
             {% endif %}
           </td>
           <td>
@@ -45,12 +51,18 @@
         <tr>
           <td>{{ e.start_datetime | dtfmt("%b %-d, %Y %-I:%M %p") }}</td>
           <td>{{ e.title }}</td>
-          <td><a href="{{ url_for('venues.detail', venue_id=e.venue.id) }}">{{ e.venue.name }}</a></td>
+          <td>
+            {% if e.custom_venue_name %}
+              {{ e.display_venue_name }}
+            {% else %}
+              <a href="{{ url_for('venues.detail', venue_id=e.venue.id) }}">{{ e.venue.name }}</a>
+            {% endif %}
+          </td>
           <td>
             {% if e.ticket_url %}
               <a href="{{ e.ticket_url }}" target="_blank" rel="noopener">View on venue site &rarr;</a>
-            {% elif e.venue.website_url %}
-              <a href="{{ e.venue.website_url }}" target="_blank" rel="noopener">Venue site &rarr;</a>
+            {% elif e.display_venue_link %}
+              <a href="{{ e.display_venue_link }}" target="_blank" rel="noopener">Venue site &rarr;</a>
             {% endif %}
           </td>
           <td class="meta">{{ e.review_note }}</td>
@@ -79,12 +91,18 @@
         <tr>
           <td>{{ e.start_datetime | dtfmt("%b %-d, %Y %-I:%M %p") }}</td>
           <td>{{ e.title }}</td>
-          <td><a href="{{ url_for('venues.detail', venue_id=e.venue.id) }}">{{ e.venue.name }}</a></td>
+          <td>
+            {% if e.custom_venue_name %}
+              {{ e.display_venue_name }}
+            {% else %}
+              <a href="{{ url_for('venues.detail', venue_id=e.venue.id) }}">{{ e.venue.name }}</a>
+            {% endif %}
+          </td>
           <td>
             {% if e.ticket_url %}
               <a href="{{ e.ticket_url }}" target="_blank" rel="noopener">View on venue site &rarr;</a>
-            {% elif e.venue.website_url %}
-              <a href="{{ e.venue.website_url }}" target="_blank" rel="noopener">Venue site &rarr;</a>
+            {% elif e.display_venue_link %}
+              <a href="{{ e.display_venue_link }}" target="_blank" rel="noopener">Venue site &rarr;</a>
             {% endif %}
           </td>
           <td class="meta">{{ e.review_note }}</td>
@@ -112,12 +130,18 @@
         <tr>
           <td>{{ e.start_datetime | dtfmt("%b %-d, %Y %-I:%M %p") }}</td>
           <td>{{ e.title }}</td>
-          <td><a href="{{ url_for('venues.detail', venue_id=e.venue.id) }}">{{ e.venue.name }}</a></td>
+          <td>
+            {% if e.custom_venue_name %}
+              {{ e.display_venue_name }}
+            {% else %}
+              <a href="{{ url_for('venues.detail', venue_id=e.venue.id) }}">{{ e.venue.name }}</a>
+            {% endif %}
+          </td>
           <td>
             {% if e.ticket_url %}
               <a href="{{ e.ticket_url }}" target="_blank" rel="noopener">View on venue site &rarr;</a>
-            {% elif e.venue.website_url %}
-              <a href="{{ e.venue.website_url }}" target="_blank" rel="noopener">Venue site &rarr;</a>
+            {% elif e.display_venue_link %}
+              <a href="{{ e.display_venue_link }}" target="_blank" rel="noopener">Venue site &rarr;</a>
             {% endif %}
           </td>
           <td>
