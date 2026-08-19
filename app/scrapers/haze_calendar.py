@@ -65,6 +65,26 @@ are hosted on a calendar-wish S3 bucket, keyed by what look like Google
 Calendar event IDs -- possibly a small SaaS product syncing a Google
 Calendar), this module should work for it too with just an events_url
 change.
+
+Per-event images are deliberately never extracted (see parse() below),
+despite each card's <img> looking like exactly the kind of thing
+image_url exists for. Confirmed on a real scrape (David reported
+Haze's own default/fallback photo mysteriously not showing on events
+that should have had nothing of their own): every one of those <img>
+srcs is either -- a calendar-wish S3 URL with a presigned
+"X-Amz-Expires=3600" query param, meaning it 404s/403s roughly an hour
+after whatever scrape run captured it, long before a real visitor's
+browser ever requests it; or a bare same-site-relative path like
+"/images/calendar/karaoke.png", a generic decorative icon Haze's own
+site reuses for recurring events, not a real per-event photo, and not
+even resolvable as a URL on *our* domain. Either way, storing it as
+Event.image_url is worse than storing nothing: templates only fall
+back to Venue.image_url (the nice photo an admin actually uploaded for
+this venue) when Event.image_url is empty, so a broken/irrelevant
+value here was silently *suppressing* that fallback rather than
+falling back to it, which is backwards from what anyone actually wants
+to see. Leaving image_url unset for every Haze event means they all
+consistently show the venue's own default photo instead.
 """
 import re
 from datetime import datetime as dt, timezone
@@ -149,8 +169,12 @@ def parse(raw, venue):
             except ValueError:
                 continue
 
-            img = event_el.find("img")
-            image_url = img["src"] if img and img.has_attr("src") else None
+            # Deliberately not reading event_el's own <img> -- see module
+            # docstring for why (presigned S3 URLs that expire ~an hour
+            # after the scrape, or a generic decorative icon unrelated to
+            # the specific event) -- image_url is always left unset so
+            # every Haze event consistently falls back to the venue's own
+            # default photo instead.
 
             external_id = f"{title}-{start_dt.isoformat()}"
             if external_id in seen_external_ids:
@@ -168,7 +192,6 @@ def parse(raw, venue):
                     # in-page details view rather than linking out, so
                     # fall back to the venue's own calendar page.
                     ticket_url=venue.events_url,
-                    image_url=image_url,
                     external_id=external_id,
                 )
             )
