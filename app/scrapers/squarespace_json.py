@@ -16,6 +16,7 @@ in-app scrape preview screen (Venues -> a venue -> "Test scrape") after
 deploying somewhere with real internet access, since this sandbox
 can't reach ironhorse.org to test live.
 """
+import html
 import json
 from datetime import datetime
 
@@ -95,7 +96,12 @@ def parse(raw, venue):
             except (TypeError, ValueError):
                 end_dt = None
 
-        title = (item.get("title") or "Untitled event").strip()
+        # unescape() -- same "literal &apos;/&amp; embedded straight into a
+        # JSON string" issue found (and fixed) in elfsight_jsonld.py's
+        # equivalent name field; json.loads() has no concept of HTML
+        # entities, unlike _strip_html()'s BeautifulSoup-based description
+        # below, which decodes them as a side effect of HTML parsing.
+        title = html.unescape((item.get("title") or "Untitled event").strip())
         item_id = item.get("id")
         external_id = str(item_id) if item_id else f"{title}-{start_ms}"
         if external_id in seen_ids:

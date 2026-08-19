@@ -98,6 +98,7 @@ Venue scrape_config keys:
                           class, and rental listed on the same widget.
                           Omit to import every category, same as before.
 """
+import html
 import json
 import re
 from datetime import datetime as dt, timedelta
@@ -293,7 +294,21 @@ def parse(raw, venue):
     seen_external_ids = set()
 
     for item, script in _iter_event_objects(soup):
-        name = (item.get("name") or "").strip()
+        # html.unescape() here (and on description/genre below) -- confirmed
+        # on a real Iron Horse event ("The Super 70's Rock Show" coming
+        # through as "The Super 70&apos;s Rock Show"): the widget's own
+        # JSON-LD embeds literal HTML-entity text ("&apos;", "&amp;", etc.)
+        # inside its JSON string values, presumably from whatever template
+        # generated it having HTML-escaped the text before serializing it
+        # into a <script type="application/ld+json"> tag, a context that
+        # never needed escaping in the first place. json.loads() has no
+        # concept of HTML and just hands that text back exactly as written,
+        # unlike the visible-DOM fields elsewhere in this file (e.g.
+        # _find_category, via BeautifulSoup's get_text()), which decode
+        # entities automatically as part of normal HTML parsing. Safe to
+        # apply unconditionally: unescape() leaves plain text with no
+        # entities completely unchanged.
+        name = html.unescape((item.get("name") or "").strip())
         start_raw = item.get("startDate")
         if not name or not start_raw:
             continue
@@ -305,7 +320,10 @@ def parse(raw, venue):
 
         # Computed once here (rather than inline below) so category_include
         # can filter on it before doing any more work for this event.
-        category_text = item.get("genre") or _find_category(script)
+        # Only the item.get("genre") branch needs unescape() -- straight
+        # from the JSON-LD, same issue as name/description above;
+        # _find_category()'s BeautifulSoup-parsed text is already decoded.
+        category_text = html.unescape(item.get("genre")) if item.get("genre") else _find_category(script)
         if category_include:
             haystack = (category_text or "").lower()
             if not any(term in haystack for term in category_include):
@@ -372,7 +390,7 @@ def parse(raw, venue):
                 title=name,
                 start_datetime=start_dt,
                 end_datetime=end_dt,
-                description=item.get("description") or "",
+                description=html.unescape(item.get("description") or ""),
                 ticket_url=ticket_url,
                 # Genre/category isn't in the JSON-LD -- it's read from the
                 # visible "Category" element near this event's <script>
