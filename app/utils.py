@@ -82,23 +82,38 @@ def artist_display_letter(name):
 
 
 def get_or_create_event_type(name):
-    """Look up an EventType by name, case-insensitively, creating it if
-    it doesn't exist yet. Shared by the event form's and venue form's
+    """Look up an EventType by its computed slug, creating it if it
+    doesn't exist yet. Shared by the event form's and venue form's
     "quick add a new tag" inputs so typing "music" after "Music" already
     exists doesn't create a duplicate. Import of app.models is local to
     avoid a circular import (models.py doesn't import this module, but
     keeping it lazy here matches the pattern used elsewhere, e.g.
     app/scrapers/base.py's _load_source_types()).
+
+    Matches on slug, not a case-insensitive comparison of the raw name --
+    confirmed via a real IntegrityError (UNIQUE constraint failed:
+    genre_tag.slug, the sibling function below, same bug) that those
+    aren't equivalent: an existing tag named "folk rock" and a new
+    submission of "folk-rock" don't match as strings (space vs hyphen)
+    even though slugify() collapses both to the identical "folk-rock",
+    which is the column this would actually collide on. Comparing name
+    case-insensitively missed that, fell through to inserting a second
+    row, and crashed on the UNIQUE constraint slugify() was specifically
+    supposed to prevent. Matching on the slug instead catches every case
+    the name comparison did (identical names case-insensitively always
+    produce identical slugs) plus this one, and is exactly the same
+    canonicalization slugify() already does everywhere else.
     """
     from app.models import db, EventType
 
     name = (name or "").strip()
     if not name:
         return None
-    existing = EventType.query.filter(db.func.lower(EventType.name) == name.lower()).first()
+    slug = slugify(name)
+    existing = EventType.query.filter_by(slug=slug).first()
     if existing:
         return existing
-    event_type = EventType(name=name, slug=slugify(name))
+    event_type = EventType(name=name, slug=slug)
     db.session.add(event_type)
     db.session.flush()
     return event_type
@@ -107,19 +122,24 @@ def get_or_create_event_type(name):
 def get_or_create_genre_tag(name):
     """Same idea as get_or_create_event_type() above, for an artist's Genre
     Tags (e.g. "Electronica", "Americana") instead of Category Tags --
-    look up a GenreTag by name case-insensitively, creating it if it
-    doesn't exist yet, so the artist form's "quick add a new tag" input
-    doesn't create "electronica" and "Electronica" as two separate tags.
+    look up a GenreTag by its computed slug, creating it if it doesn't
+    exist yet, so the artist form's "quick add a new tag" input doesn't
+    create "electronica" and "Electronica" as two separate tags. See that
+    function's docstring for why this matches on slug rather than a
+    case-insensitive name comparison -- confirmed on this exact function
+    via a real IntegrityError from an existing "folk rock" tag colliding
+    with a new "folk-rock" submission.
     """
     from app.models import db, GenreTag
 
     name = (name or "").strip()
     if not name:
         return None
-    existing = GenreTag.query.filter(db.func.lower(GenreTag.name) == name.lower()).first()
+    slug = slugify(name)
+    existing = GenreTag.query.filter_by(slug=slug).first()
     if existing:
         return existing
-    genre_tag = GenreTag(name=name, slug=slugify(name))
+    genre_tag = GenreTag(name=name, slug=slug)
     db.session.add(genre_tag)
     db.session.flush()
     return genre_tag
