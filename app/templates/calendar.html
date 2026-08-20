@@ -107,9 +107,58 @@
 
   <div class="view-toggle">
     <a class="btn btn-small {{ '' if view == 'week' else 'btn-secondary' }}" href="{{ url_for('main.calendar', view='week', venue=selected_venue, genre=selected_genre, hide_recurring=('1' if hide_recurring else none), only_local_artists=('1' if only_local_artists else none)) }}">Next 7 Days</a>
+    <a class="btn btn-small {{ '' if view == 'month' else 'btn-secondary' }}" href="{{ url_for('main.calendar', view='month', venue=selected_venue, genre=selected_genre, only_local_artists=('1' if only_local_artists else none)) }}">Month</a>
     <a class="btn btn-small {{ '' if view == 'list' else 'btn-secondary' }}" href="{{ url_for('main.calendar', view='list', venue=selected_venue, genre=selected_genre, hide_recurring=('1' if hide_recurring else none), only_local_artists=('1' if only_local_artists else none)) }}">List All</a>
   </div>
 
+  {% if view == 'month' %}
+    <div class="month-nav">
+      <a href="{{ url_for('main.calendar', view='month', month=grid.prev_month, venue=selected_venue, genre=selected_genre, only_local_artists=('1' if only_local_artists else none)) }}">&larr; Prev</a>
+      <span class="month-label">{{ grid.month_name }}</span>
+      <a href="{{ url_for('main.calendar', view='month', month=grid.next_month, venue=selected_venue, genre=selected_genre, only_local_artists=('1' if only_local_artists else none)) }}">Next &rarr;</a>
+    </div>
+
+    <table class="month-grid">
+      <thead>
+        <tr><th>Sun</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th></tr>
+      </thead>
+      <tbody>
+        {% for week in grid.weeks %}
+          <tr>
+            {% for day in week %}
+              {% if day == 0 %}
+                <td class="empty-day"></td>
+              {% else %}
+                <td class="{{ 'today' if day == grid.today_day else '' }}">
+                  <div class="day-number">{{ day }}</div>
+                  <div class="day-events">
+                    {% for e in grid.events_by_day.get(day, []) %}
+                      {% set local_artists = e.artists | selectattr("is_local") | list %}
+                      <div class="grid-event {{ 'grid-event-local' if local_artists else '' }}">
+                        {% if local_artists %}<span class="grid-local-star" title="Features local artist: {{ local_artists | map(attribute='name') | join(', ') }}">&#9733;</span>{% endif %}
+                        {% if e.genre %}<span class="grid-genre-dot" title="{{ e.genre }}"></span>{% endif %}
+                        <a href="{{ url_for('main.event_detail', event_id=e.id) }}" {% if e.description %}title="{{ e.description }}"{% endif %}>{{ e.start_datetime | dtfmt("%-I:%M %p") }} {{ e.title }}</a>
+                      </div>
+                    {% endfor %}
+                    {% if grid.overflow_by_day.get(day) %}
+                      {# Caps how many shows render inline per day (see
+                         _build_month_grid()'s docstring in main.py for why
+                         -- the original month view got pulled for exactly
+                         this reason once the venue list grew). "List All"
+                         is the honest way to see literally every show on a
+                         packed day, so this links there rather than
+                         claiming to expand in place. #}
+                      <a class="grid-event-overflow" href="{{ url_for('main.calendar', view='list', venue=selected_venue, genre=selected_genre, only_local_artists=('1' if only_local_artists else none)) }}">+{{ grid.overflow_by_day[day] }} more</a>
+                    {% endif %}
+                  </div>
+                </td>
+              {% endif %}
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
     {% if items %}
       <ul class="event-list">
         {% set ns = namespace(current_day=None) %}
@@ -223,6 +272,7 @@
         {% endif %}
       </p>
     {% endif %}
+  {% endif %}
 
   <script>
     // Remembers whichever open/closed state a visitor last left the

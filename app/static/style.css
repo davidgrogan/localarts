@@ -506,6 +506,94 @@ h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; lett
 
 .view-toggle { margin: 0.25rem 0 1.25rem; display: flex; gap: 0.5rem; }
 
+/* Month grid view -- brought back after an earlier removal (see
+   main.py's _build_month_grid() docstring: it was pulled once because it
+   was hard to read with more than a couple shows on one day). The fix
+   this time is main.py capping each day at MAX_EVENTS_PER_DAY_CELL with a
+   "+N more" link rather than rendering every scraped show inline, plus a
+   fixed cell height with its own scrollbar below as a second line of
+   defense so even a day at the cap can't stretch the whole week's row. */
+.month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+.month-nav .month-label { font-weight: 700; }
+.month-nav a { color: var(--ink); text-decoration: none; font-size: 0.9rem; }
+.month-nav a:hover { color: var(--teal); }
+
+table.month-grid {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+table.month-grid th {
+  text-align: left;
+  font-size: 0.75rem;
+  color: var(--muted);
+  padding: 0.3rem;
+  border-bottom: 1px solid var(--line);
+}
+table.month-grid td {
+  vertical-align: top;
+  border: 1px solid var(--line);
+  padding: 0.3rem;
+  height: 110px;
+  width: 14.28%;
+  overflow: hidden;
+}
+table.month-grid td.empty-day { background: #f3f0ea; }
+table.month-grid td.today { background: var(--gold-soft); border-color: var(--accent); }
+.day-number { font-size: 0.8rem; font-weight: 700; color: var(--muted); margin-bottom: 0.2rem; }
+.day-events {
+  /* The actual overflow guard: a day at the MAX_EVENTS_PER_DAY_CELL cap
+     still fits inside the cell's fixed height untouched, but this keeps
+     the layout from breaking if that constant ever changes. */
+  max-height: 82px;
+  overflow-y: auto;
+}
+.grid-event {
+  font-size: 0.72rem;
+  margin-bottom: 0.15rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.grid-event a { color: var(--ink); text-decoration: none; }
+.grid-event a:hover { color: var(--accent); }
+.grid-event-local a { font-weight: 700; }
+.grid-local-star {
+  color: var(--accent);
+  font-size: 0.65rem;
+  margin-right: 0.1rem;
+}
+.grid-genre-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--gold);
+  margin-right: 0.2rem;
+}
+.grid-event-overflow {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--muted);
+  text-decoration: none;
+}
+.grid-event-overflow:hover { color: var(--accent); }
+
+@media (max-width: 600px) {
+  /* The 7-column grid is tight on a phone screen -- shrink text/padding
+     rather than letting columns squeeze titles down to a sliver. */
+  table.month-grid th { font-size: 0.65rem; padding: 0.2rem; }
+  table.month-grid td { height: 88px; padding: 0.2rem; }
+  .day-events { max-height: 64px; }
+  .day-number { font-size: 0.7rem; }
+  .grid-event { font-size: 0.62rem; }
+}
+
 .artist-embed { margin: 0.75rem 0 0.5rem; }
 .artist-embed iframe { max-width: 100%; display: block; }
 /* The gap after the embed on an artist's profile page was still reading as

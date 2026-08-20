@@ -1,5 +1,6 @@
+import calendar as calendar_module
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from flask import Blueprint, Response, abort, flash, redirect, render_template, request, session, url_for
 
@@ -134,16 +135,94 @@ def _local_artists_playing_this_week(week_start, week_end):
     return spots
 
 
+def _parse_month_param(month_param, today):
+    """Parse a "YYYY-MM" query param (the month grid's own prev/next links,
+    see _build_month_grid()'s month_name/prev_month/next_month below),
+    falling back to the current month on anything missing or malformed --
+    e.g. a first-ever visit to ?view=month with no month= yet, or someone
+    hand-editing the URL into something nonsensical."""
+    if month_param:
+        try:
+            year_str, month_str = month_param.split("-")
+            return int(year_str), int(month_str)
+        except (ValueError, AttributeError):
+            pass
+    return today.year, today.month
+
+
+def _build_month_grid(year, month, venue_id, artist_id, selected_genre, only_local_artists, today):
+    """Fetch this month's approved, Music-tagged events (respecting
+    whichever venue/genre/local-artist filters are active -- same
+    _base_query() every other view uses) and lay them out into a
+    Sunday-first week grid for calendar.html's month table.
+
+    This exact feature existed once before and was deliberately removed
+    (see git history: "Remove Month View ... it was hard to read with more
+    than a couple shows on one day") -- reintroduced here at David's
+    request, but each day cell now caps how many events render inline
+    (see MAX_EVENTS_PER_DAY_CELL below) with a "+N more" overflow count
+    rather than however many happen to have been scraped that day, so a
+    day with a dozen shows across every venue in town doesn't blow out the
+    whole grid's row height the way the original version did.
+    """
+    month_start = datetime(year, month, 1)
+    if month == 12:
+        next_month_start = datetime(year + 1, 1, 1)
+        next_month_param = f"{year + 1}-01"
+    else:
+        next_month_start = datetime(year, month + 1, 1)
+        next_month_param = f"{year}-{month + 1:02d}"
+    if month == 1:
+        prev_month_param = f"{year - 1}-12"
+    else:
+        prev_month_param = f"{year}-{month - 1:02d}"
+
+    month_events = (
+        _base_query(venue_id, artist_id, selected_genre, only_local_artists)
+        .filter(Event.start_datetime >= month_start, Event.start_datetime < next_month_start)
+        .order_by(Event.start_datetime.asc())
+        .all()
+    )
+
+    MAX_EVENTS_PER_DAY_CELL = 4
+    events_by_day = {}
+    overflow_by_day = {}
+    for event in month_events:
+        day = event.start_datetime.day
+        shown = events_by_day.setdefault(day, [])
+        if len(shown) < MAX_EVENTS_PER_DAY_CELL:
+            shown.append(event)
+        else:
+            overflow_by_day[day] = overflow_by_day.get(day, 0) + 1
+
+    is_current_month = (today.year, today.month) == (year, month)
+
+    return {
+        "month_name": month_start.strftime("%B %Y"),
+        # firstweekday=6 -> Sunday-first weeks, matching the day-of-week
+        # header row below (Sun/Mon/.../Sat). Days outside this month pad
+        # each edge week as 0, which the template renders as a blank cell.
+        "weeks": calendar_module.Calendar(firstweekday=6).monthdayscalendar(year, month),
+        "events_by_day": events_by_day,
+        "overflow_by_day": overflow_by_day,
+        "prev_month": prev_month_param,
+        "next_month": next_month_param,
+        "today_day": today.day if is_current_month else None,
+    }
+
+
 @bp.route("/")
 def calendar():
     venue_id = request.args.get("venue", type=int)
     artist_id = request.args.get("artist", type=int)
     genre_param = request.args.get("genre", "").strip() or None
     # "week" (the next 7 days) is the default landing view; "list" is the
-    # full unbounded upcoming-shows list. The month-grid view was removed
-    # -- it was hard to read with more than a couple of shows in a day.
+    # full unbounded upcoming-shows list; "month" is the grid view (see
+    # _build_month_grid() above -- brought back at David's request after
+    # an earlier removal, now with a per-day cap so a busy day doesn't
+    # blow out the whole grid).
     view = request.args.get("view", "week")
-    if view not in ("week", "list"):
+    if view not in ("week", "list", "month"):
         view = "week"
     # Defaults to the plain flat list (every occurrence shown) -- the
     # collapsed/badged view is opt-in via this checkbox, not automatic.
@@ -182,6 +261,11 @@ def calendar():
     if view == "week":
         items = [item for item in items if item.event.start_datetime < week_end]
 
+    grid = None
+    if view == "month":
+        year, month = _parse_month_param(request.args.get("month"), today)
+        grid = _build_month_grid(year, month, venue_id, artist_id, genre_param, only_local_artists, today)
+
     venues = Venue.query.order_by(Venue.name).all()
     # artist_sort_key() (not a plain ORDER BY) so a "The ..." band lines up
     # alphabetically here the same way it does on the /artists index --
@@ -195,6 +279,7 @@ def calendar():
     return render_template(
         "calendar.html",
         items=items,
+        grid=grid,
         view=view,
         today=today,
         tomorrow=(today + timedelta(days=1)).date(),
