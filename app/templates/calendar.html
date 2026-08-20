@@ -118,6 +118,17 @@
       <a href="{{ url_for('main.calendar', view='month', month=grid.next_month, venue=selected_venue, genre=selected_genre, only_local_artists=('1' if only_local_artists else none)) }}">Next &rarr;</a>
     </div>
 
+    {# Hover/focus popup for a grid-event link (see the <script> at the
+       bottom of this file) -- a day cell only has room for time + title,
+       so this is where the rest (image, venue, artists, description)
+       shows up without a click-through to the full event page. One
+       shared, empty element reused for whichever event is currently
+       hovered/focused, positioned and filled in by JS rather than one
+       pre-rendered per event (cheaper, and avoids fighting each day
+       cell's own overflow:hidden/scroll, which would otherwise clip a
+       popup nested inside it). #}
+    <div id="event-popup" class="event-popup" role="tooltip"></div>
+
     <table class="month-grid">
       <thead>
         <tr><th>Sun</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th></tr>
@@ -134,10 +145,23 @@
                   <div class="day-events">
                     {% for e in grid.events_by_day.get(day, []) %}
                       {% set local_artists = e.artists | selectattr("is_local") | list %}
+                      {% set popup_image = (e.image_url if e.image_url else (e.venue.image_url if e.venue.image_url else '')) | resolve_image_url %}
                       <div class="grid-event {{ 'grid-event-local' if local_artists else '' }}">
-                        {% if local_artists %}<span class="grid-local-star" title="Features local artist: {{ local_artists | map(attribute='name') | join(', ') }}">&#9733;</span>{% endif %}
-                        {% if e.genre %}<span class="grid-genre-dot" title="{{ e.genre }}"></span>{% endif %}
-                        <a href="{{ url_for('main.event_detail', event_id=e.id) }}" {% if e.description %}title="{{ e.description }}"{% endif %}>{{ e.start_datetime | dtfmt("%-I:%M %p") }} {{ e.title }}</a>
+                        {% if local_artists %}<span class="grid-local-star">&#9733;</span>{% endif %}
+                        {% if e.genre %}<span class="grid-genre-dot"></span>{% endif %}
+                        <a
+                          class="grid-event-link"
+                          href="{{ url_for('main.event_detail', event_id=e.id) }}"
+                          data-title="{{ e.title }}"
+                          data-time="{{ e.start_datetime | dtfmt('%a %b %-d, %-I:%M %p') }}"
+                          data-venue="{{ e.display_venue_name }}"
+                          {% if e.venue.city and not e.custom_venue_name %}data-citystate="{{ e.venue.city }}, {{ e.venue.state }}"{% endif %}
+                          {% if e.genre %}data-genre="{{ e.genre }}"{% endif %}
+                          {% if e.artists %}data-artists="{{ e.artists | map(attribute='name') | join(', ') }}"{% endif %}
+                          {% if local_artists %}data-local="1"{% endif %}
+                          {% if e.description %}data-description="{{ e.description | striptags | truncate(160) }}"{% endif %}
+                          {% if popup_image %}data-image="{{ popup_image }}"{% endif %}
+                        >{{ e.start_datetime | dtfmt("%-I:%M %p") }} {{ e.title }}</a>
                       </div>
                     {% endfor %}
                     {% if grid.overflow_by_day.get(day) %}
@@ -350,6 +374,116 @@
       if (nextBtn) nextBtn.addEventListener("click", function () { scrollToCard(currentIndex() + 1); });
       gallery.addEventListener("scroll", updateCount, { passive: true });
       updateCount();
+    })();
+
+    // Month view's hover/focus popup -- a day cell only fits time + title
+    // (see the .grid-event-link data-* attributes above), so this fills
+    // in the rest (image, venue, artists, description) without a
+    // click-through, which was David's actual ask once the month view
+    // came back and the cramped cells were fresh in his mind again.
+    //
+    // One shared #event-popup element, filled in and repositioned on
+    // every hover/focus rather than one pre-rendered popup per event --
+    // both cheaper with 100+ events in a month, and avoids position:
+    // fixed content getting clipped by each day cell's own
+    // overflow:hidden/scroll (a nested, cell-local popup would be cut off
+    // exactly where it's most likely to actually go, since a packed cell
+    // is exactly when the popup earns its keep).
+    (function () {
+      var popup = document.getElementById("event-popup");
+      var links = document.querySelectorAll(".grid-event-link");
+      if (!popup || !links.length) return;
+
+      var hideTimer = null;
+
+      function escapeHtml(value) {
+        return String(value || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function buildPopupHtml(link) {
+        var d = link.dataset;
+        var html = "";
+        if (d.image) {
+          html += '<img class="event-popup-image" src="' + escapeHtml(d.image) + '" alt="">';
+        }
+        html += '<div class="event-popup-body">';
+        html += '<div class="event-popup-title">' + escapeHtml(d.title) + "</div>";
+
+        var subline = escapeHtml(d.venue);
+        if (d.citystate) subline += " &middot; " + escapeHtml(d.citystate);
+        html += '<div class="event-popup-meta">' + escapeHtml(d.time) + " &middot; " + subline + "</div>";
+
+        if (d.genre) {
+          html += '<div class="event-popup-genre">' + escapeHtml(d.genre) + "</div>";
+        }
+        if (d.artists) {
+          html += '<div class="event-popup-artists">' + (d.local ? "&#9733; " : "") + "Featuring: " + escapeHtml(d.artists) + "</div>";
+        }
+        if (d.description) {
+          html += '<div class="event-popup-description">' + escapeHtml(d.description) + "</div>";
+        }
+        html += '<a class="event-popup-footer" href="' + escapeHtml(link.getAttribute("href")) + '">View full details &rarr;</a>';
+        html += "</div>";
+        return html;
+      }
+
+      function positionPopup(link) {
+        var rect = link.getBoundingClientRect();
+        var width = popup.offsetWidth;
+        var height = popup.offsetHeight;
+        var margin = 8;
+
+        var left = rect.left;
+        if (left + width > window.innerWidth - margin) {
+          left = window.innerWidth - width - margin;
+        }
+        if (left < margin) left = margin;
+
+        var top = rect.bottom + 6;
+        if (top + height > window.innerHeight - margin) {
+          // Not enough room below -- try above the event instead.
+          top = rect.top - height - 6;
+        }
+        if (top < margin) top = margin;
+
+        popup.style.left = left + "px";
+        popup.style.top = top + "px";
+      }
+
+      function showPopup(link) {
+        clearTimeout(hideTimer);
+        popup.innerHTML = buildPopupHtml(link);
+        popup.classList.add("is-visible");
+        positionPopup(link);
+      }
+
+      function scheduleHide() {
+        hideTimer = setTimeout(function () {
+          popup.classList.remove("is-visible");
+        }, 150);
+      }
+
+      links.forEach(function (link) {
+        link.addEventListener("mouseenter", function () { showPopup(link); });
+        link.addEventListener("mouseleave", scheduleHide);
+        link.addEventListener("focus", function () { showPopup(link); });
+        link.addEventListener("blur", scheduleHide);
+      });
+      // Keeps the popup open while the pointer travels from the event
+      // link into the popup itself (e.g. to click "View full details").
+      popup.addEventListener("mouseenter", function () { clearTimeout(hideTimer); });
+      popup.addEventListener("mouseleave", scheduleHide);
+
+      // A stale, already-positioned popup left open while the page
+      // scrolls or resizes would float over the wrong spot -- simplest
+      // fix is just to close it rather than continuously reposition.
+      window.addEventListener("scroll", function () { popup.classList.remove("is-visible"); }, { passive: true });
+      window.addEventListener("resize", function () { popup.classList.remove("is-visible"); });
     })();
   </script>
 {% endblock %}

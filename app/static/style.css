@@ -584,6 +584,57 @@ table.month-grid td.today { background: var(--gold-soft); border-color: var(--ac
 }
 .grid-event-overflow:hover { color: var(--accent); }
 
+/* Month view's hover/focus popup (see the <script> at the bottom of
+   calendar.html) -- one shared element, repositioned with inline
+   left/top via JS on every show. Hidden via visibility/opacity rather
+   than `display: none` so offsetWidth/offsetHeight stay measurable
+   (JS needs those to position it) even while it's not showing. */
+.event-popup {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: 260px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s ease;
+}
+.event-popup.is-visible { visibility: visible; opacity: 1; pointer-events: auto; }
+.event-popup-image { display: block; width: 100%; max-height: 120px; object-fit: cover; }
+.event-popup-body { padding: 0.6rem 0.7rem; }
+.event-popup-title { font-weight: 700; font-size: 0.9rem; margin-bottom: 0.2rem; }
+.event-popup-meta { font-size: 0.78rem; color: var(--muted); margin-bottom: 0.3rem; }
+.event-popup-genre {
+  display: inline-block;
+  font-size: 0.68rem;
+  background: var(--gold-soft);
+  color: var(--gold);
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  margin-bottom: 0.3rem;
+}
+.event-popup-artists { font-size: 0.78rem; margin-bottom: 0.3rem; }
+.event-popup-description {
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--ink);
+  margin-bottom: 0.4rem;
+}
+.event-popup-footer {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+}
+.event-popup-footer:hover { color: var(--teal); }
+
 @media (max-width: 600px) {
   /* The 7-column grid is tight on a phone screen -- shrink text/padding
      rather than letting columns squeeze titles down to a sliver. */
@@ -592,6 +643,7 @@ table.month-grid td.today { background: var(--gold-soft); border-color: var(--ac
   .day-events { max-height: 64px; }
   .day-number { font-size: 0.7rem; }
   .grid-event { font-size: 0.62rem; }
+  .event-popup { width: calc(100vw - 24px); }
 }
 
 .artist-embed { margin: 0.75rem 0 0.5rem; }
