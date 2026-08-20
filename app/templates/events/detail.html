@@ -31,7 +31,12 @@
   {% endif %}
 
   {% if event.description %}
-    <div class="event-detail-description">{{ event.description }}</div>
+    {# | safe -- descriptions can now include admin-entered HTML markup
+       (links, bold, etc.), same trust model as Artist.embed_code and the
+       About page's about_html (see those columns' docstrings in
+       models.py): this is only ever typed by the logged-in admin via the
+       Add/Edit Show form, never end-user input. #}
+    <div class="event-detail-description">{{ event.description | safe }}</div>
   {% endif %}
 
   {% if event.artists %}
