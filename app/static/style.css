@@ -562,6 +562,10 @@ table.month-grid td.today { background: var(--gold-soft); border-color: var(--ac
 }
 .grid-event a { color: var(--ink); text-decoration: none; }
 .grid-event a:hover { color: var(--accent); }
+/* Touch-only "previewed" state (see calendar.html's tap-to-preview JS) --
+   a tap that opens the popup instead of navigating needs some visible
+   sign that it actually did something, or it just looks unresponsive. */
+.grid-event-link.is-active { background: var(--gold-soft); border-radius: 3px; }
 .grid-event-local a { font-weight: 700; }
 .grid-local-star {
   color: var(--accent);

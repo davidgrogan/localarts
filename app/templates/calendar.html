@@ -468,16 +468,64 @@
         }, 150);
       }
 
-      links.forEach(function (link) {
-        link.addEventListener("mouseenter", function () { showPopup(link); });
-        link.addEventListener("mouseleave", scheduleHide);
-        link.addEventListener("focus", function () { showPopup(link); });
-        link.addEventListener("blur", scheduleHide);
-      });
-      // Keeps the popup open while the pointer travels from the event
-      // link into the popup itself (e.g. to click "View full details").
-      popup.addEventListener("mouseenter", function () { clearTimeout(hideTimer); });
-      popup.addEventListener("mouseleave", scheduleHide);
+      // (hover: hover) is false on phones/tablets -- there's no mouse to
+      // hover with, so mouseenter/mouseleave either never fire or fire in
+      // a confusing synthetic way right before a tap's click event. Some
+      // touch laptops/hybrids report true here too, which is fine: they
+      // do have a real hover-capable pointer, so the mouse-based path
+      // below works for them as-is.
+      var supportsHover = !!(window.matchMedia && window.matchMedia("(hover: hover)").matches);
+
+      if (supportsHover) {
+        links.forEach(function (link) {
+          link.addEventListener("mouseenter", function () { showPopup(link); });
+          link.addEventListener("mouseleave", scheduleHide);
+          link.addEventListener("focus", function () { showPopup(link); });
+          link.addEventListener("blur", scheduleHide);
+        });
+        // Keeps the popup open while the pointer travels from the event
+        // link into the popup itself (e.g. to click "View full details").
+        popup.addEventListener("mouseenter", function () { clearTimeout(hideTimer); });
+        popup.addEventListener("mouseleave", scheduleHide);
+      } else {
+        // Touch: tap-to-preview, tap again (or tap "View full details") to
+        // actually go there. A day's first tap on any given show shows the
+        // popup instead of navigating away immediately -- otherwise a
+        // touch visitor would never see it at all, since nothing "hovers"
+        // on a touchscreen. Tapping the *same* event a second time, or the
+        // popup's own link, lets the click through normally.
+        var activeLink = null;
+
+        links.forEach(function (link) {
+          link.addEventListener("click", function (event) {
+            if (activeLink === link) {
+              // Second tap on an already-previewed event -- let it navigate.
+              return;
+            }
+            event.preventDefault();
+            // is-active gives the previewed event a visible highlight --
+            // without it, a tap that doesn't navigate anywhere would just
+            // look broken/unresponsive rather than "showing you something".
+            if (activeLink) activeLink.classList.remove("is-active");
+            activeLink = link;
+            link.classList.add("is-active");
+            showPopup(link);
+          });
+        });
+
+        // Tapping anywhere that isn't a show (or the open popup itself,
+        // e.g. its "View full details" link) closes whatever's open, so
+        // the next tap on a *different* event previews fresh instead of
+        // immediately navigating -- closest() on the click target, not
+        // this handler firing at all, is what makes the opening tap above
+        // exempt from immediately closing what it just opened.
+        document.addEventListener("click", function (event) {
+          if (event.target.closest(".grid-event-link, #event-popup")) return;
+          popup.classList.remove("is-visible");
+          if (activeLink) activeLink.classList.remove("is-active");
+          activeLink = null;
+        });
+      }
 
       // A stale, already-positioned popup left open while the page
       // scrolls or resizes would float over the wrong spot -- simplest
