@@ -461,6 +461,46 @@ def main():
             default_event_type=music_tag,
         )
 
+        cityspace = get_or_create_venue(
+            name="CitySpace",
+            slug="cityspace",
+            address="43 Main St.",
+            city="Easthampton",
+            state="MA",
+            website_url="https://www.cityspaceeasthampton.org",
+            # The venue's own homepage-linked events page -- content lives
+            # entirely behind a client-side hash route (#/events) rendered
+            # by an embedded VenuePilot widget, confirmed via live browser
+            # inspection: a plain fetch of this URL only ever returns the
+            # empty WordPress page shell, and network traffic shows the
+            # real listing comes from a POST to www.venuepilot.co/graphql
+            # (introspection disabled, undocumented) rather than anything
+            # in the page's own initial HTML. See app/scrapers/
+            # venuepilot.py's module docstring for the full confirmed DOM
+            # shape (.vp-event-row, .vp-month-n-day, etc.) and why this
+            # renders the real page in a headless browser instead of
+            # reverse-engineering that API.
+            events_url="https://www.cityspaceeasthampton.org/all-events/#/events",
+            source_type="venuepilot",
+            scrape_config=(
+                '{"wait_for_selector": ".vp-event-row"}'
+            ),
+            # No default_event_type -- CitySpace is Old Town Hall's shared
+            # community space, not a dedicated music venue: the same
+            # listing mixes real Blue Room concerts in with ECA Gallery
+            # art openings, a monthly building tour, a pop-up market, and
+            # a volunteer day, with no visible category field on the
+            # listing page to tell them apart programmatically (same
+            # tradeoff as Quonk/Smith College above -- see those
+            # comments). Every newly scraped event lands untagged and off
+            # the public Music-only calendar until tagged "Music" by hand
+            # via the Review queue. venuepilot.py's title_exclude config
+            # key is there if it's worth permanently dropping the
+            # recurring non-music filler (it repeats close to monthly)
+            # once that's confirmed rather than reviewing/discarding the
+            # same handful of listings every scrape.
+        )
+
         diy_venue = get_or_create_venue(
             name="DIY",
             slug="diy",

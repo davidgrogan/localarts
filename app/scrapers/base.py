@@ -60,6 +60,15 @@ class ScrapedEvent:
     # Not every venue's feed publishes these -- leave as None when absent.
     genre: Optional[str] = None
     image_url: Optional[str] = None
+    # See Event.custom_venue_name's docstring in models.py -- for a venue
+    # that hosts several distinctly-named spaces under one roof (first
+    # real case: CitySpace's "The Blue Room", "ECA Gallery", etc., via
+    # app/scrapers/venuepilot.py), a scraper can report which specific
+    # room/space a given show is actually in here. None (the common case
+    # -- most venues are just one room) leaves Event.custom_venue_name
+    # untouched on create and clears it on update, same as every other
+    # field below.
+    custom_venue_name: Optional[str] = None
 
 
 class ScrapeError(Exception):
@@ -76,6 +85,7 @@ def _load_source_types():
         elfsight_jsonld,
         haze_calendar,
         ludus,
+        venuepilot,
     )
 
     return {
@@ -86,6 +96,7 @@ def _load_source_types():
         "elfsight_jsonld": elfsight_jsonld,
         "haze_calendar": haze_calendar,
         "ludus": ludus,
+        "venuepilot": venuepilot,
     }
 
 
@@ -248,6 +259,7 @@ def run_scrape(venue, approve_new=False):
             existing.ticket_url = scraped.ticket_url
             existing.genre = scraped.genre
             existing.image_url = scraped.image_url
+            existing.custom_venue_name = scraped.custom_venue_name
             existing.source = "scraped"
             existing.last_seen_at = now
             existing.missing_streak = 0
@@ -262,6 +274,7 @@ def run_scrape(venue, approve_new=False):
                 ticket_url=scraped.ticket_url,
                 genre=scraped.genre,
                 image_url=scraped.image_url,
+                custom_venue_name=scraped.custom_venue_name,
                 source="scraped",
                 external_id=scraped.external_id,
                 is_approved=approve_new,

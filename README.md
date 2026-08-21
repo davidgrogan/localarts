@@ -497,12 +497,23 @@ Adding a venue means picking one of these `source_type`s:
   `category_include` (list of substrings, case-insensitive, matched
   against the show's visible category pill text -- see the Bombyx note
   below for a real tradeoff with this).
+- **`venuepilot`** -- purpose-built for venues running
+  [VenuePilot](https://venuepilot.co) as their event listing widget (first
+  and so far only case: CitySpace -- see write-up below). Fetches the page
+  the same headless-Chromium way `rendered_html` does (`fetch_raw` is
+  reused directly from that module, same reasoning as `ludus.py`), since
+  VenuePilot's widget is a client-side React app behind a hash route with
+  no server-rendered content and no usable public API (GraphQL
+  introspection is disabled). Its own bespoke `parse()` reads
+  `.vp-event-row` markup directly. One `scrape_config` key of its own,
+  `title_exclude` (same convention as `ical_feed.py`'s), plus every key
+  `rendered_html` accepts since it shares that module's `fetch_raw`.
 
 Each source type is one small module (`squarespace_json.py`, `ical_feed.py`,
 `html_generic.py`, `rendered_html.py`, `elfsight_jsonld.py`, `haze_calendar.py`,
-`ludus.py`) exposing `fetch_raw(venue)` and `parse(raw, venue)`. Adding a venue
-whose site doesn't fit any of these means writing one new module and
-registering it in `app/scrapers/base.py`.
+`ludus.py`, `venuepilot.py`) exposing `fetch_raw(venue)` and `parse(raw, venue)`.
+Adding a venue whose site doesn't fit any of these means writing one new
+module and registering it in `app/scrapers/base.py`.
 
 **On the Iron Horse specifically:** its calendar turned out to be an
 [Elfsight "Event Calendar"](https://elfsight.com/event-calendar-widget/)
@@ -859,6 +870,89 @@ an in-page radio-button + form flow rather than navigating anywhere, so
 `ticket_url` falls back to the venue's own Ludus listing page, the same
 fallback `elfsight_jsonld.py` uses when a venue's own widget doesn't
 expose one.
+
+**On CitySpace (43 Main St., Easthampton -- the town's shared community
+space inside Old Town Hall):** events are listed through
+[VenuePilot](https://venuepilot.co), a third-party widget embedded via a
+WPBakery "raw HTML/JS" block on an otherwise ordinary WordPress page, with
+all real content living behind a client-side hash route
+(`cityspaceeasthampton.org/all-events/#/events`). A plain fetch only ever
+sees the empty page shell -- the widget's own React app renders everything
+after the fact, pulling from a GraphQL API (`www.venuepilot.co/graphql`)
+that has introspection disabled and isn't otherwise documented, so this
+follows the same path Quonk/Heavy Culture/Bombyx already took: load the
+real page in a headless browser and parse the *rendered* DOM (`app/scrapers/
+venuepilot.py`) instead of reverse-engineering the API. Structure,
+confirmed via live DOM inspection in a real browser:
+
+```
+.vp-event-row
+  a.vp-event-link[href="#/events/188338"]   -- this venue's own stable
+                                                per-event page; used
+                                                directly as external_id
+  .vp-month-n-day  "Aug 22"                 -- no year at all, see below
+  .vp-time  "8:00 PM"
+  .vp-promoter  "The Blue Room at CitySpace" -- the specific room/space
+                                                this show is actually in
+                                                (see custom_venue_name
+                                                below), or just plain
+                                                "CitySpace" for anything
+                                                not tied to a sub-space
+  .vp-event-name  "..."                     -- the title
+  .vp-support  "..."                        -- optional subtitle/series
+                                                line, appended to the
+                                                description
+  .vp-main-img / .vp-cover-img              -- cover image, a `style=
+                                                "background-image:url(...)"`
+                                                div, same pattern as
+                                                Bombyx/Ludus above
+```
+
+Two things worth flagging:
+
+1. **No year is shown anywhere in the date text.** `_resolve_year()` tries
+   the current year first, then next year, keeping whichever lands within
+   a small grace window of "today" -- e.g. scraping in August 2026 and
+   seeing "Jan 8" correctly resolves to January 2027, not the already-past
+   January 2026. This is a different heuristic than `html_generic.py`'s
+   "carry forward the last year seen on the page" approach (used for
+   Academy of Music above), since VenuePilot's page never shows a year at
+   all, even once, to carry forward.
+2. **CitySpace is genuinely mixed-use**, not a dedicated music venue -- the
+   same widget lists Blue Room concerts alongside ECA Gallery art
+   openings, a monthly building tour, a pop-up market, and a volunteer
+   day, with no visible category field to tell them apart on the listing
+   page. Same tradeoff as Quonk/Smith College above: `seed.py` leaves
+   `default_event_type` unset, so every newly scraped event lands untagged
+   and off the public Music-only calendar until an admin tags the real
+   shows by hand via the Review queue. `title_exclude` is there to
+   permanently drop the recurring non-music filler (the Tour/Market combo
+   repeats close to monthly) once it's clear which titles are never going
+   to be shows.
+
+This is also the first scraper to make use of `Event.custom_venue_name`
+(the "one-off location" field originally built for hand-entered festival
+sets/street fairs -- see the Data model section): CitySpace's `.vp-promoter`
+text names the actual room a show is in (e.g. "The Blue Room at CitySpace",
+"ECA Gallery"), which is more specific and more useful to a visitor than
+just "CitySpace." `venuepilot.py` sets `custom_venue_name` to that text
+*except* when it's just the venue's own plain name verbatim, in which case
+it's left unset so `display_venue_name`/`display_venue_link` fall back to
+the real Venue row (with a working website link) instead of a redundant,
+link-suppressing override.
+
+**Caveat:** this venue's scraper hasn't been run against the real live
+site end to end in this project's own dev environment -- Playwright's
+Chromium binary couldn't be installed here (the download itself is
+blocked by the same sandbox network restriction that blocks most direct
+`curl`/`pip`-style fetches in this environment), so `fetch_raw()` itself
+is unverified. `parse()` is verified against a synthetic HTML fixture
+built from real, individually-confirmed class names and example values
+(gathered via live browser DOM inspection) -- covering the year-rollover
+date logic, the room-name override, image extraction, and de-duplication
+-- but the very first real scrape should still be spot-checked on the
+**Venues → CitySpace → Test scrape** preview page before running **Run
+scrape now** for real, the same as any newly added venue.
 
 ## Submit your show (`app/routes/gigs.py`, `GigSubmission` model)
 
