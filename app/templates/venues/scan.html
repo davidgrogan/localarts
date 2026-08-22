@@ -12,15 +12,27 @@
       <a class="btn btn-secondary" href="{{ url_for('events.review') }}">Go to Review</a>
     </div>
 
-    <div class="scan-bar-track"><div class="scan-bar-fill" id="scan-bar-fill"></div></div>
-    <p class="scan-status" id="scan-status"></p>
-    <ul class="scan-log" id="scan-log"></ul>
+    <p class="scan-status" id="scan-status" role="status" aria-live="polite"></p>
+
+    <div class="scan-grid" id="scan-grid">
+      {% for v in venues %}
+        <div class="scan-chip" id="scan-chip-{{ v.id }}" data-venue-id="{{ v.id }}">
+          <span class="scan-chip-icon" id="scan-chip-icon-{{ v.id }}" aria-hidden="true"></span>
+          <div class="scan-chip-body">
+            <div class="scan-chip-name">{{ v.name }}</div>
+            <div class="scan-chip-detail" id="scan-chip-detail-{{ v.id }}">
+              {% if v.last_scraped_at %}Last scanned {{ v.last_scraped_at | dtfmt('%b %-d') }}{% else %}Never scanned{% endif %}
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
 
     <p class="hint" style="margin-top:1.5rem;">
       If JavaScript is off, you can instead
       <form method="post" action="{{ url_for('venues.scan_all') }}" style="display:inline"
             onsubmit="return confirm('Rescrape every active venue now? This can take a minute.');">
-        <button type="submit" class="link-button">run every venue in one request, without a progress bar</button>
+        <button type="submit" class="link-button">run every venue in one request, without live status</button>
       </form>.
     </p>
 
@@ -28,47 +40,106 @@
       (function () {
         var venues = {{ venues | map(attribute="id") | list | tojson }};
         var names = {{ venues | map(attribute="name") | list | tojson }};
+        // Parallel array (see HEADLESS_BROWSER_SOURCE_TYPES in
+        // app/routes/venues.py) -- true for venues whose fetch goes
+        // through a real headless browser and is routinely much slower
+        // than a plain HTTP fetch, so their chip can say so up front
+        // instead of leaving a 10-20s wait looking identical to an
+        // instant one.
+        var isSlow = {{ slow_flags | tojson }};
         var startBtn = document.getElementById("start-scan");
-        var bar = document.getElementById("scan-bar-fill");
         var status = document.getElementById("scan-status");
-        var log = document.getElementById("scan-log");
+        var elapsedTimer = null;
 
-        function addLogLine(text, isError) {
-          var li = document.createElement("li");
-          li.textContent = text;
-          if (isError) li.className = "scan-log-error";
-          log.appendChild(li);
-          log.scrollTop = log.scrollHeight;
+        function setChipState(id, state) {
+          var chip = document.getElementById("scan-chip-" + id);
+          chip.className = "scan-chip is-" + state;
+        }
+
+        function setChipIcon(id, text) {
+          document.getElementById("scan-chip-icon-" + id).textContent = text;
+        }
+
+        function setChipDetail(id, text) {
+          document.getElementById("scan-chip-detail-" + id).textContent = text;
+          // Same spot the failed-state error message already uses this
+          // for -- lets you hover a truncated/wrapped chip to read the
+          // full text, whatever state put it there.
+          document.getElementById("scan-chip-" + id).title = text;
+        }
+
+        // Ticks a chip's detail text once a second while its scan is in
+        // flight ("Scanning... 7s") so a slow venue visibly looks alive
+        // rather than frozen -- real elapsed time, not a fake animation,
+        // since the server gives no finer-grained progress than "done or
+        // not yet" for a single venue (see scan_one's docstring).
+        function startElapsedTimer(id, slow) {
+          var base = slow
+            ? "Scanning (loading in a browser, can take 10–20s)…"
+            : "Scanning…";
+          var startedAt = Date.now();
+          setChipDetail(id, base + " 0s");
+          elapsedTimer = setInterval(function () {
+            var secs = Math.round((Date.now() - startedAt) / 1000);
+            setChipDetail(id, base + " " + secs + "s");
+          }, 1000);
+        }
+
+        function stopElapsedTimer() {
+          if (elapsedTimer) {
+            clearInterval(elapsedTimer);
+            elapsedTimer = null;
+          }
         }
 
         startBtn.addEventListener("click", async function () {
           startBtn.disabled = true;
           startBtn.textContent = "Scanning...";
-          log.innerHTML = "";
-          bar.style.width = "0%";
           var createdTotal = 0, updatedTotal = 0, failedCount = 0;
 
+          // Reset every chip to "waiting" up front so a re-run doesn't
+          // show stale results from last time while new ones roll in.
+          venues.forEach(function (id) {
+            setChipState(id, "waiting");
+            setChipIcon(id, "");
+            document.getElementById("scan-chip-" + id).removeAttribute("title");
+          });
+
           for (var i = 0; i < venues.length; i++) {
+            var id = venues[i];
             status.textContent = "Scanning " + names[i] + "... (" + (i + 1) + " of " + venues.length + ")";
+            setChipState(id, "scanning");
+            setChipIcon(id, "");
+            startElapsedTimer(id, isSlow[i]);
+
             try {
-              var resp = await fetch("/venues/" + venues[i] + "/scan-one", { method: "POST" });
+              var resp = await fetch("/venues/" + id + "/scan-one", { method: "POST" });
               var data = await resp.json();
+              stopElapsedTimer();
               if (data.ok) {
-                addLogLine(data.venue + ": " + data.created + " new, " + data.updated + " updated", false);
+                setChipState(id, "success");
+                setChipIcon(id, "✓");
+                var summary = data.created + " new, " + data.updated + " updated";
+                if (data.created === 0 && data.updated === 0) summary = "no changes";
+                setChipDetail(id, summary);
                 createdTotal += data.created;
                 updatedTotal += data.updated;
               } else {
-                addLogLine(data.venue + ": failed -- " + data.error, true);
+                setChipState(id, "failed");
+                setChipIcon(id, "✕");
+                setChipDetail(id, data.error);
                 failedCount++;
               }
             } catch (err) {
-              addLogLine(names[i] + ": request failed -- " + err, true);
+              stopElapsedTimer();
+              setChipState(id, "failed");
+              setChipIcon(id, "✕");
+              setChipDetail(id, "Request failed: " + err);
               failedCount++;
             }
-            bar.style.width = Math.round(((i + 1) / venues.length) * 100) + "%";
           }
 
-          status.textContent = "Done -- " + createdTotal + " new, " + updatedTotal + " updated" +
+          status.textContent = "Done — " + createdTotal + " new, " + updatedTotal + " updated" +
             (failedCount ? ", " + failedCount + " failed" : "") + ".";
           startBtn.textContent = "Scan again";
           startBtn.disabled = false;

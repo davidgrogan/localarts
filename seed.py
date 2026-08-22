@@ -116,6 +116,18 @@ def main():
             # mentioned and carries the last confirmed year forward as a
             # fallback, which works because the listing is in chronological
             # order. No date_format is set so that fuzzy path runs.
+            #
+            # "user_agent" override added after this venue started reliably
+            # timing out (not a 403 -- a plain connection-then-read hang, 15s
+            # every time) on html_generic.py's default self-identifying UA
+            # ("...LocalMusicSitePOC/0.1"). That symptom -- connects fine,
+            # then silently stalls instead of rejecting outright -- is
+            # consistent with a WAF/bot-mitigation product tarpitting a
+            # request it's flagged as automated, the same underlying problem
+            # Quonk's Ticket Tailor listing and Bombyx's Ludus install hit
+            # (see those write-ups in README.md), just a different-shaped
+            # failure than their flat 403s. A real Chrome UA is the same fix
+            # applied there.
             source_type="html",
             scrape_config=(
                 '{"item_selector": ".event_card", '
@@ -123,7 +135,9 @@ def main():
                 '"date_selector": ".event_card_date_times", '
                 '"link_selector": ".event_card_details_button a", '
                 '"description_selector": ".event_card_presents", '
-                '"image_selector": ".event_card_image img"}'
+                '"image_selector": ".event_card_image img", '
+                '"user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}'
             ),
             default_event_type=music_tag,
         )

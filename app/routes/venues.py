@@ -37,6 +37,16 @@ def _scannable_venues():
     )
 
 
+# Source types whose fetch_raw() goes through rendered_html.py's headless
+# Chromium (see that module's docstring, plus ludus.py/elfsight_jsonld.py/
+# venuepilot.py's own "reused as-is" fetch_raw imports -- README.md's
+# per-venue write-ups have the full story on each) -- these routinely take
+# several times longer than a plain requests.get(). The Scan page's
+# per-venue chip uses this to show a "this can take 10-20s" hint instead
+# of the same bare "Scanning..." it shows for an instant plain-HTML fetch.
+HEADLESS_BROWSER_SOURCE_TYPES = {"rendered_html", "elfsight_jsonld", "ludus", "venuepilot"}
+
+
 @bp.route("/scan")
 @login_required
 def scan_page():
@@ -48,7 +58,8 @@ def scan_page():
     land pending review as usual (never auto-approved), and one venue
     failing to fetch doesn't stop the rest."""
     venues = _scannable_venues()
-    return render_template("venues/scan.html", venues=venues)
+    slow_flags = [v.source_type in HEADLESS_BROWSER_SOURCE_TYPES for v in venues]
+    return render_template("venues/scan.html", venues=venues, slow_flags=slow_flags)
 
 
 @bp.route("/<int:venue_id>/scan-one", methods=["POST"])
