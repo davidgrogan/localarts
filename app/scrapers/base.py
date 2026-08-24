@@ -86,6 +86,7 @@ def _load_source_types():
         haze_calendar,
         ludus,
         venuepilot,
+        amherst_cinema,
     )
 
     return {
@@ -97,6 +98,7 @@ def _load_source_types():
         "haze_calendar": haze_calendar,
         "ludus": ludus,
         "venuepilot": venuepilot,
+        "amherst_cinema": amherst_cinema,
     }
 
 

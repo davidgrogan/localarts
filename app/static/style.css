@@ -534,6 +534,7 @@ h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; lett
   margin-left: 0.5rem;
   vertical-align: middle;
 }
+.event-showtimes { color: var(--muted); font-size: 0.85rem; margin-top: 0.1rem; }
 .event-venue { color: var(--muted); font-size: 0.9rem; }
 .event-artists { font-size: 0.85rem; color: var(--muted); }
 .has-description {

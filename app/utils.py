@@ -41,6 +41,40 @@ def slugify(text):
     return text.strip("-") or "item"
 
 
+# Matches the leading "<p>Showtimes: 2:00 pm | 4:55 pm | ...</p>" paragraph
+# app/scrapers/amherst_cinema.py's _build_description() always puts first
+# in a film's description -- see showtimes_line() below for why this
+# exists at all.
+_SHOWTIMES_LINE_RE = re.compile(r"^\s*<p>\s*Showtimes:\s*(.*?)\s*</p>", re.IGNORECASE)
+
+
+def showtimes_line(description):
+    """Pulls just the "2:00 pm | 4:55 pm | 7:30 pm | 9:40 pm" showtimes text
+    back out of an Event's description, for calendar.html to render as its
+    own short line directly under the title -- rather than only being
+    visible in the card's hover tooltip/truncated popup, which is easy to
+    miss for a listing whose whole point is "here are the times today."
+
+    Deliberately scoped to exactly this one leading-paragraph shape instead
+    of showing an arbitrary preview of *any* event's description under its
+    title: some venues' descriptions (Quonk's Ticket Tailor detail-page
+    pull-through, in particular) are full paragraph-length blurbs that
+    would blow up every card's height if shown inline by default. Amherst
+    Cinema is currently the only scraper that ever produces a description
+    starting with "Showtimes:", so this is a no-op (returns None) for
+    every other venue's events -- and for a manually-entered show, or a
+    scraped one whose description happens to start differently.
+
+    Returns None if description is empty or doesn't start with that exact
+    shape, rather than raising -- this always runs against whatever
+    arbitrary text/HTML is already in the description column.
+    """
+    if not description:
+        return None
+    match = _SHOWTIMES_LINE_RE.match(description)
+    return match.group(1) if match else None
+
+
 def artist_sort_key(name):
     """Sort key for alphabetizing artist names: a leading "The " (any
     case -- "the", "The", "THE" all match) is ignored, so "The Mountain

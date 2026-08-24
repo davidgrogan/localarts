@@ -157,7 +157,9 @@ overridable per event, and never re-applied once an event already has tags
 (so a later re-scrape can't silently strip an admin's own tagging choice).
 Iron Horse, The Parlor Room, Academy of Music, Haze, Luthier's Co-Op, and
 The Heavy Culture Cooperative are seeded with "Music" as their default,
-since every show at those is one; Smith College and Quonk
+since every show at those is one (Amherst Cinema, the first non-music
+venue, is seeded the same way but with "Film" instead -- every listing
+there is a screening); Smith College and Quonk
 intentionally have no default, since their calendars mix things like
 exhibitions, lectures, comedy, dance parties, and tabletop game nights with
 actual performances, and each scraped item needs its own call. Whether a
@@ -1134,6 +1136,116 @@ date logic, the room-name override, image extraction, and de-duplication
 **Venues → CitySpace → Test scrape** preview page before running **Run
 scrape now** for real, the same as any newly added venue.
 
+**On Amherst Cinema (28 Amity St., Amherst -- a nonprofit independent
+movie theater, David's first non-music venue):** its homepage's own
+showtimes calendar is a hover-to-preview widget, but that's purely a UI
+skin -- confirmed via live browser DOM inspection that every day cell
+links to its own real URL, `amherstcinema.org/calendar/month/<YYYY-MM-DD>`,
+a plain server-rendered Drupal Views page showing the exact same markup
+the hover popup does. That means `app/scrapers/amherst_cinema.py` needs
+no headless browser at all -- unlike Quonk/Heavy Culture/Bombyx/CitySpace
+above, a plain `requests.get()` of each day-page is enough.
+
+Confirmed structure (live DOM inspection), one `.views-row` per film
+playing that day:
+
+    <div class="series">Big Screen Classics</div>   <!-- often empty -->
+    <div class="title"><a href="…/films-and-events/<slug>">Late Fame</a></div>
+    <div class="times">
+      <div class="views-view-fields"><a href="<agileticketing url>"><span class="date-display-single">2:00 pm</span></a></div>
+      <!-- one .views-view-fields per showtime that day -->
+    </div>
+
+**One Event row per film per *day*, not per showtime** -- a deliberate
+simplification David asked for explicitly, since a single film running
+3-4 showtimes a day for a week or more would otherwise flood the
+calendar with 15-20 rows a day for this one venue alone. All of a day's
+times get folded into `Event.description` as a "Showtimes: 2:00 pm |
+4:55 pm | …" line; `start_datetime` is set to that day's *first* showing
+so date sorting and "is this upcoming" checks still behave, but the
+calendar card itself only reflects that first time -- the full list only
+shows up via the description tooltip/detail page. `ticket_url` points at
+the film's own detail page (which lists every remaining date/time with
+its own buy button) rather than one specific showtime's AgileTicketing
+link, since a single row can't represent several different showtimes'
+separate purchase links.
+
+Each film also has its own detail page (the same URL its title links to)
+with metadata that would be wasteful to re-fetch on every single day/
+showtime row: a poster image, runtime, director, MPAA rating, release
+year, and a synopsis (confirmed classes: `.field-name-field-image-front
+img`, `.field-name-field-duration`, `.field-name-field-director`,
+`.field-name-field-rating`, `.field-name-field-year`,
+`.field-name-body`). `parse()` fetches each *unique* film's detail page
+exactly once per scrape run (cached by slug in a plain dict), no matter
+how many different days that film shows up on within the scraped window
+-- the same one-extra-request-per-item spirit as `html_generic.py`'s
+`description_from_link`, just applied at the film level since here the
+"item" legitimately spans many day-page rows. `Event.genre` is set from
+the day-page's own "series" label when present (e.g. "Big Screen
+Classics"), distinguishing a revival screening from a regular new
+release.
+
+`scrape_config`'s `days_ahead` (default 21, matching `base.py`'s own
+`MISSING_CHECK_WINDOW_DAYS`) controls how many consecutive days forward
+from today get fetched as separate day-pages. Every day checked live
+(through the end of the current month and into the next) already had a
+full schedule, so this is a real, useful window in practice -- but
+there's no guarantee that holds forever, hence configurable.
+
+A real bug David found after the first live scrape: the poster image
+never showed up on the calendar, even though `Event.image_url` held a
+real, correct, publicly-loadable URL. Root cause, confirmed via a live
+cross-origin test (loading the exact same poster URL as an `<img>` from
+a genuinely different origin failed with `onerror`, while a plain
+navigation to that same URL, or a `fetch()` with no Referer, succeeded):
+amherstcinema.org hotlink-protects its poster images -- a direct
+navigation loads fine, but an embed on any *other* site gets refused.
+`_download_poster()` in `amherst_cinema.py` fixes this the same way this
+project already handles admin-uploaded flyers/venue photos: download the
+image once (a plain server-to-server `requests.get()`, not a browser
+embedding a cross-origin `<img>`, so it isn't subject to that same
+check) and save it under `/static/uploads/flyers/` (`FLYER_UPLOAD_DIR`),
+then store *that* local URL on the Event instead of Amherst Cinema's
+own. Filenames are deterministic (`amherst-<slugify(slug)>.<ext>`, not a
+random uuid like a one-off admin upload gets) specifically so a
+re-scrape of the same film overwrites its existing local copy instead of
+piling up an ever-growing set of orphaned files on every single scrape
+run, forever. Best-effort like every other helper in this module: a
+failed download just leaves `image_url` as `None` (falling back to the
+venue photo or site logo) rather than sinking the whole scrape.
+
+David asked, after this venue's first real scrape, for a film's full
+list of that day's showtimes to be visible directly under its title on
+the calendar card, not just in the hover tooltip/truncated popup (the
+only place a plain `description` normally surfaces -- see calendar.html's
+`data-description`/`title="..."` uses). `app/utils.py`'s `showtimes_line()`
+(registered as the `showtimes_line` Jinja filter in `app/__init__.py`)
+pulls just that leading "2:00 pm | 4:55 pm | ..." text back out of the
+description's first `<p>Showtimes: ...</p>` paragraph -- the one
+`_build_description()` above always puts first -- and calendar.html
+renders it as its own `.event-showtimes` line right under the title, only
+when present. Deliberately scoped to that one exact leading-paragraph
+shape rather than showing a preview of *any* event's description under
+its title: Quonk's `description_from_link` pull-through in particular is
+a full paragraph-length blurb that would blow up every card's height if
+shown inline by default. Every other venue's events (nothing else
+currently produces a description starting with "Showtimes:") render
+exactly as before.
+
+**Caveat:** `parse()` and `fetch_raw()`'s day-window/marker logic are
+both verified end to end -- including a full `run_scrape()` smoke test
+against a real seeded `Venue` row with a faked network layer -- but
+against *synthetic* HTML built from real, individually-confirmed classes
+and example values (gathered via live browser DOM inspection, including
+actually clicking through to a film's detail page). The scraper's own
+`requests.get()` has not been run against the live site from this
+project's own dev environment -- outbound requests to arbitrary domains
+are blocked by this sandbox's network restrictions, the same limitation
+noted in CitySpace's caveat above. The very first real scrape should
+still be spot-checked on the **Venues → Amherst Cinema → Test scrape**
+preview page before running **Run scrape now** for real.
+
 ## Submit your show (`app/routes/gigs.py`, `GigSubmission` model)
 
 A public `/gigs/submit` form -- linked from the main nav as "Submit a Show"
@@ -1529,7 +1641,7 @@ source .venv/bin/activate        # .venv\Scripts\activate on Windows
 pip install -r requirements.txt
 playwright install chromium      # one-time browser download, needed for rendered_html venues
 
-python seed.py                   # adds Iron Horse, Parlor Room, Academy of Music, Haze, Luthier's Co-Op, 33 Hawley, The Heavy Culture Cooperative, Quonk, BOMBYX Center for Arts & Equity, DIY (catch-all for submitted one-off shows), sample artists/shows
+python seed.py                   # adds Iron Horse, Parlor Room, Academy of Music, Haze, Luthier's Co-Op, 33 Hawley, The Heavy Culture Cooperative, Quonk, BOMBYX Center for Arts & Equity, CitySpace, Amherst Cinema, DIY (catch-all for submitted one-off shows), sample artists/shows
 python run.py                    # http://127.0.0.1:5000
 ```
 

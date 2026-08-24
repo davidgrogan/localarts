@@ -289,6 +289,17 @@
                   {% endfor %}
                 {% endif %}
               </div>
+              {% set showtimes = e.description | showtimes_line %}
+              {% if showtimes %}
+                {# Currently only ever set for Amherst Cinema's films --
+                   see showtimes_line()'s docstring in app/utils.py for
+                   why this is scoped to that one leading-paragraph shape
+                   rather than showing an arbitrary description preview
+                   under every event's title (Quonk's descriptions in
+                   particular are full paragraphs that would blow up
+                   every card). A no-op span for every other venue. #}
+                <div class="event-showtimes">{{ showtimes }}</div>
+              {% endif %}
               <div class="event-venue">
                 {% if e.display_venue_link %}
                   <a href="{{ e.display_venue_link }}" target="_blank" rel="noopener">{{ e.display_venue_name }}</a>

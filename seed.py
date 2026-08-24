@@ -59,7 +59,7 @@ def main():
         get_or_create_event_type("Spoken Word", is_public_category=True)
         get_or_create_event_type("Lectures", is_public_category=True)
         get_or_create_event_type("Art Exhibits", is_public_category=True)
-        get_or_create_event_type("Film", is_public_category=True)
+        film_tag = get_or_create_event_type("Film", is_public_category=True)
         get_or_create_event_type("Dance", is_public_category=True)
 
         iron_horse = get_or_create_venue(
@@ -532,6 +532,41 @@ def main():
             # recurring non-music filler (it repeats close to monthly)
             # once that's confirmed rather than reviewing/discarding the
             # same handful of listings every scrape.
+        )
+
+        amherst_cinema = get_or_create_venue(
+            name="Amherst Cinema",
+            slug="amherst-cinema",
+            address="28 Amity St.",
+            city="Amherst",
+            state="MA",
+            website_url="https://amherstcinema.org",
+            # The homepage's own showtimes calendar is a hover-to-preview
+            # widget, but that's purely a UI skin -- confirmed via live
+            # browser inspection that every day cell links to its own
+            # real, plain server-rendered URL:
+            # amherstcinema.org/calendar/month/<YYYY-MM-DD>, showing the
+            # exact same markup the hover popup does. events_url here is
+            # that URL's *base* (with no trailing date) -- app/scrapers/
+            # amherst_cinema.py's fetch_raw() appends "/<date>" once per
+            # day across its scrape window. No headless browser needed at
+            # all, unlike Quonk/Heavy Culture/CitySpace/Bombyx -- a plain
+            # requests.get() of each day-page returns full server-rendered
+            # HTML.
+            events_url="https://amherstcinema.org/calendar/month",
+            source_type="amherst_cinema",
+            # One Event row per film per *day* (not per showtime) -- a
+            # single film can run 3-4 showtimes a day for a week or more,
+            # and modeling each showtime as its own row would flood the
+            # calendar with 15-20 entries a day for this one venue alone.
+            # All of a day's times land in the Event's description
+            # instead (see amherst_cinema.py's _build_description()); the
+            # calendar card itself only reflects the day's first showing.
+            # Known, deliberate simplification -- not a bug.
+            scrape_config='{"days_ahead": 21}',
+            # Every listing here is a film screening -- auto-tag "Film"
+            # the same way music venues auto-tag "Music".
+            default_event_type=film_tag,
         )
 
         diy_venue = get_or_create_venue(

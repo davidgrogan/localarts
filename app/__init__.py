@@ -411,6 +411,17 @@ def create_app(test_config=None):
 
         return resolve_image_url(value)
 
+    @app.template_filter("showtimes_line")
+    def showtimes_line_filter(value):
+        # See app/utils.py's showtimes_line() docstring -- pulls the
+        # "2:00 pm | 4:55 pm | ..." text back out of a film's description
+        # (currently only ever produced by app/scrapers/amherst_cinema.py)
+        # so calendar.html can show it directly under the title instead of
+        # only in the hover tooltip.
+        from app.utils import showtimes_line
+
+        return showtimes_line(value)
+
     @app.template_filter("artist_letter")
     def artist_letter_filter(name):
         # A thin Jinja-filter wrapper around app.utils.artist_display_letter()
