@@ -285,6 +285,31 @@ and are a no-op the moment the old name doesn't exist. "Lecture" ->
 "Lectures" is the other known near-miss, not yet added here since folding
 it in is still David's call to make.
 
+**A real deploy-ordering bug this surfaced:** both of these startup
+migrations query the `EventType` table, and a plain `EventType.query...`
+implicitly SELECTs every mapped column -- including `is_public_category`
+-- not just the ones a filter mentions. That's harmless on SQLite, where
+`_run_sqlite_column_migrations()` above always adds a newly-declared
+column immediately, before either function runs. On Postgres it isn't:
+`sync_schema.py` (the droplet's own column-migration step, since Postgres
+has no automatic one) calls `create_app()` itself first, just to get at
+`app`/`db` -- which means these two functions can run against a database
+that's missing the very column they depend on, on a fresh deploy where
+that column was just added to `models.py` but `sync_schema.py --apply`
+hasn't actually run against this database yet. This crashed a real
+`deploy_all.sh` run with `psycopg2.errors.UndefinedColumn: column
+event_type.is_public_category does not exist`, thrown from inside
+`sync_schema.py`'s own `create_app()` call -- before it ever reached its
+own `ADD COLUMN` step. `_column_exists()` in `app/__init__.py` guards both
+functions against exactly this: if the column they depend on doesn't
+exist yet on this database, they just skip cleanly instead of crashing,
+deferring the self-heal to the next app start (right after
+`sync_schema.py --apply` adds the column in the same deploy run). Worth
+remembering for any *future* startup migration added here that reads a
+column from a model still mid-rollout on Postgres: guard it with
+`_column_exists()` the same way, since `sync_schema.py` will always hit
+`create_app()` before its own `ADD COLUMN` step runs.
+
 ## Local artist Genre/Category Tags, filtering, and the featured-artist spotlight
 
 An artist's **Genre Tags** (e.g. "Electronica", "New Wave", "Americana") and

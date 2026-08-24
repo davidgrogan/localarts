@@ -2,7 +2,7 @@ import os
 
 from dotenv import load_dotenv
 from flask import Flask, session
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 
 from app.models import db
 
@@ -60,6 +60,39 @@ def _run_sqlite_column_migrations():
                     conn.commit()
 
 
+def _column_exists(table_name, column_name):
+    """True if the live database's table already has this column.
+
+    Exists to protect every EventType-querying startup migration below
+    (currently _bootstrap_default_public_category() and
+    _migrate_renamed_categories()) against a real, previously-uncaught
+    ordering bug on Postgres: sync_schema.py's whole job is adding a
+    newly-declared column like `is_public_category` via its own ADD
+    COLUMN step (Postgres has no automatic column migration -- see
+    _run_sqlite_column_migrations() above, which explicitly skips any
+    non-SQLite backend), but sync_schema.py's main() calls create_app()
+    itself first, purely to get at `app`/`db` -- which means create_app()'s
+    own startup migrations here can run against a table that's missing
+    the very column they depend on, on a fresh deploy where that column
+    was just added to models.py but sync_schema.py --apply hasn't run
+    yet on this database. Any plain `EventType.query...` implicitly
+    SELECTs every mapped column (not just the ones a filter mentions),
+    so even _migrate_renamed_categories() -- which never reads
+    is_public_category directly -- still errors out the same way.
+    Confirmed against a real deploy_all.sh run: this crashed
+    sync_schema.py itself with `psycopg2.errors.UndefinedColumn:
+    column event_type.is_public_category does not exist` before it ever
+    reached its own ADD COLUMN step.
+
+    Skipping cleanly here just defers the self-healing migration to the
+    *next* app start -- right after sync_schema.py --apply adds the
+    column in this same run -- rather than crashing the deploy outright."""
+    inspector = inspect(db.engine)
+    if not inspector.has_table(table_name):
+        return False
+    return column_name in {col["name"] for col in inspector.get_columns(table_name)}
+
+
 # Same eight names seed.py flags is_public_category=True on (kept as a
 # separate list here, not imported from there, since the two lists serve
 # different purposes and can legitimately diverge later: seed.py's list
@@ -115,9 +148,14 @@ def _bootstrap_default_public_category():
     an unmigrated install and promotes the same names again at the next
     restart, rather than leaving the filter bar with nothing selectable
     at all -- a deliberate tradeoff (a self-healing default beats a
-    calendar that silently shows zero shows forever)."""
+    calendar that silently shows zero shows forever).
+
+    Guarded by _column_exists() -- see that function's docstring above
+    for the real Postgres deploy-ordering bug this fixes."""
     from app.models import EventType
 
+    if not _column_exists("event_type", "is_public_category"):
+        return
     if EventType.query.filter_by(is_public_category=True).first() is not None:
         return
     promoted_any = False
@@ -185,10 +223,20 @@ def _migrate_renamed_categories():
 
     Runs on every app start; each entry is a no-op the moment its
     old_name doesn't exist (already migrated, or a fresh install that
-    never had it) -- cheap enough to just always check."""
+    never had it) -- cheap enough to just always check.
+
+    Guarded by _column_exists(), same as _bootstrap_default_public_category()
+    above -- every EventType.query below implicitly SELECTs the
+    is_public_category column too (a plain ORM query selects every
+    mapped column, not just the ones a filter mentions), even though
+    this function's own logic never reads it, so it's just as vulnerable
+    to the Postgres deploy-ordering bug described in that function's
+    docstring."""
     from app.models import EventType
     from app.utils import slugify
 
+    if not _column_exists("event_type", "is_public_category"):
+        return
     for old_name, new_name in _CATEGORY_RENAMES:
         old = EventType.query.filter(db.func.lower(EventType.name) == old_name).first()
         if old is None:
