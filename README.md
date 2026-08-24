@@ -1246,6 +1246,54 @@ noted in CitySpace's caveat above. The very first real scrape should
 still be spot-checked on the **Venues → Amherst Cinema → Test scrape**
 preview page before running **Run scrape now** for real.
 
+**On One Amber Lane (1 Amber Ln, Northampton):** confirmed Squarespace
+(body class fingerprint) via live browser inspection, so this venue
+reuses `app/scrapers/squarespace_json.py` completely unmodified -- the
+same module already handling the Iron Horse. A live `?format=json` fetch
+of `oneamberlane.com/events` returned 36 real event candidates in the
+exact shape `_find_event_candidates()` already expects (`title`,
+`startDate`/`endDate`, `fullUrl`, `assetUrl`, etc.), all live-music
+listings (e.g. "Andie Arel Live Music", "B-Town Trio Live Music"). No
+`title_exclude` or other config tweak was needed -- unlike CitySpace/
+Quonk/Smith College, nothing non-music showed up in the sample.
+
+The site's own nav never prints a street address -- its "location" link
+points straight to a Google Maps place, and Maps currently has that
+location filed under an older business name, "Iconica Social Club" (same
+building/coordinates, confirmed via the map listing's own displayed
+name/address: "Amber Lane Café & Pub" / "1 Amber Ln, Northampton, MA
+01060"). That's what's seeded as the venue's address.
+
+This venue also motivated a small, pure-addition enhancement to
+`squarespace_json.py` itself: `parse()` now pulls `item['assetUrl']`
+(when present) into `Event.image_url`. Squarespace's own image CDN
+(`images.squarespace-cdn.com`) serves these already-absolute with no
+hotlink/referrer protection -- unlike Amherst Cinema's own site-hosted
+poster images (see that venue's Caveat above) -- so no re-hosting step
+is needed here; the URL is used as-is. This also benefits the existing
+Iron Horse venue, which previously got no event images at all. An item
+with no `assetUrl` simply leaves `image_url` as `None`, same as before.
+
+David reported One Amber Lane's showtimes were wrong after its first
+live scrape. Root cause: Squarespace's `startDate`/`endDate` fields are
+Unix-epoch milliseconds -- a real, unambiguous UTC instant -- but
+`squarespace_json.py`'s original code converted them with
+`datetime.utcfromtimestamp()`, which produces a naive datetime holding
+that *raw UTC* value. Every other part of this app stores and compares
+`Event.start_datetime` as naive **America/New_York local wall-clock**
+time (see `app/utils.py`'s `SITE_TIMEZONE`/`local_now()`), so the scraper
+was quietly storing a UTC clock-reading under a column everything else
+treats as local -- a 4-5 hour error that, for an evening show, rolls it
+onto the wrong calendar day entirely (e.g. a real 10:00pm Dec 28th show
+came out stored/displayed as 3:00am Dec 29th). This is the same bug
+class already hit and fixed for the Elfsight scraper (Iron Horse/Parlor
+Room). Fixed with a new `_ms_to_local()` helper in `squarespace_json.py`
+that converts to timezone-aware UTC first, then `.astimezone()`s to
+America/New_York and drops the tzinfo -- mirroring
+`elfsight_jsonld.py`'s own `_to_local()`. Covered by
+`test_squarespace_json.py`, which asserts the exact wrong-calendar-day
+case against a real epoch-ms value.
+
 ## Submit your show (`app/routes/gigs.py`, `GigSubmission` model)
 
 A public `/gigs/submit` form -- linked from the main nav as "Submit a Show"
@@ -1641,7 +1689,7 @@ source .venv/bin/activate        # .venv\Scripts\activate on Windows
 pip install -r requirements.txt
 playwright install chromium      # one-time browser download, needed for rendered_html venues
 
-python seed.py                   # adds Iron Horse, Parlor Room, Academy of Music, Haze, Luthier's Co-Op, 33 Hawley, The Heavy Culture Cooperative, Quonk, BOMBYX Center for Arts & Equity, CitySpace, Amherst Cinema, DIY (catch-all for submitted one-off shows), sample artists/shows
+python seed.py                   # adds Iron Horse, Parlor Room, Academy of Music, Haze, Luthier's Co-Op, 33 Hawley, The Heavy Culture Cooperative, Quonk, BOMBYX Center for Arts & Equity, CitySpace, Amherst Cinema, One Amber Lane, DIY (catch-all for submitted one-off shows), sample artists/shows
 python run.py                    # http://127.0.0.1:5000
 ```
 

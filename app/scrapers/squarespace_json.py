@@ -18,7 +18,8 @@ can't reach ironhorse.org to test live.
 """
 import html
 import json
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import requests
 from bs4 import BeautifulSoup
@@ -26,6 +27,25 @@ from bs4 import BeautifulSoup
 from app.scrapers.base import ScrapedEvent, ScrapeError
 
 USER_AGENT = "Mozilla/5.0 (compatible; LocalMusicSitePOC/0.1)"
+
+# Both the Iron Horse and One Amber Lane are in Northampton, MA -- Squarespace's
+# startDate/endDate are Unix-epoch milliseconds (a real UTC instant), but
+# Event.start_datetime is stored as naive *local* wall-clock time (see
+# app/utils.py's SITE_TIMEZONE/local_now() docstrings). Same conversion
+# elfsight_jsonld.py's _to_local() already does for its own JSON-LD
+# timestamps -- without it, every event lands 4-5 hours off (and can roll
+# onto the wrong calendar day entirely), the exact bug class task #52/#148
+# already fixed for Elfsight.
+_VENUE_TZ = ZoneInfo("America/New_York")
+
+
+def _ms_to_local(ms):
+    """Unix-epoch milliseconds -> naive America/New_York wall-clock time."""
+    return (
+        datetime.fromtimestamp(int(ms) / 1000, tz=timezone.utc)
+        .astimezone(_VENUE_TZ)
+        .replace(tzinfo=None)
+    )
 
 
 def fetch_raw(venue):
@@ -84,16 +104,16 @@ def parse(raw, venue):
         if start_ms is None:
             continue
         try:
-            start_dt = datetime.utcfromtimestamp(int(start_ms) / 1000)
-        except (TypeError, ValueError):
+            start_dt = _ms_to_local(start_ms)
+        except (TypeError, ValueError, OSError, OverflowError):
             continue
 
         end_dt = None
         end_ms = item.get("endDate")
         if end_ms:
             try:
-                end_dt = datetime.utcfromtimestamp(int(end_ms) / 1000)
-            except (TypeError, ValueError):
+                end_dt = _ms_to_local(end_ms)
+            except (TypeError, ValueError, OSError, OverflowError):
                 end_dt = None
 
         # unescape() -- same "literal &apos;/&amp; embedded straight into a
@@ -116,6 +136,13 @@ def parse(raw, venue):
 
         description = _strip_html(item.get("excerpt") or item.get("body") or "")
 
+        # Squarespace's own image CDN (images.squarespace-cdn.com) serves
+        # these asset URLs already absolute and with no hotlink/referrer
+        # protection -- unlike Amherst Cinema's site-hosted poster images
+        # (see amherst_cinema.py's _download_poster() docstring), so these
+        # can be used directly with no re-hosting step.
+        image_url = item.get("assetUrl") or None
+
         events.append(
             ScrapedEvent(
                 title=title,
@@ -124,6 +151,7 @@ def parse(raw, venue):
                 description=description,
                 ticket_url=ticket_url,
                 external_id=external_id,
+                image_url=image_url,
             )
         )
 

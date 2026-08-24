@@ -569,6 +569,41 @@ def main():
             default_event_type=film_tag,
         )
 
+        one_amber_lane = get_or_create_venue(
+            name="One Amber Lane",
+            slug="one-amber-lane",
+            # The site itself (oneamberlane.com) never prints its own
+            # street address -- its nav "location" link points straight
+            # to a Google Maps place, and Maps currently has this
+            # location filed under an older name, "Iconica Social Club"
+            # (same building/coordinates). The listing's own displayed
+            # business name and address there are "Amber Lane Café &
+            # Pub" / "1 Amber Ln, Northampton, MA 01060", which is what's
+            # used here.
+            address="1 Amber Ln",
+            city="Northampton",
+            state="MA",
+            website_url="https://oneamberlane.com",
+            # Confirmed Squarespace (body class fingerprint) -- reuses
+            # the same app/scrapers/squarespace_json.py module already
+            # built for Iron Horse, completely unmodified aside from
+            # this session's assetUrl -> image_url addition (see that
+            # module's parse() -- Squarespace's own image CDN serves
+            # these asset URLs already-absolute with no hotlink
+            # protection, unlike Amherst Cinema's poster images, so no
+            # re-hosting step is needed here). Confirmed via a live
+            # ?format=json fetch: 36 real event candidates came back in
+            # the exact shape squarespace_json.py's _find_event_
+            # candidates() already expects (title/startDate/endDate/
+            # fullUrl/assetUrl/etc.), all live-music listings (e.g.
+            # "Andie Arel Live Music", "B-Town Trio Live Music").
+            events_url="https://oneamberlane.com/events",
+            source_type="squarespace_json",
+            # Every listing seen here is a live-music show -- auto-tag
+            # "Music" the same way Iron Horse/Parlor Room/etc. do.
+            default_event_type=music_tag,
+        )
+
         diy_venue = get_or_create_venue(
             name="DIY",
             slug="diy",
