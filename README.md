@@ -7,12 +7,16 @@ DigitalOcean.
 
 ## What's here
 
-- **Calendar** (`/`) -- upcoming approved shows, filterable by venue, event
-  type, or a "show only events with local artists" toggle; also has a
-  "Local Artists Playing This Week!" gallery -- one card per local artist
-  actually playing a show in the next 7 days (see "Local artist Genre/
-  Category Tags" below). Public -- this and the artist roster below are
-  the only things anonymous visitors see.
+- **Calendar** (`/`) -- upcoming approved shows, filterable by venue, a
+  "show only events with local artists" toggle, and a row of category
+  toggle pills (Music, Comedy, Theater, Spoken Word, Lectures, Art
+  Exhibits, Film, Dance, ...) that default to just "Music" selected but
+  let a visitor show as many at once as they want (see "Public category
+  filter and Manage Categories" below); also has a "Local Artists Playing
+  This Week!" gallery -- one card per local artist actually playing a show
+  in the next 7 days in one of the currently-selected categories (see
+  "Local artist Genre/Category Tags" below). Public -- this and the
+  artist roster below are the only things anonymous visitors see.
 - **Artists** (`/artists`) -- roster of local artists, alphabetical by name,
   filterable by Genre Tag, with a random-local-artist spotlight at the top,
   a live name-search box, and an A-Z jump bar (see "Local Artists index
@@ -126,7 +130,10 @@ own laptop and not fine for anything actually deployed.
   pulled straight from a venue's own feed, one value per event): this is the
   broader, curated, multi-valued category an admin picks -- the thing you'd
   filter a mixed calendar like Smith College's down to "just the concerts" by.
-  Also doubles as an artist's Category Tags -- see below.
+  Also doubles as an artist's Category Tags -- see below. Carries an
+  `is_public_category` boolean, off by default, that decides whether a tag
+  shows up as a selectable pill on the public calendar's filter bar at all --
+  see "Public category filter and Manage Categories" below.
 - `GenreTag` -- a reusable music-genre tag for artists (e.g. "Electronica",
   "Americana"). See "Local artist Genre/Category Tags" below.
 - `ScrapeRun` -- a log row per scrape attempt: status, counts, and a truncated
@@ -153,9 +160,130 @@ The Heavy Culture Cooperative are seeded with "Music" as their default,
 since every show at those is one; Smith College and Quonk
 intentionally have no default, since their calendars mix things like
 exhibitions, lectures, comedy, dance parties, and tabletop game nights with
-actual performances, and each scraped item needs its own call. Visitors
-filter the public calendar by tag the same way they already filter by
-venue/artist (`?type=<id>`).
+actual performances, and each scraped item needs its own call. Whether a
+tag shows up as a visitor-facing filter at all is a separate decision --
+see the next section.
+
+## Public category filter and Manage Categories
+
+Not every `EventType` tag is meant for visitors -- a venue might get
+tagged internally with something one-off or messy while it's being sorted
+out in the Review queue, and that shouldn't clutter the public filter bar.
+Each `EventType` has an `is_public_category` boolean (default off) that
+decides whether it appears as a toggle pill on the calendar's filter bar;
+everything else stays an internal-only admin tag, usable on the event/venue
+forms exactly as before, just invisible to visitors.
+
+**Manage Categories** (`/events/categories`, admin-only, linked from the nav
+next to Scan) is a small CRUD page for that flag: an "Add a category" box to
+create a brand-new public category in one step, and a table of every
+existing `EventType` showing how many future events it's tagged on, a
+Public/Internal toggle button, and three more per-row actions: **Rename**
+(changes the name and slug in place -- same id, same events, same
+public/internal status; refuses if the new name collides with a
+*different* existing category, pointing at Move instead rather than
+silently merging the two), **Move events to** (a dropdown of every other
+category -- moves every event off this one onto the picked category, then
+deletes this one, since nothing's left tagged with it), and **Delete**
+(works as soon as nothing *upcoming* is tagged with it -- a category
+whose only events are already in the past doesn't block deletion, only a
+future one does; refuses and points at Move otherwise, so a cleanup click
+can't silently pull a still-relevant tag out from under a show that
+hasn't happened yet). These three exist because the earlier one-off tag
+collisions this feature
+surfaced (see the near-miss discussion above) kept needing a code change
+and an app restart to fix -- now David can do the same kind of cleanup
+himself, on demand, from the page. `app/routes/events.py`'s
+`rename_category()` / `move_category_events()` / `delete_category()` are
+the manual, click-driven counterparts to `_migrate_renamed_categories()`'s
+automatic startup migrations in `app/__init__.py` -- same two operations
+(merge into an existing tag, or rename in place), just triggered by an
+admin instead of baked into every install. The page as a whole exists
+because David wanted to be able to add (and now clean up) curated public
+categories over time -- past the initial set of Music, Comedy, Theater,
+Spoken Word, Lectures, Art Exhibits, Film, and Dance -- without needing a
+code change each time.
+
+The calendar's filter bar renders one pill per public `EventType` -- but
+only the ones that actually have something coming up. `_public_category_choices()`
+in `app/routes/main.py` filters to categories carrying at least one
+still-upcoming, *approved* event (`local_now()`, matching every other
+"future" check in this app, and `is_approved=True`, matching exactly what
+the calendar itself ever shows); a public category with nothing on the
+books -- its last show already happened, or its only upcoming show is
+still sitting in the Review queue -- used to still render as a checkable
+pill that just handed a visitor an empty calendar for their trouble.
+Each pill is a checkbox styled to look pressed/selected via CSS's
+`:has()` selector rather than a native checkbox look. A fresh,
+never-touched visit defaults to just "Music" selected -- not
+"everything," since a mixed-use venue like Smith College or Quonk means
+an unfiltered calendar would bury real shows under exhibitions and
+lectures. Visitors can check as many pills as they want, including none,
+or none at all if they explicitly submit the form that way; a hidden
+`categories_submitted` field (the same trick already used for the "hide
+recurring" view toggle) is how the backend tells "never touched, apply
+the Music default" apart from "explicitly submitted with everything
+unchecked, show nothing." Selections round-trip through every other link
+on the page (view toggles, month prev/next, the "+N more" overflow link)
+as repeated `category=<id>` query params, and an event tagged with more
+than one selected category is never shown twice -- `_base_query()` in
+`app/routes/main.py` matches with `Event.event_types.any(...)` (an EXISTS
+subquery) rather than a join, the same pattern already used for the
+local-artist toggle.
+
+Checking a pill (or a combination of them) can easily turn up nothing in
+the default "Next 7 Days" view even though real shows exist further out
+-- e.g. the only upcoming Comedy night is three weeks away, not this
+week. Rather than showing an empty week and expecting the visitor to
+notice and click "List All" themselves, `calendar()` redirects straight
+to the List All view when the category filter was actually submitted
+this request (`categories_submitted` present) and the resulting week view
+comes back empty. A plain, filter-untouched quiet week -- nothing on at
+all for the default Music view -- still shows the normal empty state
+rather than auto-jumping, since that's not the visitor having picked a
+combination that turned up nothing; it's just a genuinely quiet week.
+
+Because `is_public_category` defaults to `False` and `get_or_create_event_type()`
+never changes an existing tag's flag (a deliberate rule -- re-seeding or
+quick-adding a tag name that already exists should never silently flip an
+admin's own Manage Categories choice), upgrading an install that predates
+this feature would otherwise leave the public calendar showing zero events
+-- no tag would be public yet. `_bootstrap_default_public_category()` in
+`app/__init__.py` runs once at startup, checks whether *any* `EventType` is
+currently public, and if none are, promotes whichever of the eight curated
+category names already exist by that exact name (case-insensitive) to
+public. It only ever fires while no category is public at all, so it won't
+re-run and silently override a deliberate "turn every category off" choice
+made later via Manage Categories. It also won't merge or guess at
+near-miss existing tags on its own -- a pre-existing singular "Lecture"
+tag, for instance, is left as its own separate, still-internal tag rather
+than silently folded into the new plural "Lectures" category. Reconciling
+a near-miss like that is an editorial call, made explicitly rather than
+guessed at: `_CATEGORY_RENAMES` (right above `_migrate_renamed_categories()`
+in `app/__init__.py`) is a short, hand-maintained list of `(old name, new
+name)` pairs for exactly that, and each pair can mean one of two
+different things depending on whether the new name is already in use:
+
+- **Merge into an existing tag** -- "Art Exhibition" -> "Art Exhibits" is
+  this case: a pre-existing internal tag, created by hand well before
+  "Art Exhibits" existed as a curated category, that held 14 real events
+  invisible on the public filter pill as a result. Every event on the old
+  name moves onto the already-existing new tag, and the old tag is
+  deleted once nothing carries it anymore. The new name has to already
+  exist as its own `EventType` for this branch to run at all (checked by
+  a real lookup, not `get_or_create_event_type()`) -- otherwise it skips
+  the rename entirely rather than creating a stray, accidentally
+  non-public row under that name.
+- **Plain rename in place** -- "Celebration" -> "Misc." is this case:
+  nothing named "Misc." existed yet, so there's nothing to merge into --
+  the old tag's own row just gets a new name and slug, keeping its id,
+  its events, and whatever `is_public_category` value it already had,
+  completely untouched otherwise.
+
+Both run on every app start, same as `_bootstrap_default_public_category()`,
+and are a no-op the moment the old name doesn't exist. "Lecture" ->
+"Lectures" is the other known near-miss, not yet added here since folding
+it in is still David's call to make.
 
 ## Local artist Genre/Category Tags, filtering, and the featured-artist spotlight
 
@@ -199,8 +327,10 @@ The homepage used to spotlight one random `is_local` artist with an
 upcoming show; `_local_artists_playing_this_week()` in `app/routes/main.py`
 replaced that single-pick spotlight with a "Local Artists Playing This
 Week!" gallery -- a card for every local artist actually playing an
-approved, Music-tagged show in the next 7 days (same window as the
-calendar's own "week" view), since that's more useful to a visitor
+approved show, tagged with one of the visitor's currently-selected public
+categories (Music by default -- see "Public category filter and Manage
+Categories" above), in the next 7 days (same window as the calendar's own
+"week" view), since that's more useful to a visitor
 deciding what to go see than one random pick. Renders nothing if no local
 artist has a show landing in that window.
 
@@ -924,8 +1054,9 @@ Two things worth flagging:
    day, with no visible category field to tell them apart on the listing
    page. Same tradeoff as Quonk/Smith College above: `seed.py` leaves
    `default_event_type` unset, so every newly scraped event lands untagged
-   and off the public Music-only calendar until an admin tags the real
-   shows by hand via the Review queue. `title_exclude` is there to
+   and off the public calendar (whichever categories a visitor has
+   selected) until an admin tags the real shows by hand via the Review
+   queue. `title_exclude` is there to
    permanently drop the recurring non-music filler (the Tour/Market combo
    repeats close to monthly) once it's clear which titles are never going
    to be shows.

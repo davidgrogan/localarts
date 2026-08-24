@@ -59,6 +59,7 @@
           Gig Submissions{% if pending_gigs_count %} <span class="badge">{{ pending_gigs_count }}</span>{% endif %}
         </a>
         <a href="{{ url_for('venues.scan_page') }}">Scan</a>
+        <a href="{{ url_for('events.manage_categories') }}">Categories</a>
       {% endif %}
     </nav>
   </header>
@@ -94,6 +95,7 @@
           Gig Submissions{% if pending_gigs_count %} <span class="badge">{{ pending_gigs_count }}</span>{% endif %}
         </a>
         <a href="{{ url_for('venues.scan_page') }}">Scan</a>
+        <a href="{{ url_for('events.manage_categories') }}">Categories</a>
       {% endif %}
     </nav>
 

@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Manage categories{% endblock %}
+{% block content %}
+  <h1>Manage categories</h1>
+  <p class="meta">
+    "Public" categories show up as a toggleable filter pill on the public calendar and default
+    to unchecked there except Music. Everything else stays an internal-only tag you can still
+    apply to individual shows from the Add/Edit Show form, it just won't appear as a filter.
+  </p>
+
+  <h2 class="section-heading">Add a category</h2>
+  <form method="post" action="{{ url_for('events.new_category') }}" class="inline-form">
+    <input type="text" name="name" placeholder="e.g. Film Screening" required>
+    <label class="recurring-toggle">
+      <input type="checkbox" name="is_public_category" value="1">
+      Show on the public calendar
+    </label>
+    <button class="btn btn-small" type="submit">Add</button>
+  </form>
+
+  <h2 class="section-heading">All categories ({{ event_types | length }})</h2>
+  {% if event_types %}
+    <table class="plain">
+      <tr><th>Name</th><th>Future events tagged</th><th>Status</th><th>Actions</th></tr>
+      {% for t in event_types %}
+        <tr>
+          <td>{{ t.name }}</td>
+          <td>{{ future_counts[t.id] }}</td>
+          <td>
+            {% if t.is_public_category %}
+              <span class="pending-tag" style="color: var(--teal); background: var(--teal-soft); border-color: var(--teal);">Public</span>
+            {% else %}
+              <span class="source-tag">Internal only</span>
+            {% endif %}
+          </td>
+          <td class="category-actions">
+            <form method="post" action="{{ url_for('events.toggle_category_public', event_type_id=t.id) }}">
+              <button class="btn btn-small btn-secondary" type="submit">
+                {{ "Hide from public calendar" if t.is_public_category else "Show on public calendar" }}
+              </button>
+            </form>
+            <form method="post" action="{{ url_for('events.rename_category', event_type_id=t.id) }}" class="inline-form" style="margin: 0;">
+              <input type="text" name="name" value="{{ t.name }}" required>
+              <button class="btn btn-small btn-secondary" type="submit">Rename</button>
+            </form>
+            {% if (event_types | length) > 1 %}
+              <form method="post" action="{{ url_for('events.move_category_events', event_type_id=t.id) }}" class="inline-form" style="margin: 0;"
+                    onsubmit="return confirm('Move every event tagged with this category onto the one you picked, then delete this category? This can\'t be undone.');">
+                <select name="target_id" required>
+                  <option value="" disabled selected>Move events to&hellip;</option>
+                  {% for other in event_types %}
+                    {% if other.id != t.id %}
+                      <option value="{{ other.id }}">{{ other.name }}</option>
+                    {% endif %}
+                  {% endfor %}
+                </select>
+                <button class="btn btn-small btn-secondary" type="submit">Move</button>
+              </form>
+            {% endif %}
+            <form method="post" action="{{ url_for('events.delete_category', event_type_id=t.id) }}"
+                  onsubmit="return confirm('Delete this category? Only works if nothing is tagged with it -- move its events elsewhere first if it still has any.');">
+              <button class="btn btn-small btn-danger" type="submit">Delete</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <p class="empty-state">No categories yet -- add one above.</p>
+  {% endif %}
+{% endblock %}

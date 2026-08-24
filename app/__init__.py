@@ -42,6 +42,9 @@ _COLUMN_MIGRATIONS = {
     "gig_submission": [
         ("genres_text", "VARCHAR(300)"),
     ],
+    "event_type": [
+        ("is_public_category", "BOOLEAN DEFAULT 0 NOT NULL"),
+    ],
 }
 
 
@@ -55,6 +58,157 @@ def _run_sqlite_column_migrations():
                 if column_name not in existing:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column_name} {column_type}"))
                     conn.commit()
+
+
+# Same eight names seed.py flags is_public_category=True on (kept as a
+# separate list here, not imported from there, since the two lists serve
+# different purposes and can legitimately diverge later: seed.py's list
+# is "what a *fresh* install seeds," this one is "which *pre-existing*
+# tag names, from before this feature existed, should be auto-promoted
+# on a one-time upgrade" -- see _bootstrap_default_public_category()).
+_UPGRADE_PROMOTE_CATEGORY_NAMES = (
+    "music", "comedy", "theater", "spoken word", "lectures", "art exhibits", "film", "dance",
+)
+
+
+def _bootstrap_default_public_category():
+    """Self-healing, backend-agnostic follow-up to the is_public_category
+    column migration above (needed on Postgres too, which the SQLite-only
+    function above skips -- there, the equivalent ADD COLUMN happens via
+    `sync_schema.py --apply` on the droplet, a separate manual step this
+    can't hook into directly, so it just runs here on every app start
+    instead and checks its own precondition).
+
+    Every EventType row that already existed before is_public_category
+    existed at all -- on any install that predates this feature,
+    including a real production database -- got the new column's False
+    default. Left alone, that would mean the public calendar's category
+    filter defaults to an empty selection and shows nothing at all until
+    someone happens to find the new "Manage categories" admin page and
+    turns categories back on by hand.
+
+    Confirmed against this project's own real, years-accumulated dev
+    database: an admin had already created plain tags named exactly
+    "Comedy" and "Dance" by hand at various points (quick-added while
+    tagging individual shows, long before "public category" was a
+    concept) -- get_or_create_event_type()'s own "never touch an
+    existing tag's flag" rule means seed.py's
+    get_or_create_event_type("Comedy", is_public_category=True) call
+    silently no-ops against that already-existing row, same as it's
+    supposed to for a *deliberate* later admin choice. The difference is
+    this isn't a deliberate choice about *being public* at all -- the
+    concept didn't exist yet -- so this promotes every exact
+    (case-insensitive) name match in _UPGRADE_PROMOTE_CATEGORY_NAMES,
+    not just "Music", the first time this runs. It deliberately does NOT
+    try to reconcile a near-miss like a pre-existing singular "Lecture"
+    tag against the new plural "Lectures" category -- that's an
+    editorial call (which existing shows' tags to move where) for a
+    human to make via Manage categories, not something to guess at
+    automatically.
+
+    Runs on every app start, but is a no-op the moment *any* EventType is
+    flagged public -- which happens the very first time either seed.py
+    runs (fresh install, no pre-existing rows to collide with) or this
+    function itself promotes one -- so it never overrides a deliberate
+    later choice. One edge case worth knowing about: if every public
+    category is ever turned off at once, this treats that identically to
+    an unmigrated install and promotes the same names again at the next
+    restart, rather than leaving the filter bar with nothing selectable
+    at all -- a deliberate tradeoff (a self-healing default beats a
+    calendar that silently shows zero shows forever)."""
+    from app.models import EventType
+
+    if EventType.query.filter_by(is_public_category=True).first() is not None:
+        return
+    promoted_any = False
+    for name in _UPGRADE_PROMOTE_CATEGORY_NAMES:
+        match = EventType.query.filter(db.func.lower(EventType.name) == name).first()
+        if match:
+            match.is_public_category = True
+            promoted_any = True
+    if promoted_any:
+        db.session.commit()
+
+
+# Editorial tag renames, decided by David via Manage categories case by
+# case (not guessed at automatically -- see
+# _bootstrap_default_public_category()'s docstring above for why a
+# near-miss name is normally left alone on its own). Each entry is (old
+# tag name, new tag name), matched case-insensitively. Two different
+# things can happen per entry, depending on whether new_name is already
+# in use -- see _migrate_renamed_categories()'s docstring below:
+#   - new_name already exists as its own tag (e.g. "art exhibits", a
+#     curated public category): every event on old_name moves onto that
+#     existing tag, and old_name is deleted -- a real merge.
+#   - new_name doesn't exist yet (e.g. "misc."): old_name's own row is
+#     just renamed in place -- same tag, same id, same events, same
+#     public/internal status, new name/slug.
+# "Lecture" -> "Lectures" is the other near-miss flagged when this
+# feature shipped but deliberately not included here yet -- add it the
+# same way if/when David decides those two should merge.
+_CATEGORY_RENAMES = (
+    ("art exhibition", "art exhibits"),
+    ("celebration", "misc."),
+)
+
+
+def _migrate_renamed_categories():
+    """Applies each (old_name, new_name) pair in _CATEGORY_RENAMES above.
+
+    Unlike _bootstrap_default_public_category() above, this isn't about
+    is_public_category at all -- these are internal tags an admin had
+    quick-added by hand at some point (same story as the pre-existing
+    "Comedy"/"Dance" tags), each one landing on a name David later
+    decided should read differently ("Art Exhibition" colliding with the
+    new curated "Art Exhibits" category; "Celebration" just not being the
+    label David wants going forward). Run as a real data migration (not a
+    template-level rename) so this actually takes effect wherever the
+    tag's name is read from -- the Manage Categories table, the
+    Add/Edit Show form's tag checkboxes, and (for a public category) the
+    calendar's own filter pills.
+
+    If new_name already exists as its own EventType, this is a genuine
+    merge: every event on old_name moves onto that existing row, and
+    old_name is deleted once nothing carries it anymore. get_or_create_event_type()
+    is deliberately not used for that lookup -- if new_name is meant to
+    land on an existing curated public category (like "Art Exhibits")
+    that, for whatever reason, doesn't exist yet on this install, this
+    skips the merge entirely rather than creating a fresh, non-public row
+    under that name that would silently defeat the whole point.
+
+    If new_name does NOT already exist, there's nothing to merge into --
+    old_name's own row is just renamed in place (name + slug only), so it
+    keeps the same id, the same events, and whatever is_public_category
+    value it already had. This is the right behavior for a rename that
+    isn't reconciling a near-miss with something else already curated
+    (e.g. "Celebration" -> "Misc.").
+
+    Runs on every app start; each entry is a no-op the moment its
+    old_name doesn't exist (already migrated, or a fresh install that
+    never had it) -- cheap enough to just always check."""
+    from app.models import EventType
+    from app.utils import slugify
+
+    for old_name, new_name in _CATEGORY_RENAMES:
+        old = EventType.query.filter(db.func.lower(EventType.name) == old_name).first()
+        if old is None:
+            continue
+        new = EventType.query.filter(db.func.lower(EventType.name) == new_name).first()
+        if new is None:
+            # Nothing to merge into -- just rename old_name's own row in
+            # place, keeping its id/events/is_public_category untouched.
+            old.name = new_name
+            old.slug = slugify(new_name)
+            db.session.commit()
+            continue
+        for event in list(old.events):
+            if new not in event.event_types:
+                event.event_types.append(new)
+            event.event_types.remove(old)
+        db.session.flush()
+        if not old.events:
+            db.session.delete(old)
+        db.session.commit()
 
 
 def create_app(test_config=None):
@@ -172,6 +326,8 @@ def create_app(test_config=None):
     with app.app_context():
         db.create_all()
         _run_sqlite_column_migrations()
+        _bootstrap_default_public_category()
+        _migrate_renamed_categories()
 
     @app.template_filter("dtfmt")
     def dtfmt(value, fmt="%a %b %-d, %Y  %-I:%M %p"):

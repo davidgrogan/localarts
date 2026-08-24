@@ -41,7 +41,26 @@ def main():
         # any venue below can reference it as a default -- get_or_create_
         # event_type() is the same case-insensitive-dedupe helper the admin
         # UI's "quick add a new tag" inputs use.
-        music_tag = get_or_create_event_type("Music")
+        #
+        # is_public_category=True on all eight of these: the curated set
+        # that actually appears as a toggleable pill on the public
+        # calendar's filter bar (see app/routes/main.py's category
+        # filter and app/routes/events.py's manage_categories() admin
+        # page), as opposed to an internal-only tag an admin quick-adds
+        # while editing one event (e.g. the pre-existing "karaoke" tag),
+        # which stays off the public filter bar unless someone
+        # deliberately promotes it there. This flag is only ever set on
+        # a brand-new row -- re-running this seed script never flips it
+        # back on for a category an admin has since turned off, or vice
+        # versa (see get_or_create_event_type()'s own docstring).
+        music_tag = get_or_create_event_type("Music", is_public_category=True)
+        get_or_create_event_type("Comedy", is_public_category=True)
+        get_or_create_event_type("Theater", is_public_category=True)
+        get_or_create_event_type("Spoken Word", is_public_category=True)
+        get_or_create_event_type("Lectures", is_public_category=True)
+        get_or_create_event_type("Art Exhibits", is_public_category=True)
+        get_or_create_event_type("Film", is_public_category=True)
+        get_or_create_event_type("Dance", is_public_category=True)
 
         iron_horse = get_or_create_venue(
             name="Iron Horse Music Hall",

@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from flask import Blueprint, Response, abort, flash, redirect, render_template, request, session, url_for
+from sqlalchemy import and_
 
 from app.auth import login_required
 from app.models import db, Event, Venue, Artist, EventType
@@ -28,24 +29,121 @@ bp = Blueprint("main", __name__)
 # overrides the toggle entirely, for a one-line rollback if needed.
 GROUP_RECURRING_EVENTS = True
 
-# The site pivoted to a music-only focus -- the public calendar now always
-# restricts to events carrying this EventType category tag, regardless of
-# any filter selection (there's no way to opt back into seeing Comedy/Art/
-# Lecture/etc. from the calendar UI at all anymore). The underlying
-# Category Tags infrastructure is untouched otherwise -- a venue can still
-# scrape/tag non-music events, an admin can still see and manage them via
-# the Review queue and each venue's own detail page -- they just never
-# reach the public calendar. Matched case-insensitively (this dataset has
-# inconsistently-cased tags, e.g. "Music" alongside "karaoke") rather than
-# hardcoding a specific EventType id, which could differ per install.
-MUSIC_ONLY_CATEGORY_NAME = "music"
+# The public calendar's category filter is a live, admin-managed set,
+# not a fixed enum: any EventType with is_public_category=True (see that
+# column's docstring in models.py) shows up as a toggleable pill on the
+# filter bar, added/removed from the "Manage categories" admin page
+# (app/routes/events.py's manage_categories()) with no code change
+# needed. Category tags an admin hasn't promoted that way (e.g. the
+# stray "karaoke" tag) still exist and can still be applied to a show
+# from the Add/Edit Show form -- they just never appear on the public
+# filter bar or affect what visitors see.
+#
+# DEFAULT_PUBLIC_CATEGORY_NAME is only about what a *fresh, never-touched-
+# the-filter-bar* visit shows: this is a music venue site first, so
+# landing on a plain "/" with no filter interaction at all still shows
+# just Music, matching this site's original (and only, until now)
+# behavior. Matched case-insensitively (this dataset has inconsistently
+# cased tags) rather than hardcoding a specific EventType id, which could
+# differ per install.
+DEFAULT_PUBLIC_CATEGORY_NAME = "music"
 
 
-def _base_query(venue_id, artist_id, selected_genre, only_local_artists=False):
-    query = Event.query.filter(Event.is_approved.is_(True))
-    query = query.join(Event.event_types).filter(
-        db.func.lower(EventType.name) == MUSIC_ONLY_CATEGORY_NAME
+def _public_category_choices():
+    """Every EventType currently flagged as a public filter category AND
+    carrying at least one still-upcoming, approved event -- powers the
+    calendar's row of toggle pills, and is also the *only* set of ids
+    _resolve_selected_category_ids() below will ever honor from the query
+    string. That second part matters: without it, hand-editing the URL to
+    add an arbitrary EventType id would leak an internal-only tag's
+    events onto the public calendar.
+
+    The "has a future event" half of this filter is David's ask -- a
+    public category with nothing coming up (its last show already
+    happened, or it was just created and hasn't been used on anything
+    yet) used to still render as a pill a visitor could check and get an
+    empty calendar back for their trouble. now() here is local_now(), not
+    datetime.utcnow() (see app/utils.py's SITE_TIMEZONE docstring), and
+    is_approved=True matches exactly what the calendar itself ever shows
+    -- a pill for a category whose only upcoming events are still sitting
+    in the Review queue would be just as much of a dead end.
+
+    Recomputed on every request rather than cached -- this is a low-traffic
+    site with a handful of categories, so the extra EXISTS subquery per
+    pageview isn't worth the complexity of invalidating a cache every time
+    an event's date, approval, or tags change."""
+    now = local_now()
+    return (
+        EventType.query.filter_by(is_public_category=True)
+        .filter(
+            EventType.events.any(
+                and_(Event.is_approved.is_(True), Event.start_datetime >= now)
+            )
+        )
+        .order_by(EventType.name)
+        .all()
     )
+
+
+def _resolve_selected_category_ids(args, public_choices, venue_selected):
+    """Figures out which public categories are actually selected for this
+    request.
+
+    request.args.getlist("category") alone can't tell "the filter form
+    was submitted with every pill unchecked" apart from "this is a fresh
+    visit that never touched the filter bar at all" -- both produce a
+    URL with zero "category" params. Those two cases need different
+    answers (the first should show nothing, honoring exactly what the
+    visitor's checkboxes said; the second should fall back to a default,
+    preserving today's landing experience), so the filter form also
+    submits a "categories_submitted" hidden field on every submission
+    (same idea as the existing "view-field" hidden input) purely to
+    disambiguate the two.
+
+    The "fresh, never touched the filter bar" default itself branches on
+    venue_selected: picking a venue off the dropdown (see calendar.html --
+    its onchange handler disables the categories_submitted hidden field
+    before submitting, specifically so this counts as "fresh" even though
+    a request just fired) defaults to *every* public category rather than
+    just Music, since a visitor asking "what's on at this venue" almost
+    certainly wants everything approved there, not just its music-tagged
+    shows -- David's ask, after noticing picking a mixed-use venue like
+    Smith College or Quonk silently hid its non-music events. A plain
+    site-wide fresh visit (no venue picked) keeps defaulting to Music,
+    unchanged.
+
+    Any requested id that isn't currently a public category (stale
+    bookmark from before it was hidden, or a hand-edited URL) is silently
+    dropped rather than erroring -- same "don't blow up on a weird query
+    string" posture as _parse_month_param() above.
+    """
+    valid_ids = {c.id for c in public_choices}
+    if "categories_submitted" not in args:
+        if venue_selected:
+            return [c.id for c in public_choices]
+        default = next(
+            (c for c in public_choices if c.name.lower() == DEFAULT_PUBLIC_CATEGORY_NAME), None
+        )
+        return [default.id] if default else []
+    requested = args.getlist("category", type=int)
+    return [cid for cid in requested if cid in valid_ids]
+
+
+def _base_query(venue_id, artist_id, selected_genre, category_ids, only_local_artists=False):
+    query = Event.query.filter(Event.is_approved.is_(True))
+    if not category_ids:
+        # No public category selected at all (an explicit "everything
+        # unchecked," not a fresh visit -- see
+        # _resolve_selected_category_ids()) -- short-circuit to an empty
+        # result rather than a query with no category filter at all,
+        # which would show *every* category including internal-only
+        # ones no visitor ever opted into.
+        return query.filter(Event.id.in_([]))
+    # .any() (an EXISTS subquery) rather than a join -- a join here would
+    # duplicate a show once per selected category it carries (e.g. a show
+    # tagged both Music and Comedy, with both selected), same reasoning
+    # as the only_local_artists .any() below.
+    query = query.filter(Event.event_types.any(EventType.id.in_(category_ids)))
     if venue_id:
         query = query.filter(Event.venue_id == venue_id)
     if artist_id:
@@ -67,20 +165,18 @@ def _base_query(venue_id, artist_id, selected_genre, only_local_artists=False):
     return query
 
 
-def _distinct_genres():
+def _distinct_genres(category_ids):
     """Every individual genre word/phrase currently in play across
-    approved, Music-tagged events' freeform Event.genre field -- powers
-    the Genre filter dropdown (replacing the old Event Type filter, which
-    stopped being useful once the calendar hard-restricts to Music
-    anyway). A venue's feed often lists a show's genre(s) as one
-    comma-separated string (e.g. "Alternative, Americana,
-    Singer-Songwriter"); this splits those apart and de-duplicates
-    case-insensitively (keeping whichever casing was seen first) so the
-    dropdown offers one option per genre rather than one per unique
-    combination of genres."""
+    approved events in the currently-selected categories' freeform
+    Event.genre field -- powers the Genre filter dropdown. A venue's feed
+    often lists a show's genre(s) as one comma-separated string (e.g.
+    "Alternative, Americana, Singer-Songwriter"); this splits those apart
+    and de-duplicates case-insensitively (keeping whichever casing was
+    seen first) so the dropdown offers one option per genre rather than
+    one per unique combination of genres."""
     seen = {}
     rows = (
-        _base_query(None, None, None)
+        _base_query(None, None, None, category_ids)
         .filter(Event.genre.isnot(None), Event.genre != "")
         .with_entities(Event.genre)
         .distinct()
@@ -109,20 +205,20 @@ class WeeklySpot:
     event: Event
 
 
-def _local_artists_playing_this_week(week_start, week_end):
-    """Every local artist's appearance at an approved, Music-tagged show
-    landing in the [week_start, week_end) window, soonest first -- powers
-    the homepage's "Local Artists Playing This Week!" gallery. Replaces the
-    old single-random-artist spotlight with everything actually happening
-    this week, since that's more useful to a visitor deciding what to go
-    see than one random pick. Reuses whatever week_start/week_end the
-    calendar's own "week" view is built from (see calendar() below), so
-    "this week" means the same 7-day window everywhere on the page --
-    that's already computed with local_now(), not datetime.utcnow() (see
-    app/utils.py's SITE_TIMEZONE docstring), so today's shows correctly
-    still count as upcoming."""
+def _local_artists_playing_this_week(week_start, week_end, category_ids):
+    """Every local artist's appearance at an approved show -- in one of the
+    currently-selected categories -- landing in the [week_start, week_end)
+    window, soonest first -- powers the homepage's "Local Artists Playing
+    This Week!" gallery. Replaces the old single-random-artist spotlight
+    with everything actually happening this week, since that's more useful
+    to a visitor deciding what to go see than one random pick. Reuses
+    whatever week_start/week_end the calendar's own "week" view is built
+    from (see calendar() below), so "this week" means the same 7-day
+    window everywhere on the page -- that's already computed with
+    local_now(), not datetime.utcnow() (see app/utils.py's SITE_TIMEZONE
+    docstring), so today's shows correctly still count as upcoming."""
     events = (
-        _base_query(None, None, None, only_local_artists=True)
+        _base_query(None, None, None, category_ids, only_local_artists=True)
         .filter(Event.start_datetime >= week_start, Event.start_datetime < week_end)
         .order_by(Event.start_datetime.asc())
         .all()
@@ -150,11 +246,11 @@ def _parse_month_param(month_param, today):
     return today.year, today.month
 
 
-def _build_month_grid(year, month, venue_id, artist_id, selected_genre, only_local_artists, today):
-    """Fetch this month's approved, Music-tagged events (respecting
-    whichever venue/genre/local-artist filters are active -- same
-    _base_query() every other view uses) and lay them out into a
-    Sunday-first week grid for calendar.html's month table.
+def _build_month_grid(year, month, venue_id, artist_id, selected_genre, category_ids, only_local_artists, today):
+    """Fetch this month's approved events in the currently-selected
+    categories (respecting whichever venue/genre/local-artist filters are
+    active -- same _base_query() every other view uses) and lay them out
+    into a Sunday-first week grid for calendar.html's month table.
 
     This exact feature existed once before and was deliberately removed
     (see git history: "Remove Month View ... it was hard to read with more
@@ -178,7 +274,7 @@ def _build_month_grid(year, month, venue_id, artist_id, selected_genre, only_loc
         prev_month_param = f"{year}-{month - 1:02d}"
 
     month_events = (
-        _base_query(venue_id, artist_id, selected_genre, only_local_artists)
+        _base_query(venue_id, artist_id, selected_genre, category_ids, only_local_artists)
         .filter(Event.start_datetime >= month_start, Event.start_datetime < next_month_start)
         .order_by(Event.start_datetime.asc())
         .all()
@@ -239,6 +335,15 @@ def calendar():
     today = local_now().replace(hour=0, minute=0, second=0, microsecond=0)
     week_end = today + timedelta(days=7)
 
+    public_categories = _public_category_choices()
+    selected_category_ids = _resolve_selected_category_ids(request.args, public_categories, bool(venue_id))
+    # Whether *this request* explicitly submitted the category filter --
+    # not just whether the resolved selection happens to differ from the
+    # default -- so "Clear filters" shows up as soon as the filter bar's
+    # been touched at all, same trigger _resolve_selected_category_ids()
+    # itself uses.
+    categories_customized = "categories_submitted" in request.args
+
     # Always query the full unbounded future set (not just the week-view's
     # 7-day window) so a recurring series' badge/date-range is accurate --
     # e.g. "Every Tue/Wed/Thu, thru Aug 15" -- even when only its next
@@ -247,7 +352,7 @@ def calendar():
     # falls in that window; it just computes the grouping from complete
     # data first.
     all_upcoming = (
-        _base_query(venue_id, artist_id, genre_param, only_local_artists)
+        _base_query(venue_id, artist_id, genre_param, selected_category_ids, only_local_artists)
         .filter(Event.start_datetime >= today)
         .order_by(Event.start_datetime.asc())
         .all()
@@ -260,11 +365,35 @@ def calendar():
 
     if view == "week":
         items = [item for item in items if item.event.start_datetime < week_end]
+        # A category pill that just got checked (or unchecked down to a
+        # combination) can easily have nothing landing in the next 7 days
+        # even though real shows exist further out -- e.g. the only
+        # upcoming Comedy night is in three weeks. Rather than showing an
+        # empty "Next 7 Days" view and making the visitor notice and click
+        # "List All" themselves, redirect straight there. Scoped to
+        # "the category filter was actually touched this request"
+        # (categories_customized) so a plain, filter-untouched empty week
+        # -- which just means it's a genuinely quiet week -- still shows
+        # the normal empty state instead of silently jumping to List All
+        # every time.
+        if categories_customized and not items:
+            return redirect(url_for(
+                "main.calendar",
+                view="list",
+                venue=venue_id,
+                genre=genre_param,
+                hide_recurring=("1" if hide_recurring else None),
+                only_local_artists=("1" if only_local_artists else None),
+                category=selected_category_ids,
+                categories_submitted=1,
+            ))
 
     grid = None
     if view == "month":
         year, month = _parse_month_param(request.args.get("month"), today)
-        grid = _build_month_grid(year, month, venue_id, artist_id, genre_param, only_local_artists, today)
+        grid = _build_month_grid(
+            year, month, venue_id, artist_id, genre_param, selected_category_ids, only_local_artists, today
+        )
 
     venues = Venue.query.order_by(Venue.name).all()
     # artist_sort_key() (not a plain ORDER BY) so a "The ..." band lines up
@@ -273,8 +402,8 @@ def calendar():
     artists = sorted(
         Artist.query.filter_by(is_local=True).all(), key=lambda a: artist_sort_key(a.name)
     )
-    genres = _distinct_genres()
-    artists_this_week = _local_artists_playing_this_week(today, week_end)
+    genres = _distinct_genres(selected_category_ids)
+    artists_this_week = _local_artists_playing_this_week(today, week_end, selected_category_ids)
 
     return render_template(
         "calendar.html",
@@ -295,6 +424,9 @@ def calendar():
         only_local_artists=only_local_artists,
         artists_this_week=artists_this_week,
         venue_caution_note=VENUE_CAUTION_NOTE,
+        public_categories=public_categories,
+        selected_category_ids=selected_category_ids,
+        categories_customized=categories_customized,
     )
 
 

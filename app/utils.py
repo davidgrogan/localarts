@@ -81,7 +81,7 @@ def artist_display_letter(name):
     return key[0].upper() if key else ""
 
 
-def get_or_create_event_type(name):
+def get_or_create_event_type(name, is_public_category=False):
     """Look up an EventType by its computed slug, creating it if it
     doesn't exist yet. Shared by the event form's and venue form's
     "quick add a new tag" inputs so typing "music" after "Music" already
@@ -89,6 +89,16 @@ def get_or_create_event_type(name):
     avoid a circular import (models.py doesn't import this module, but
     keeping it lazy here matches the pattern used elsewhere, e.g.
     app/scrapers/base.py's _load_source_types()).
+
+    is_public_category only ever applies to a row this call actually
+    creates -- an already-existing tag's flag is left exactly as it was,
+    even if this call passes a different value. That matters because
+    the event/venue forms' own "quick add a new tag" inputs call this
+    with the default (False, an internal-only tag) on every save, and a
+    re-run of seed.py calls it with True for the curated public
+    categories (see that file) -- neither should ever silently flip a
+    flag an admin already set deliberately via the "Manage categories"
+    page (app/routes/events.py's manage_categories()).
 
     Matches on slug, not a case-insensitive comparison of the raw name --
     confirmed via a real IntegrityError (UNIQUE constraint failed:
@@ -113,7 +123,7 @@ def get_or_create_event_type(name):
     existing = EventType.query.filter_by(slug=slug).first()
     if existing:
         return existing
-    event_type = EventType(name=name, slug=slug)
+    event_type = EventType(name=name, slug=slug, is_public_category=is_public_category)
     db.session.add(event_type)
     db.session.flush()
     return event_type

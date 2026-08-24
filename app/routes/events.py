@@ -361,3 +361,191 @@ def review():
         cancelled_events=cancelled_events,
         rejected_events=rejected_events,
     )
+
+
+@bp.route("/categories")
+def manage_categories():
+    """Admin page for the curated set of "public categories" -- the tags
+    that actually show up as a toggleable pill on the public calendar's
+    filter bar (see EventType.is_public_category's docstring in
+    models.py, and app/routes/main.py's category filter). This is the
+    one place David can add a brand-new public category (say, "Film
+    Screening," a year from now) or retire one, without needing a code
+    change -- every other way of creating an EventType (the event/venue
+    forms' own "quick add a new tag" inputs) still just creates a plain
+    internal-only tag by default, same as always."""
+    event_types = EventType.query.order_by(EventType.name).all()
+    # "Future events tagged" -- counts only events still upcoming as of
+    # right now (local_now(), not datetime.utcnow(), same reasoning as
+    # everywhere else this distinction matters -- see app/utils.py's
+    # SITE_TIMEZONE docstring), not a category's entire all-time history.
+    # A category used constantly a year ago but never since would
+    # otherwise look just as "active" as one with a full week of shows
+    # coming up, which isn't what this count is for -- it's meant to help
+    # decide whether a category is worth keeping public. Counts both
+    # approved and not-yet-approved shows (this is an admin page), so a
+    # category doesn't look artificially empty just because its shows are
+    # still sitting in the Review queue.
+    now = local_now()
+    future_counts = {
+        t.id: sum(1 for e in t.events if e.start_datetime >= now) for t in event_types
+    }
+    return render_template(
+        "events/categories.html", event_types=event_types, future_counts=future_counts
+    )
+
+
+@bp.route("/categories/new", methods=["POST"])
+def new_category():
+    name = request.form.get("name", "").strip()
+    if not name:
+        flash("Category name can't be blank.", "error")
+        return redirect(url_for("events.manage_categories"))
+
+    # get_or_create_event_type() matches on slug, same de-dupe as every
+    # other "quick add a tag" input on the site -- check for that ahead
+    # of time so the flash message can say what actually happened rather
+    # than silently no-op'ing an already-existing tag's flag (see that
+    # function's own docstring for why a match is never overwritten).
+    already_existed = EventType.query.filter_by(slug=slugify(name)).first() is not None
+    is_public = request.form.get("is_public_category") == "1"
+    tag = get_or_create_event_type(name, is_public_category=is_public)
+    db.session.commit()
+
+    if already_existed:
+        flash(
+            f"“{tag.name}” already existed -- its public/internal setting was left as-is. "
+            "Use the toggle below to change it.",
+            "success",
+        )
+    else:
+        where = "the public calendar's filter bar" if tag.is_public_category else "internal tagging only"
+        flash(f"Added “{tag.name}” ({where}).", "success")
+    return redirect(url_for("events.manage_categories"))
+
+
+@bp.route("/categories/<int:event_type_id>/toggle-public", methods=["POST"])
+def toggle_category_public(event_type_id):
+    event_type = EventType.query.get_or_404(event_type_id)
+    event_type.is_public_category = not event_type.is_public_category
+    db.session.commit()
+    flash(
+        f"“{event_type.name}” is now "
+        + ("shown on" if event_type.is_public_category else "hidden from")
+        + " the public calendar's filter bar.",
+        "success",
+    )
+    return redirect(url_for("events.manage_categories"))
+
+
+@bp.route("/categories/<int:event_type_id>/rename", methods=["POST"])
+def rename_category(event_type_id):
+    """Renames a category in place -- same id, same events, same
+    is_public_category value, just a new name/slug. This is the manual,
+    admin-driven version of the plain-rename half of
+    _migrate_renamed_categories() in app/__init__.py (which exists for
+    renames David already knows he wants baked into every install, like
+    "Celebration" -> "Misc."); this route is for one-off cleanup he'd
+    rather do by clicking a button than by asking for a code change.
+
+    Deliberately refuses if the new name's slug would collide with a
+    *different* existing category, rather than silently merging the two
+    -- that's what "Move events to" below is for, and doing it via this
+    form instead would be a surprising way to lose track of which
+    category a show actually meant."""
+    event_type = EventType.query.get_or_404(event_type_id)
+    new_name = request.form.get("name", "").strip()
+    if not new_name:
+        flash("Category name can't be blank.", "error")
+        return redirect(url_for("events.manage_categories"))
+
+    new_slug = slugify(new_name)
+    collision = EventType.query.filter(
+        EventType.slug == new_slug, EventType.id != event_type.id
+    ).first()
+    if collision:
+        flash(
+            f"“{new_name}” is already the name of another category. "
+            "Use “Move events to” instead if you want to merge these two.",
+            "error",
+        )
+        return redirect(url_for("events.manage_categories"))
+
+    old_name = event_type.name
+    event_type.name = new_name
+    event_type.slug = new_slug
+    db.session.commit()
+    flash(f"Renamed “{old_name}” to “{new_name}”.", "success")
+    return redirect(url_for("events.manage_categories"))
+
+
+@bp.route("/categories/<int:event_type_id>/move-to", methods=["POST"])
+def move_category_events(event_type_id):
+    """Moves every event tagged with this category onto a different,
+    already-existing category, then deletes this one -- the manual,
+    admin-driven version of the merge half of _migrate_renamed_categories()
+    in app/__init__.py. Always deletes the source category afterward:
+    since every one of its events just moved, by definition nothing is
+    left tagged with it."""
+    source = EventType.query.get_or_404(event_type_id)
+    target_id = request.form.get("target_id", type=int)
+    if not target_id:
+        flash("Pick a category to move the events into.", "error")
+        return redirect(url_for("events.manage_categories"))
+    if target_id == source.id:
+        flash("Pick a different category than the one you're moving events out of.", "error")
+        return redirect(url_for("events.manage_categories"))
+    target = EventType.query.get_or_404(target_id)
+
+    moved = len(source.events)
+    for event in list(source.events):
+        if target not in event.event_types:
+            event.event_types.append(target)
+        event.event_types.remove(source)
+    source_name = source.name
+    db.session.delete(source)
+    db.session.commit()
+    flash(
+        f"Moved {moved} event{'s' if moved != 1 else ''} from “{source_name}” to "
+        f"“{target.name}”; “{source_name}” has been removed.",
+        "success",
+    )
+    return redirect(url_for("events.manage_categories"))
+
+
+@bp.route("/categories/<int:event_type_id>/delete", methods=["POST"])
+def delete_category(event_type_id):
+    """Deletes a category outright -- allowed as soon as it has no
+    *future* events tagged with it, same "future" definition as the
+    "Future events tagged" column on this page (local_now(), not
+    datetime.utcnow() -- see app/utils.py's SITE_TIMEZONE docstring).
+    Past events can stay tagged with a retired category forever without
+    blocking cleanup -- there's no ongoing show anyone could lose track
+    of by deleting it, only history, and deleting the EventType row just
+    drops those old events' tag (via the event_event_types association
+    table -- SQLAlchemy handles that automatically on delete for a
+    plain `secondary=` many-to-many relationship like this one) without
+    touching the Event rows themselves.
+
+    Originally this refused if the category had ANY event on it, ever --
+    changed after David tried to delete "Gameshow" (one old, past event)
+    and asked for exactly this. If it still has an upcoming event, this
+    still refuses and points at "Move events to" instead, so a cleanup
+    click can't silently pull a real, still-relevant tag out from under
+    a show that hasn't happened yet."""
+    event_type = EventType.query.get_or_404(event_type_id)
+    now = local_now()
+    future_events = [e for e in event_type.events if e.start_datetime >= now]
+    if future_events:
+        flash(
+            f"“{event_type.name}” still has {len(future_events)} future "
+            f"event{'s' if len(future_events) != 1 else ''} tagged with it -- "
+            "move them to another category first, then delete.",
+            "error",
+        )
+        return redirect(url_for("events.manage_categories"))
+    name = event_type.name
+    db.session.delete(event_type)
+    db.session.commit()
+    flash(f"Deleted “{name}”.", "success")
+    return redirect(url_for("events.manage_categories"))

@@ -72,6 +72,21 @@ class EventType(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(80), unique=True, nullable=False)
     slug = db.Column(db.String(80), unique=True, nullable=False)
+    # Not every tag belongs on the public calendar's filter bar -- an
+    # admin might quick-add something narrow/internal (e.g. "karaoke")
+    # while tagging one event, without meaning to promote it to a
+    # site-wide category. This flag is what actually decides which tags
+    # show up as a toggleable pill on the public calendar (see
+    # app/routes/main.py's category filter) versus staying an
+    # admin-only label -- flipped via the "Manage categories" admin page
+    # (app/routes/events.py's manage_categories()), so David can add a
+    # brand-new public category later without needing a code change.
+    # False by default: get_or_create_event_type() only ever sets this
+    # True on a row it's creating for the first time (see that
+    # function's docstring), never on one that already exists, so an
+    # admin's own choice here always survives a re-seed or another
+    # quick-add of the same tag name.
+    is_public_category = db.Column(db.Boolean, default=False, nullable=False)
 
     events = db.relationship("Event", secondary=event_event_types, back_populates="event_types")
     artists = db.relationship("Artist", secondary=artist_event_types, back_populates="category_tags")
