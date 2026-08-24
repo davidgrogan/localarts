@@ -310,6 +310,30 @@ column from a model still mid-rollout on Postgres: guard it with
 `_column_exists()` the same way, since `sync_schema.py` will always hit
 `create_app()` before its own `ADD COLUMN` step runs.
 
+**A second real deploy bug, right after fixing the one above:** once
+`sync_schema.py` got past the `UndefinedColumn` crash and actually tried
+to run its generated `ALTER TABLE event_type ADD COLUMN is_public_category
+BOOLEAN NOT NULL;` against the droplet's Postgres database, it failed
+again with `psycopg2.errors.NotNullViolation: column "is_public_category"
+of relation "event_type" contains null values`. The column was declared
+in `models.py` with `default=False` but no `server_default=` -- and
+`default=` is a Python-side value SQLAlchemy applies through the ORM on
+INSERT, invisible to raw DDL. `sync_schema.py`'s `find_missing_columns()`
+generates its `ADD COLUMN` statement via SQLAlchemy's `CreateColumn`
+compiler, which only ever emits a real `DEFAULT` clause from
+`server_default=`. With no DEFAULT to fall back on, Postgres had no value
+to backfill the `event_type` table's existing rows with, so the NOT NULL
+constraint failed outright. The fix was adding `server_default=false()`
+(from `sqlalchemy.false`) alongside the existing `default=False` on
+`EventType.is_public_category` in `models.py` -- now `CreateColumn`
+compiles to `... BOOLEAN DEFAULT false NOT NULL`, so every existing row
+gets backfilled with `false` and the `ALTER TABLE` succeeds. Worth
+remembering for any *future* `nullable=False` column added to an existing
+table: it needs both `default=` (for the ORM) and `server_default=` (for
+raw DDL like this) to survive a real Postgres deploy -- a nullable column
+only needs `default=`, since existing rows can just take NULL. This is
+also documented directly in `sync_schema.py`'s own docstring.
+
 ## Local artist Genre/Category Tags, filtering, and the featured-artist spotlight
 
 An artist's **Genre Tags** (e.g. "Electronica", "New Wave", "Americana") and

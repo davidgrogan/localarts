@@ -30,6 +30,19 @@ widening ALTER COLUMN ... TYPE statements -- never drops a column,
 narrows one, or otherwise touches existing data -- so it's safe to run
 repeatedly.
 
+IMPORTANT for anyone adding a new `nullable=False` column to an existing
+table: it also needs a `server_default=` set in models.py, not just
+`default=`. SQLAlchemy's `default=` is a Python-side value it applies on
+INSERT through the ORM -- invisible to raw DDL. `CreateColumn` (what
+`find_missing_columns()` below uses to generate each ALTER TABLE
+statement) only ever emits a `DEFAULT` clause from `server_default=`.
+Without one, a NOT NULL column with no way to backfill existing rows
+fails outright on Postgres: `psycopg2.errors.NotNullViolation: column
+"..." contains null values` -- exactly what happened deploying
+`EventType.is_public_category` (see that column's own comment in
+app/models.py for the fix). A nullable column doesn't need this --
+existing rows can just take NULL -- only a NOT NULL one does.
+
 Usage (on the droplet, with DATABASE_URL etc. already exported --
 see DEPLOY.md's "Redeploying after future changes"):
 

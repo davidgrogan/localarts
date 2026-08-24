@@ -8,6 +8,7 @@ observable and debuggable from within the app.
 from datetime import datetime
 
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import false
 
 db = SQLAlchemy()
 
@@ -86,7 +87,23 @@ class EventType(db.Model):
     # function's docstring), never on one that already exists, so an
     # admin's own choice here always survives a re-seed or another
     # quick-add of the same tag name.
-    is_public_category = db.Column(db.Boolean, default=False, nullable=False)
+    #
+    # Both default= (a Python-side default SQLAlchemy applies on INSERT)
+    # AND server_default= (a real database-level DEFAULT clause) are set
+    # here on purpose, not just the first one -- server_default is what
+    # actually let sync_schema.py's generic `ADD COLUMN ... NOT NULL`
+    # backfill this column on every existing row when it first shipped
+    # to the droplet's Postgres database. Without it, CreateColumn's DDL
+    # compiler has no DEFAULT to include at all (default= is invisible
+    # to raw DDL, only server_default= is), so the ALTER TABLE tried to
+    # add a NOT NULL column with no way to fill in a value for rows that
+    # already existed -- a real deploy failure this caused:
+    # `psycopg2.errors.NotNullViolation: column "is_public_category" of
+    # relation "event_type" contains null values`. Any *future* NOT NULL
+    # column added to an existing table needs the same treatment for
+    # sync_schema.py to be able to add it -- see that script's own
+    # docstring for the fuller explanation.
+    is_public_category = db.Column(db.Boolean, default=False, server_default=false(), nullable=False)
 
     events = db.relationship("Event", secondary=event_event_types, back_populates="event_types")
     artists = db.relationship("Artist", secondary=artist_event_types, back_populates="category_tags")
