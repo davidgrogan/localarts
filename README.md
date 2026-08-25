@@ -423,6 +423,21 @@ natural height grow instead of clipping to a fixed number. The "View
 artist profile" button still stays pinned to the bottom of every card
 via `margin-top: auto`, same as before.
 
+David also reported the gallery's Prev/Next buttons and "1 of 2"-style
+counter were confusing when every card already fit on screen at once
+with nothing to scroll to -- the counter still implied a second
+screen's worth of content hiding behind Next. `calendar.html`'s
+`<script>` now has `updateNavVisibility()`, which hides the whole
+Prev/Next/counter block (`#artist-week-nav`) whenever the gallery
+genuinely isn't scrollable (`gallery.scrollWidth <= gallery.clientWidth`),
+and re-checks on window resize -- since how many ~320px cards fit side
+by side depends on viewport width, not just how many cards there are,
+the same gallery can need the buttons on a narrow/mobile screen and not
+need them on a wide desktop one. The server-side `{% if artists_this_week
+| length > 1 %}` check in the template still decides whether to render
+the markup at all (no point rendering Prev/Next for a single card), but
+whether it's actually *visible* is now a client-side, post-layout call.
+
 These four placeholder shows ("Sample Show -- Iron Horse", "-- Parlor Room",
 "-- Academy of Music", "-- Haze") get their dates refreshed on every
 `seed.py` run so they don't quietly roll into the past over time (see the

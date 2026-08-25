@@ -56,7 +56,17 @@
           {% endfor %}
         </div>
         {% if artists_this_week | length > 1 %}
-          <div class="artist-week-nav">
+          {# Server-side this only knows the *count* of cards, not whether
+             they'll actually overflow the gallery's width -- on a wide
+             enough screen, 2 (or even 3) cards fit side by side with
+             nothing to scroll to, and the Prev/Next/"1 of 2" counter below
+             would be actively misleading in that case (a visitor can
+             already see every card, so "1 of 2" reads like there's a
+             second screen's worth of content hiding behind Next). The
+             <script> at the bottom of this page hides this whole block
+             with JS once the page has actually laid out, if the gallery
+             isn't scrollable -- see that script's updateNavVisibility(). #}
+          <div class="artist-week-nav" id="artist-week-nav">
             <button type="button" class="btn btn-small btn-secondary" id="artist-week-prev" aria-label="Previous artist">&larr; Prev</button>
             <span class="artist-week-count" id="artist-week-count"></span>
             <button type="button" class="btn btn-small btn-secondary" id="artist-week-next" aria-label="Next artist">Next &rarr;</button>
@@ -402,15 +412,40 @@
     // give visitors a more obvious, clickable way to do the same scroll,
     // one card at a time, and keep a "2 of 5" style counter in sync with
     // whichever card is currently snapped into view.
+    //
+    // David reported the counter/buttons were confusing when, say, both
+    // of only 2 cards already fit on screen side by side with nothing to
+    // scroll to -- "1 of 2" implied a second screen of content the
+    // visitor could already see in full. updateNavVisibility() hides the
+    // whole Prev/Next/counter block whenever the gallery genuinely isn't
+    // scrollable (scrollWidth <= clientWidth), and re-checks on window
+    // resize, since how many 320px-ish cards fit side by side depends on
+    // viewport width, not just card count -- the same 3-card gallery
+    // might need no buttons on a wide desktop window but need them again
+    // once that window's narrowed or on mobile.
     (function () {
       var gallery = document.getElementById("artist-week-gallery");
       if (!gallery) return;
       var cards = gallery.querySelectorAll(".artist-week-card");
       if (!cards.length) return;
 
+      var navEl = document.getElementById("artist-week-nav");
       var prevBtn = document.getElementById("artist-week-prev");
       var nextBtn = document.getElementById("artist-week-next");
       var countEl = document.getElementById("artist-week-count");
+
+      function updateNavVisibility() {
+        if (!navEl) return;
+        var overflowing = gallery.scrollWidth > gallery.clientWidth + 1;
+        navEl.style.display = overflowing ? "" : "none";
+      }
+
+      var resizeTimer;
+      window.addEventListener("resize", function () {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(updateNavVisibility, 150);
+      });
+      updateNavVisibility();
 
       function currentIndex() {
         // Whichever card's left edge is closest to the gallery's own
