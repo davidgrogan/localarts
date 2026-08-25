@@ -406,6 +406,23 @@ the fallback to the site logo used everywhere an artist has none -- are
 visible in the demo (Local Artists list/index spotlight, artist detail
 page, and the calendar's "Local Artists Playing This Week!" gallery).
 
+David reported these cards were "sometimes not long enough
+height-wise." `.artist-week-card` in `style.css` originally used a
+hard-coded `height: 480px` + `overflow: hidden`, specifically to keep
+every card the same size despite content varying a lot (photo/no photo,
+genre tags/no genre tags, embed/no embed) -- but a real artist's actual
+embed code (a "large" Bandcamp album player, a YouTube embed, etc.) or
+several wrapped genre tags can easily need more than 480px, and
+`overflow: hidden` was silently cropping that content instead of ever
+growing the card. Fixed by dropping the fixed height and overflow
+clipping entirely -- uniform card height still happens automatically,
+since `.artist-week-gallery` is a flex row and flex's default
+`align-items: stretch` already stretches every card to match its
+tallest sibling's *natural* content height; the fix just lets that
+natural height grow instead of clipping to a fixed number. The "View
+artist profile" button still stays pinned to the bottom of every card
+via `margin-top: auto`, same as before.
+
 These four placeholder shows ("Sample Show -- Iron Horse", "-- Parlor Room",
 "-- Academy of Music", "-- Haze") get their dates refreshed on every
 `seed.py` run so they don't quietly roll into the past over time (see the
