@@ -1627,6 +1627,25 @@ edited away or lost if someone rewrites the About copy from scratch --
 `edit_about.html`'s form page says as much, pointing back at
 `app/utils.py` if the wording itself ever needs to change.
 
+David edited the About text locally and ran `deploy_all.sh`, but the
+live site still showed the old copy afterward. Root cause: `about_html`
+lives in the `site_setting` table, and `migrate_to_postgres.py` (which
+`deploy_all.sh` calls to carry local data over) only copies the tables
+listed in its own `TABLES_IN_ORDER` -- `site_setting` had never been
+added to that list, so `git pull`/`sync_schema.py` correctly brought the
+droplet's *code and table structure* up to date (which is why the
+Contact-menu removal deployed fine -- that was a template change, not a
+data edit), but the actual row with the new About text was silently
+never copied. Fixed by adding `site_setting` to `TABLES_IN_ORDER` --
+see that script's own comments for why this whole class of miss (a new
+row-data table quietly not making it into a migration/deploy step) has
+happened before, with the tag/association tables added for the local-
+artist feature. The immediate fix for David: re-run `deploy_all.sh` (or
+just `migrate_to_postgres.py` directly) once his local About edit is in
+place again, or simplest of all, just re-enter the text directly via the
+droplet's own `/about/edit` page instead of relying on local->droplet
+sync for a single-row change.
+
 ## Keeping scraped data honest
 
 Scraping isn't just "find new shows" -- venues change times, and sometimes
