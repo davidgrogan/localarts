@@ -49,7 +49,6 @@
       <a href="{{ url_for('venues.list_venues') }}">Venues</a>
       <a href="{{ url_for('gigs.submit_gig') }}">Submit a Show</a>
       <a href="{{ url_for('main.about_page') }}">About</a>
-      <a href="{{ url_for('contact.contact') }}">Contact</a>
       {% if is_admin %}
         <a href="{{ url_for('events.new_event') }}">+ Add show</a>
         <a href="{{ url_for('events.review') }}" class="review-link">
@@ -85,7 +84,6 @@
       <a href="{{ url_for('venues.list_venues') }}">Venues</a>
       <a href="{{ url_for('gigs.submit_gig') }}">Submit a Show</a>
       <a href="{{ url_for('main.about_page') }}">About</a>
-      <a href="{{ url_for('contact.contact') }}">Contact</a>
       {% if is_admin %}
         <a href="{{ url_for('events.new_event') }}">+ Add show</a>
         <a href="{{ url_for('events.review') }}" class="review-link">
