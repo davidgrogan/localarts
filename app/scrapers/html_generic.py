@@ -10,6 +10,22 @@ by `venue.scrape_config`, a JSON object with:
       "date_selector": "CSS selector *within* an item, for the date/time text",
       "date_format": "optional strptime format, e.g. '%B %d, %Y %I:%M %p'
                        -- if omitted, dateutil's fuzzy parser is used",
+      "date_attr": "optional attribute name to read from the date_selector
+                     match instead of its visible text -- e.g. 'content'
+                     for a <meta itemprop=\"startDate\"
+                     content=\"2026-09-02T19:30:00-04:00\"> element, the
+                     schema.org-microdata pattern Amherst College's own
+                     event calendar uses instead of printing a plain-text
+                     date. Whichever way the date text is obtained, if it
+                     parses as timezone-aware (an explicit UTC offset, as
+                     in that example), it's converted to this site's own
+                     America/New_York wall-clock time and the offset is
+                     dropped before being used as Event.start_datetime --
+                     same reasoning as elfsight_jsonld.py's _to_local()
+                     and squarespace_json.py's _ms_to_local(). A plain-text
+                     date with no offset (the common case for every other
+                     venue using this module) is unaffected, since
+                     dateutil then returns an already-naive datetime.",
       "link_selector": "optional CSS selector *within* an item, for the
                          ticket/detail link (defaults to the title
                          selector's own <a> if present)",
@@ -34,6 +50,26 @@ by `venue.scrape_config`, a JSON object with:
                                        section holding the event's write-up",
       "genre_selector": "optional CSS selector *within* an item, for a
                           genre/category tag's text",
+      "require_selector": "optional CSS selector *within* an item -- if
+                            set, only items containing at least one
+                            element matching this selector are kept;
+                            every other item is silently skipped (not an
+                            error -- see run_scrape()'s missing-streak
+                            handling in base.py for how that's meant to
+                            be used, though a filtered-out item was never
+                            imported in the first place so that logic
+                            doesn't even apply to it). Added for Amherst
+                            College's own calendar, which mixes public
+                            and students-only/internal events on the same
+                            listing page with no way to tell them apart
+                            except a small flag/badge element per item
+                            (confirmed via live DOM inspection:
+                            '.mm-event-listing-flag.open-to-the-public',
+                            versus 'students-only', 'tickets-required',
+                            etc. for other flags an item can carry
+                            instead of or alongside it) -- David only
+                            wanted events explicitly marked 'Open to the
+                            Public' imported at all.",
       "image_selector": "optional CSS selector *within* an item, for an
                           <img> to use as the event's image (reads its
                           src attribute; relative URLs are resolved
@@ -129,6 +165,7 @@ so it's safe for every other venue's date_selector text too.
 import json
 import re
 from urllib.parse import urlsplit
+from zoneinfo import ZoneInfo
 
 import requests
 from bs4 import BeautifulSoup
@@ -137,6 +174,21 @@ from dateutil import parser as dateparser
 from app.scrapers.base import ScrapedEvent, ScrapeError
 
 USER_AGENT = "Mozilla/5.0 (compatible; LocalMusicSitePOC/0.1)"
+
+# Every venue this module currently serves is in the Pioneer Valley --
+# used to convert a timezone-aware parsed date (see date_attr's docstring
+# above) back to naive local wall-clock time, same reasoning as
+# elfsight_jsonld.py's own _VENUE_TZ/_to_local(). A plain-text date with
+# no UTC offset at all (every other venue using this module today) never
+# hits this conversion, since dateutil then returns an already-naive
+# datetime.
+_SITE_TZ = ZoneInfo("America/New_York")
+
+
+def _to_local(parsed_dt):
+    if parsed_dt.tzinfo is not None:
+        return parsed_dt.astimezone(_SITE_TZ).replace(tzinfo=None)
+    return parsed_dt
 
 _WEEKDAY_RE = re.compile(
     r"\b(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\b"
@@ -283,12 +335,14 @@ def parse(raw, venue):
 
     title_sel = config.get("title_selector")
     date_sel = config.get("date_selector")
+    date_attr = config.get("date_attr")
     link_sel = config.get("link_selector")
     description_sel = config.get("description_selector")
     description_from_link = bool(config.get("description_from_link"))
     description_detail_sel = config.get("description_detail_selector")
     genre_sel = config.get("genre_selector")
     image_sel = config.get("image_selector")
+    require_sel = config.get("require_selector")
     date_format = config.get("date_format")
     user_agent = config.get("user_agent") or USER_AGENT
 
@@ -296,6 +350,9 @@ def parse(raw, venue):
     last_known_year = None
 
     for item in items:
+        if require_sel and not item.select_one(require_sel):
+            continue
+
         title_el = item.select_one(title_sel) if title_sel else None
         date_el = item.select_one(date_sel) if date_sel else None
 
@@ -312,7 +369,12 @@ def parse(raw, venue):
         # date_selector matches a single plain-text node with no internal
         # tag boundaries to separate.
         title = title_el.get_text(separator=" ", strip=True) if title_el else None
-        date_text = date_el.get_text(separator=" ", strip=True) if date_el else None
+        if date_el is None:
+            date_text = None
+        elif date_attr:
+            date_text = date_el.get(date_attr)
+        else:
+            date_text = date_el.get_text(separator=" ", strip=True)
         if not title or not date_text:
             # Skip rather than fail outright -- one malformed item on the
             # page shouldn't sink the whole scrape.
@@ -321,6 +383,16 @@ def parse(raw, venue):
         try:
             if date_format:
                 start_dt = dt.strptime(date_text, date_format)
+            elif date_attr:
+                # A date_attr value (e.g. a <meta content="..."> ISO
+                # string) is already machine-readable -- skip the
+                # plain-text heuristics above (_clean_time_range/
+                # _strip_dash_time_range/_first_date_phrase), which exist
+                # only to rescue ambiguous free-typed date text and would
+                # be pure overhead (and, for _first_date_phrase, actively
+                # wrong if a description-like ISO string ever contained a
+                # weekday name) here.
+                start_dt = dateparser.parse(date_text)
             else:
                 phrase = _first_date_phrase(
                     _strip_dash_time_range(_clean_time_range(date_text))
@@ -332,6 +404,7 @@ def parse(raw, venue):
                 last_known_year = start_dt.year
         except (ValueError, OverflowError):
             continue
+        start_dt = _to_local(start_dt)
 
         if link_sel:
             link_el = item.select_one(link_sel)

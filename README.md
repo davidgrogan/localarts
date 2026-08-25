@@ -784,6 +784,12 @@ to fetch and concatenate several pages per scrape (Smith is seeded with
 `max_pages: 6`) -- both are no-ops for every existing venue's single-page
 config.
 
+Two more `html_generic.py` config keys, `date_attr` (read an attribute
+like a `<meta content="...">` instead of visible text) and
+`require_selector` (only keep items matching a flag/badge element), were
+added for Amherst College -- see that venue's own write-up further down
+for the real-world case that motivated each.
+
 **On Haze (hazenorthampton.org):** a custom Next.js site with its own
 built-in calendar widget, not a third-party embed. A plain fetch returns
 the full month-grid HTML already rendered, so no headless browser is
@@ -1263,6 +1269,68 @@ noted in CitySpace's caveat above. The very first real scrape should
 still be spot-checked on the **Venues → Amherst Cinema → Test scrape**
 preview page before running **Run scrape now** for real.
 
+**On Amherst College (220 South Pleasant St., Amherst):** David asked to
+add the college's own public events calendar, but only wanted events
+explicitly marked "Open to the Public" imported -- the calendar mixes
+those in with a much larger volume of students-only/internal listings
+(confirmed live: roughly 1-in-6 events on a real page carries that flag).
+Confirmed Drupal Views via live DOM inspection (body class
+"not-logged-in", each event an `<article class="mm-calendar-event">`),
+server-rendered with no headless browser needed, so this reuses
+`html_generic.py` -- but needed two new config keys, since nothing
+existing covered either of this venue's real quirks:
+
+- **`require_selector`** -- only keeps items containing at least one
+  element matching this selector; every other item is silently skipped.
+  Amherst College's flag markup is `<div class="mm-event-listing-flag
+  open-to-the-public">Open to the Public</div>`, one of several possible
+  flag divs an event can carry (others seen live: `students-only`,
+  `tickets-required`, `registration-required`) -- and confirmed an event
+  can carry more than one at once (e.g. "Monteverdi's Legacy" had both
+  `tickets-required` and `open-to-the-public`), so this is a "some flag
+  matches" check, not "the only flag is this one." `scrape_config` here
+  sets it to `.mm-event-listing-flag.open-to-the-public`.
+- **`date_attr`** -- reads an attribute off the date_selector match
+  instead of its visible text. This calendar's listing prints no
+  machine-readable plain-text date at all (just a label like "TUE, AUG
+  25, 2026"); the real date lives in a schema.org
+  `<meta itemprop="startDate" content="2026-09-02T19:30:00-04:00">`
+  element, so `date_selector` targets that meta tag and `date_attr` is
+  set to `"content"`. Its ISO string carries an explicit UTC offset,
+  which `html_generic.py`'s new `_to_local()` (mirroring
+  `elfsight_jsonld.py`'s own `_to_local()` and `squarespace_json.py`'s
+  `_ms_to_local()` from earlier this session) converts to naive
+  America/New_York wall-clock time via a real `.astimezone()` call
+  rather than just discarding the offset -- verified in
+  `test_amherst_college.py` with a deliberately UTC-offset (`+00:00`)
+  timestamp that only comes out at the correct local hour if that real
+  conversion happens. A plain-text date with no offset at all (every
+  other `html_generic.py` venue) is unaffected, since dateutil then
+  returns an already-naive datetime that `_to_local()` passes through
+  unchanged.
+
+No `default_event_type` here, same reasoning as CitySpace above: "open
+to the public" spans lectures, concerts, receptions, and exhibits, not
+just music, so scraped events land untagged in the Review queue.
+`page_param`/`max_pages` reuse Smith College's existing pagination
+support -- confirmed the "SHOW MORE EVENTS" link is a plain
+`?_page=1`, `?_page=2`, ... Views pager URL (not AJAX-only), and a page
+past the real last one comes back 200 with zero events rather than an
+error, so `max_pages=4` (covering roughly 10-12 weeks forward, given
+each page spans about 3 weeks) is a safe, if slightly generous, default.
+
+**Caveat:** same as CitySpace/Amherst Cinema above -- verified against
+synthetic HTML built from real, individually-confirmed classes and
+values (including the exact multi-flag and UTC-offset edge cases), not
+a live fetch, since this sandbox can't reach amherst.edu. Also
+unconfirmed from this sandbox: whether the event thumbnail images
+(served from a `/system/files/styles/.../private/...` Drupal path) are
+hotlink-protected the way Amherst Cinema's own poster images turned out
+to be -- worth a look at the **Venues → Amherst College → Test scrape**
+preview's rendered image before trusting it blindly; if it turns out
+blank the same fix (`_download_poster()`-style re-hosting) would apply
+here too.
+
 **On One Amber Lane (1 Amber Ln, Northampton):** confirmed Squarespace
 (body class fingerprint) via live browser inspection, so this venue
 reuses `app/scrapers/squarespace_json.py` completely unmodified -- the
@@ -1725,7 +1793,7 @@ source .venv/bin/activate        # .venv\Scripts\activate on Windows
 pip install -r requirements.txt
 playwright install chromium      # one-time browser download, needed for rendered_html venues
 
-python seed.py                   # adds Iron Horse, Parlor Room, Academy of Music, Haze, Luthier's Co-Op, 33 Hawley, The Heavy Culture Cooperative, Quonk, BOMBYX Center for Arts & Equity, CitySpace, Amherst Cinema, One Amber Lane, DIY (catch-all for submitted one-off shows), sample artists/shows
+python seed.py                   # adds Iron Horse, Parlor Room, Academy of Music, Haze, Luthier's Co-Op, 33 Hawley, The Heavy Culture Cooperative, Quonk, BOMBYX Center for Arts & Equity, CitySpace, Amherst College, Amherst Cinema, One Amber Lane, DIY (catch-all for submitted one-off shows), sample artists/shows
 python run.py                    # http://127.0.0.1:5000
 ```
 

@@ -534,6 +534,73 @@ def main():
             # same handful of listings every scrape.
         )
 
+        amherst_college = get_or_create_venue(
+            name="Amherst College",
+            slug="amherst-college",
+            address="220 South Pleasant St.",
+            city="Amherst",
+            state="MA",
+            website_url="https://www.amherst.edu",
+            # Confirmed Drupal Views (body class "not-logged-in", each
+            # event an <article class="mm-calendar-event">) via live DOM
+            # inspection -- a plain requests.get() sees the same
+            # server-rendered markup, no headless browser needed.
+            events_url="https://www.amherst.edu/news/events/calendar",
+            source_type="html",
+            # David asked for only events explicitly marked "Open to the
+            # Public" -- this campus calendar mixes those in with a much
+            # larger volume of students-only/internal events (roughly
+            # 1-in-6 on a real page, confirmed live), with no way to tell
+            # them apart except a small flag/badge element per event.
+            # require_selector (added to html_generic.py this session)
+            # only keeps items containing a
+            # ".mm-event-listing-flag.open-to-the-public" match -- an
+            # event carrying that flag *alongside* another one (e.g.
+            # "Tickets Required", "Registration Required" -- confirmed
+            # both appear on real events) is still kept; only
+            # "Students Only" or no flag at all gets filtered out.
+            #
+            # date_selector targets the event's own schema.org
+            # <meta itemprop="startDate" content="2026-...-04:00">
+            # rather than any visible text -- Amherst College's calendar
+            # doesn't print a plain-text date/time on the listing at all
+            # (only "TUE, AUG 25, 2026" as a *label*, not machine-
+            # readable) -- date_attr="content" reads that meta tag's
+            # attribute instead of get_text(). Its ISO string carries an
+            # explicit -04:00/-05:00 UTC offset that html_generic.py's
+            # new _to_local() converts to naive America/New_York time
+            # (same reasoning as the Amherst Cinema/One Amber Lane fixes
+            # earlier this session), rather than relying on the printed
+            # offset always exactly matching what zoneinfo computes.
+            #
+            # No default_event_type -- like CitySpace above, "open to the
+            # public" here spans lectures, concerts, receptions, and
+            # exhibits, not just music, so scraped events land untagged
+            # in the Review queue for an admin to tag by hand.
+            #
+            # page_param/max_pages: the "SHOW MORE EVENTS" link at the
+            # bottom of the page is a plain '?_page=1', '?_page=2', ...
+            # Views pager URL (confirmed via direct navigation, not an
+            # AJAX-only control) -- a request past the last real page
+            # comes back 200 with zero events rather than an error, so
+            # over-fetching is harmless. Each page covers roughly 3
+            # weeks (25 raw events/page, ~1-in-6 of which are actually
+            # "Open to the Public"); max_pages=4 covers about 10-12
+            # weeks forward, similar in spirit to Amherst Cinema's own
+            # 21-day default -- just wider, given the low keep-rate here.
+            scrape_config=(
+                '{"item_selector": "article.mm-calendar-event", '
+                '"title_selector": "h2.mm-event-listing-title", '
+                '"date_selector": "meta[itemprop=\\"startDate\\"]", '
+                '"date_attr": "content", '
+                '"description_selector": "div.mm-event-listing-description", '
+                '"image_selector": "img", '
+                '"require_selector": ".mm-event-listing-flag.open-to-the-public", '
+                '"page_param": "_page", '
+                '"max_pages": 4}'
+            ),
+        )
+
         amherst_cinema = get_or_create_venue(
             name="Amherst Cinema",
             slug="amherst-cinema",
