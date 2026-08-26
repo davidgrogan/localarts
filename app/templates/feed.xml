@@ -1,0 +1,52 @@
+{#- RSS 2.0 output for main.py's feed_rss(). Rendered as a .xml template
+   so Flask/Jinja's default autoescaping (on for .xml/.html/.htm/.xhtml
+   filenames) correctly escapes &, <, >, ', " in every {{ variable }}
+   substitution below -- e.g. an event titled "Rock & Roll Night" comes
+   out as "Rock &amp; Roll Night", which is what valid XML requires.
+
+   Deliberately NO HTML named entities (&mdash;, &middot;, etc.) anywhere
+   in this file's own *static* markup, unlike the site's HTML templates --
+   those aren't standard XML entities (XML only ever defines &lt; &gt;
+   &amp; &apos; &quot;), and static template text passes through Jinja
+   untouched (autoescaping only applies to {{ }} substitutions), so
+   writing one directly here would emit a genuinely invalid, unparseable
+   XML document. Plain UTF-8 characters (an actual em dash "—", not the
+   entity) are used instead, which is fine since the file is served as
+   UTF-8. Inside <![CDATA[ ]]> blocks this doesn't matter either way --
+   CDATA content is never parsed as XML at all, just delivered as literal
+   text, which is exactly why event.description (which can itself contain
+   real HTML, including HTML entities copied verbatim from a scraped
+   source page) is safe to drop in there via `| safe` rather than double-
+   escaped. -#}
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+<channel>
+  <title>{{ feed_title }}</title>
+  <link>{{ url_for('main.calendar', _external=True) }}</link>
+  <atom:link href="{{ feed_self_url }}" rel="self" type="application/rss+xml" />
+  <description>Upcoming events in the Northampton, MA area, pulled together from local venue listings.</description>
+  <language>en-us</language>
+  <lastBuildDate>{{ build_time_utc | rfc822 }}</lastBuildDate>
+{% for event in events %}
+  <item>
+    <title>{{ event.title }} - {{ event.start_datetime | dtfmt("%a %b %-d, %Y %-I:%M %p") }}</title>
+    <link>{{ url_for('main.event_detail', event_id=event.id, _external=True) }}</link>
+    <guid isPermaLink="true">{{ url_for('main.event_detail', event_id=event.id, _external=True) }}</guid>
+    <pubDate>{{ event.created_at | rfc822 }}</pubDate>
+{% for t in event.event_types %}    <category>{{ t.name }}</category>
+{% endfor -%}
+    <description><![CDATA[
+      <p><strong>When:</strong> {{ event.start_datetime | dtfmt("%A, %B %-d, %Y %-I:%M %p") }}</p>
+      <p><strong>Where:</strong> {{ event.display_venue_name }}{% if not event.custom_venue_name and event.venue.city %}, {{ event.venue.city }}, {{ event.venue.state }}{% endif %}</p>
+{% if event.description %}
+      {{ event.description | safe }}
+{% endif -%}
+{% if event.ticket_url %}
+      <p><a href="{{ event.ticket_url }}">Tickets / more info</a></p>
+{% endif -%}
+      <p><a href="{{ url_for('main.event_ics', event_id=event.id, _external=True) }}">Add to calendar (.ics)</a></p>
+    ]]></description>
+  </item>
+{% endfor -%}
+</channel>
+</rss>

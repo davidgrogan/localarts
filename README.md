@@ -1612,6 +1612,88 @@ a not-yet-approved show's `.ics` 404s for anyone who isn't logged in as
 admin, so a guessable URL can't leak an unvetted show onto someone's
 calendar before it's been reviewed.
 
+## RSS feed (`/feed`, `/feed.rss`) and schema.org Event markup
+
+A visitor can subscribe to upcoming shows in any RSS reader instead of
+checking back on the site -- `/feed` (`feed_builder.html`) is a plain page
+of venue/category checkboxes that builds the right feed URL client-side
+(no server round-trip needed just to assemble a querystring), with
+"Preview feed" and "Copy link" next to it. The feed itself is
+`/feed.rss` (`main.py`'s `feed_rss()`, rendered by `app/templates/feed.xml`)
+-- always capped at `FEED_MAX_DAYS_AHEAD` (90) days out, always ordered by
+`Event.start_datetime` (soonest show first), narrowed by any combination
+of `?venue=<id>` (repeatable) and `?category=<id>` (repeatable, same
+multi-value convention as the calendar's own category filter) -- leaving
+either off means "every venue"/"every public category," matching how the
+builder page's checkboxes read when none are checked. `main.py`'s
+`_base_query()` (the same shared query builder behind the calendar view,
+the month grid, and the "Local Artists Playing This Week" gallery) grew
+an optional `venue_ids` parameter for this, alongside its existing
+category-id filtering.
+
+Every page on the site links to the *global* feed via an RSS
+auto-discovery `<link rel="alternate" type="application/rss+xml">` in
+`base.html`'s `<head>` (lets a browser extension or feed reader find it
+without hunting for the nav link) plus a plain "RSS" nav link pointing at
+`/feed` to build a narrower one.
+
+A few RSS-specific design points worth knowing if this ever needs
+touching again:
+
+- **`<pubDate>` is `Event.created_at` (when the listing was *added* to
+  this site), not `Event.start_datetime` (when the show itself
+  happens).** RSS readers use `<pubDate>` to sort/flag "new" items, and a
+  future-dated `<pubDate>` (which start_datetime almost always is, for an
+  upcoming show) can be silently hidden or mishandled by some readers.
+  The show's actual date instead shows up in the item's `<title>` and in
+  its description's "When:" line -- the feed's own *ordering* is still by
+  `start_datetime`, so a reader that sorts by pubDate and one that just
+  displays feed order both end up chronological in practice.
+- **`<pubDate>`/`<lastBuildDate>` use `app/utils.py`'s `rfc822_utc()`**
+  (an RFC 822 date string via `email.utils.format_datetime`), which
+  expects a naive-but-genuinely-UTC input -- `Event.created_at`/
+  `updated_at` qualify (`default=datetime.utcnow`), but `local_now()`
+  does NOT (it's naive *local* wall-clock time, see `SITE_TIMEZONE`'s
+  docstring) and must never be passed to it directly. `feed_rss()` builds
+  `<lastBuildDate>` from a dedicated `datetime.utcnow()` call
+  (`build_time_utc`) for exactly this reason, after an early version of
+  this feature briefly did feed `local_now()` in and silently came out
+  hours off.
+- **`feed.xml` is a hand-rolled template, not a library** (`feedgen`
+  wasn't already a dependency, and RSS 2.0 is simple enough not to need
+  one) -- rendered as `.xml` specifically so Jinja's default autoescaping
+  (on for `.xml`/`.html`/`.htm`/`.xhtml` template filenames) correctly
+  escapes `{{ }}` substitutions. Its static markup deliberately avoids
+  HTML named entities like `&mdash;`/`&middot;` (valid in the site's HTML
+  templates, but not valid bare XML entities -- only `&lt;` `&gt;`
+  `&amp;` `&apos;` `&quot;` are) in favor of literal UTF-8 characters;
+  each item's description is wrapped in `<![CDATA[ ]]>` instead, since
+  CDATA content is never parsed as XML at all, which is also why
+  `event.description`'s own admin-entered HTML is safe to drop in there
+  via `| safe`.
+- Each item reuses existing site plumbing rather than duplicating it: its
+  `<link>`/`<guid isPermaLink="true">` is the same `/show/<id>` permalink
+  as the Event Details page, and its description includes a link to the
+  same `.ics` "Add to calendar" file described above.
+
+Separately (same "help external tools understand the events on this
+site" spirit as the feed, though not itself part of it), every Event
+Details page now carries a schema.org `Event` JSON-LD `<script>` block
+(`app/utils.py`'s `build_event_jsonld()`, called from `main.py`'s
+`event_detail()`) -- the structured-data format Google looks for to show
+a show as a rich result (date/venue/ticket link) instead of a plain blue
+link. Deliberately the generic `"Event"` type rather than the more
+specific `"MusicEvent"`, since not every show carries a Music category
+tag (Comedy, Art Exhibits, Misc., etc. all show up on the calendar too).
+Reuses the same `display_venue_name`/"skip the placeholder venue's own
+address once `custom_venue_name` is set" logic `build_event_ics()`
+already used, plus a new `iso_local_offset()` helper (naive local
+`start_datetime`/`end_datetime` &rarr; a full ISO 8601 string with an
+explicit `-04:00`/`-05:00` offset, resolved correctly across the Daylight
+Saving boundary by `ZoneInfo`) and a small `plain_text()` helper (strips
+tags out of the admin-entered description, since JSON-LD's description
+field is supposed to be plain text).
+
 ## Uploading a flyer on the Add/Edit Show form
 
 The manual Add/Edit Show form (`/events/new`, `/events/<id>/edit`) can

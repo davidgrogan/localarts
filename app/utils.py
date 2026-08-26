@@ -4,6 +4,7 @@ import re
 import threading
 import uuid
 from datetime import datetime, timedelta, timezone
+from email.utils import format_datetime
 from zoneinfo import ZoneInfo
 
 import requests
@@ -33,6 +34,54 @@ def local_now():
     used as an "upcoming events" cutoff, or otherwise needs to line up with
     what a show's stored time actually means."""
     return datetime.now(SITE_TIMEZONE).replace(tzinfo=None)
+
+
+def rfc822_utc(naive_utc_dt):
+    """Format a naive-but-genuinely-UTC datetime (Event.created_at,
+    Event.updated_at -- both `default=datetime.utcnow`, unlike
+    start_datetime, which is naive *local* wall-clock time, see
+    SITE_TIMEZONE's docstring above) as an RFC 822 date string, e.g.
+    "Tue, 25 Aug 2026 14:00:00 +0000" -- the format RSS 2.0's <pubDate>
+    and <lastBuildDate> require. Explicitly attaches tzinfo=utc before
+    handing off to email.utils.format_datetime(): that function assumes
+    a naive datetime is in the *server's own local system time* if not
+    told otherwise, which would silently mislabel this value (already
+    correct as UTC) as whatever timezone the server process happens to
+    be running under."""
+    return format_datetime(naive_utc_dt.replace(tzinfo=timezone.utc))
+
+
+def iso_local_offset(naive_local_dt):
+    """Format a naive *local* wall-clock datetime (Event.start_datetime /
+    end_datetime -- see SITE_TIMEZONE's docstring above, NOT the same
+    naive-but-UTC convention rfc822_utc() above handles) as a full ISO 8601
+    string with an explicit America/New_York UTC offset, e.g.
+    "2026-08-26T19:00:00-04:00" -- the format schema.org's Event.startDate/
+    endDate expect (a bare "2026-08-26T19:00:00" with no offset is technically
+    allowed but leaves a reader to guess the timezone; an explicit offset
+    removes the ambiguity). `.replace(tzinfo=SITE_TIMEZONE)` -- not a real
+    conversion, just labeling an already-correct local wall-clock value, same
+    approach build_event_ics() uses -- lets ZoneInfo resolve the correct
+    -04:00 (EDT) vs -05:00 (EST) offset for that specific date, so this comes
+    out right on both sides of a Daylight Saving transition."""
+    return naive_local_dt.replace(tzinfo=SITE_TIMEZONE).isoformat()
+
+
+def plain_text(html):
+    """Strip tags out of an admin-entered description (Event.description --
+    same trusted-HTML column as Artist.embed_code/about_html, see those
+    columns' docstrings in models.py) down to plain text, for contexts that
+    can't render HTML: schema.org JSON-LD's "description" field (this is
+    the only caller right now, see events/detail.html) is supposed to be
+    plain text, and embedding raw HTML tags there is invalid. Deliberately
+    not a full HTML parser (BeautifulSoup) -- this only ever runs on
+    admin-typed markup (bold/links/paragraphs), never on scraped/untrusted
+    input, so a regex tag-strip plus entity-unescape is enough."""
+    import html as _html
+
+    text = re.sub(r"<[^>]+>", " ", html or "")
+    text = _html.unescape(text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def slugify(text):
@@ -675,3 +724,91 @@ def build_event_ics(event):
     cal.add("calscale", "GREGORIAN")
     cal.add_component(vevent)
     return cal.to_ical()
+
+
+def build_event_jsonld(event):
+    """A schema.org Event dict for the JSON-LD `<script type="application/
+    ld+json">` block on events/detail.html -- lets Google (and any other
+    search engine/crawler that understands schema.org) show this show as a
+    rich result (date/venue/ticket link) instead of a plain blue link.
+    Returns a plain dict, not a JSON string -- the template embeds it with
+    Jinja's `| tojson` filter, which both serializes it *and* escapes it
+    safely for a <script> context (escaping `<`/`>`/`&`, so e.g. a title
+    containing "</script>" can't break out of the block) -- something a
+    hand-rolled json.dumps() call wouldn't do for you.
+
+    Deliberately schema.org's generic "Event" type, not the more specific
+    "MusicEvent" -- not every show on this calendar is music (see the
+    public-category tags: Comedy, Art Exhibits, Misc., etc., alongside
+    Music), and there's no per-event way to tell which of those a given
+    show is other than its (possibly multiple, possibly zero) category
+    tags, so picking one specific subtype would be wrong or arbitrary for
+    a lot of events.
+    """
+    from flask import request, url_for
+
+    detail_url = url_for("main.event_detail", event_id=event.id, _external=True)
+
+    # Same "use display_venue_name and skip venue.address/city/state once
+    # custom_venue_name is set" reasoning as build_event_ics() above --
+    # the placeholder ("DIY") Venue's own address doesn't belong to this
+    # specific one-off location and would be actively wrong to publish.
+    location = {"@type": "Place", "name": event.display_venue_name}
+    if not event.custom_venue_name:
+        address_parts = {}
+        if event.venue.address:
+            address_parts["streetAddress"] = event.venue.address
+        if event.venue.city:
+            address_parts["addressLocality"] = event.venue.city
+        if event.venue.state:
+            address_parts["addressRegion"] = event.venue.state
+        if address_parts:
+            address_parts["@type"] = "PostalAddress"
+            location["address"] = address_parts
+
+    image_url = event.image_url or (event.venue.image_url if not event.custom_venue_name else None)
+    if image_url:
+        image_url = resolve_image_url(image_url)
+        # resolve_image_url() returns a *relative* URL for a locally
+        # uploaded flyer/photo (see that function's own docstring) --
+        # correct for an <img src="">, but schema.org's "image" wants a
+        # complete, absolute URL, so a relative one is joined against this
+        # request's own host here. An already-absolute pasted external URL
+        # (the common case) passes through urljoin() unchanged.
+        from urllib.parse import urljoin
+
+        image_url = urljoin(request.url_root, image_url)
+
+    data = {
+        "@context": "https://schema.org",
+        "@type": "Event",
+        "name": event.title,
+        "startDate": iso_local_offset(event.start_datetime),
+        "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
+        "eventStatus": "https://schema.org/EventScheduled",
+        "location": location,
+        "url": detail_url,
+    }
+    if event.end_datetime:
+        data["endDate"] = iso_local_offset(event.end_datetime)
+    if image_url:
+        data["image"] = [image_url]
+    if event.description:
+        data["description"] = plain_text(event.description)
+    if event.ticket_url:
+        data["offers"] = {
+            "@type": "Offer",
+            "url": event.ticket_url,
+            "availability": "https://schema.org/InStock",
+        }
+    if event.artists:
+        # "MusicGroup" (a Person/Organization subtype), not the more
+        # specific-sounding but wrong "PerformingGroup" -- schema.org
+        # doesn't actually define that as a type. Reasonable even for a
+        # solo artist -- schema.org has no dedicated "solo musician"
+        # type, and MusicGroup's own spec explicitly allows a single
+        # performer.
+        data["performer"] = [
+            {"@type": "MusicGroup", "name": a.name} for a in event.artists
+        ]
+    return data

@@ -1,6 +1,13 @@
 {% extends "base.html" %}
 {% block title %}{{ event.title }}{% endblock %}
 {% block content %}
+  {# Structured data for search engines (Google's "rich result" Event
+     markup) -- see app/utils.py's build_event_jsonld() for what's in
+     event_jsonld and why. `| tojson` both serializes the dict and
+     escapes it safely for a <script> context (Flask/Jinja's tojson is
+     built for exactly this), so no manual escaping is needed here. #}
+  <script type="application/ld+json">{{ event_jsonld | tojson }}</script>
+
   <h1>{{ event.title }}</h1>
 
   <p class="meta">

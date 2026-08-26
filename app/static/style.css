@@ -434,6 +434,29 @@ h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; lett
   font-weight: 600;
 }
 
+/* /feed (feed_builder.html) -- the readonly URL box + Copy/Preview
+   buttons row. Same row-of-controls shape as .filters/.inline-form, but
+   the text input needs to actually grow to show a long querystring
+   rather than sizing to its (empty) placeholder like those. */
+.feed-url-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 0.5rem 0;
+}
+.feed-url-box {
+  flex: 1 1 320px;
+  min-width: 0;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.85rem;
+  font-family: monospace;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper-warm);
+  color: var(--ink);
+}
+
 .recurring-toggle {
   display: flex;
   align-items: center;

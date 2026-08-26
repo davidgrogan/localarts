@@ -36,6 +36,15 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+  <!-- RSS auto-discovery: lets a browser extension or feed reader find
+       the feed just from this page's URL, without a visitor having to
+       hunt for the "RSS" nav link below. Always points at the global,
+       unfiltered feed (main.feed_rss with no query params) -- there's no
+       single "current" custom feed to auto-discover once venue/category
+       filters are in play, so those stay something a visitor builds by
+       hand on /feed (see feed_builder.html). -->
+  <link rel="alternate" type="application/rss+xml" title="Paradise City Music -- Upcoming Shows" href="{{ url_for('main.feed_rss', _external=True) }}">
 </head>
 <body>
   <header class="site-header">
@@ -49,6 +58,7 @@
       <a href="{{ url_for('venues.list_venues') }}">Venues</a>
       <a href="{{ url_for('gigs.submit_gig') }}">Submit a Show</a>
       <a href="{{ url_for('main.about_page') }}">About</a>
+      <a href="{{ url_for('main.feed_builder') }}">RSS</a>
       {% if is_admin %}
         <a href="{{ url_for('events.new_event') }}">+ Add show</a>
         <a href="{{ url_for('events.review') }}" class="review-link">
@@ -84,6 +94,7 @@
       <a href="{{ url_for('venues.list_venues') }}">Venues</a>
       <a href="{{ url_for('gigs.submit_gig') }}">Submit a Show</a>
       <a href="{{ url_for('main.about_page') }}">About</a>
+      <a href="{{ url_for('main.feed_builder') }}">RSS</a>
       {% if is_admin %}
         <a href="{{ url_for('events.new_event') }}">+ Add show</a>
         <a href="{{ url_for('events.review') }}" class="review-link">

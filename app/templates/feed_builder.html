@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}RSS Feed{% endblock %}
+{% block content %}
+  <h2 class="section-heading">Subscribe to an RSS feed</h2>
+  <p class="hero-note" style="margin-bottom: 1.25rem;">
+    Get new shows in your RSS reader instead of checking back here. The
+    feed always covers the next {{ feed_max_days_ahead }} days. Leave
+    everything below unchecked for every venue and category -- check a
+    few boxes to build a narrower feed instead.
+  </p>
+
+  {# No <form>/submit here on purpose: nothing needs to round-trip to the
+     server just to build a URL out of some checkbox values, so the URL
+     box below is assembled and kept in sync entirely client-side (see
+     the <script> at the bottom). The feed itself, once you follow the
+     link, is the real server-rendered thing (main.py's feed_rss() /
+     feed.xml). #}
+  <fieldset class="category-toggles" style="margin-bottom: 0.5rem;">
+    <legend class="hero-note" style="margin-bottom: 0.4rem;"><strong>Venues</strong> (none checked = all venues)</legend>
+    {% for v in venues %}
+      <label class="category-pill">
+        <input type="checkbox" class="feed-venue-toggle" value="{{ v.id }}">
+        {{ v.name }}
+      </label>
+    {% endfor %}
+  </fieldset>
+
+  <fieldset class="category-toggles" style="margin-bottom: 1rem;">
+    <legend class="hero-note" style="margin-bottom: 0.4rem;"><strong>Categories</strong> (none checked = all public categories)</legend>
+    {% for c in public_categories %}
+      <label class="category-pill">
+        <input type="checkbox" class="feed-category-toggle" value="{{ c.id }}">
+        {{ c.name }}
+      </label>
+    {% endfor %}
+  </fieldset>
+
+  <div class="feed-url-row">
+    <input type="text" id="feed-url-box" class="feed-url-box" readonly>
+    <button type="button" class="btn btn-small btn-secondary" id="feed-copy-btn">Copy link</button>
+    <a class="btn btn-small" id="feed-preview-link" href="{{ url_for('main.feed_rss') }}" target="_blank" rel="noopener">Preview feed</a>
+  </div>
+  <p class="hero-note" id="feed-copy-status" style="min-height: 1.2em;"></p>
+
+  <p class="hero-note">
+    Paste that link into any RSS reader (Feedly, NetNewsWire, Inoreader,
+    etc.) to subscribe. Each item links back to the show's own page here,
+    and includes an "Add to calendar (.ics)" link.
+  </p>
+
+  <script>
+    (function () {
+      // Base URL comes from the server (main.feed_rss with no query
+      // params) so this still works correctly if the app is ever mounted
+      // under a URL prefix -- only the ?venue=/&category= part gets
+      // built client-side.
+      var baseUrl = {{ url_for('main.feed_rss', _external=True) | tojson }};
+      var urlBox = document.getElementById('feed-url-box');
+      var previewLink = document.getElementById('feed-preview-link');
+      var copyBtn = document.getElementById('feed-copy-btn');
+      var copyStatus = document.getElementById('feed-copy-status');
+
+      function checkedValues(selector) {
+        return Array.prototype.slice
+          .call(document.querySelectorAll(selector + ':checked'))
+          .map(function (el) { return el.value; });
+      }
+
+      function buildUrl() {
+        var params = [];
+        checkedValues('.feed-venue-toggle').forEach(function (id) {
+          params.push('venue=' + encodeURIComponent(id));
+        });
+        checkedValues('.feed-category-toggle').forEach(function (id) {
+          params.push('category=' + encodeURIComponent(id));
+        });
+        var url = params.length ? baseUrl + '?' + params.join('&') : baseUrl;
+        urlBox.value = url;
+        previewLink.href = url;
+        copyStatus.textContent = '';
+        return url;
+      }
+
+      document.querySelectorAll('.feed-venue-toggle, .feed-category-toggle').forEach(function (el) {
+        el.addEventListener('change', buildUrl);
+      });
+
+      copyBtn.addEventListener('click', function () {
+        var url = urlBox.value;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(url).then(function () {
+            copyStatus.textContent = 'Copied!';
+          }, function () {
+            urlBox.select();
+            copyStatus.textContent = 'Press Ctrl/Cmd+C to copy.';
+          });
+        } else {
+          urlBox.select();
+          copyStatus.textContent = 'Press Ctrl/Cmd+C to copy.';
+        }
+      });
+
+      buildUrl();
+    })();
+  </script>
+{% endblock %}

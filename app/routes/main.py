@@ -14,6 +14,7 @@ from app.utils import (
     VENUE_CAUTION_NOTE,
     artist_sort_key,
     build_event_ics,
+    build_event_jsonld,
     slugify,
 )
 
@@ -129,7 +130,7 @@ def _resolve_selected_category_ids(args, public_choices, venue_selected):
     return [cid for cid in requested if cid in valid_ids]
 
 
-def _base_query(venue_id, artist_id, selected_genre, category_ids, only_local_artists=False):
+def _base_query(venue_id, artist_id, selected_genre, category_ids, only_local_artists=False, venue_ids=None):
     query = Event.query.filter(Event.is_approved.is_(True))
     if not category_ids:
         # No public category selected at all (an explicit "everything
@@ -146,6 +147,17 @@ def _base_query(venue_id, artist_id, selected_genre, category_ids, only_local_ar
     query = query.filter(Event.event_types.any(EventType.id.in_(category_ids)))
     if venue_id:
         query = query.filter(Event.venue_id == venue_id)
+    # venue_ids -- a *list* of venues, distinct from the single venue_id
+    # above (the calendar page's own single-select dropdown). Added for
+    # the RSS feed builder (build_feed_route() below), which lets a
+    # visitor pick more than one venue at once -- kept as its own
+    # parameter rather than teaching venue_id to accept either an int or
+    # a list, so every existing venue_id caller (the calendar view, the
+    # month grid, the weekly local-artist spotlight) is untouched. The
+    # two are independent filters that would AND together if a caller
+    # somehow passed both, but no current caller does.
+    if venue_ids:
+        query = query.filter(Event.venue_id.in_(venue_ids))
     if artist_id:
         query = query.filter(Event.artists.any(Artist.id == artist_id))
     if selected_genre:
@@ -453,7 +465,12 @@ def event_detail(event_id):
     event = Event.query.get_or_404(event_id)
     if not event.is_approved and not session.get("is_admin"):
         abort(404)
-    return render_template("events/detail.html", event=event, venue_caution_note=VENUE_CAUTION_NOTE)
+    return render_template(
+        "events/detail.html",
+        event=event,
+        venue_caution_note=VENUE_CAUTION_NOTE,
+        event_jsonld=build_event_jsonld(event),
+    )
 
 
 @bp.route("/show/<int:event_id>.ics")
@@ -475,6 +492,150 @@ def event_ics(event_id):
         mimetype="text/calendar",
         headers={"Content-Disposition": f'attachment; filename="{slugify(event.title)}.ics"'},
     )
+
+
+# How far forward an RSS feed reaches, regardless of filters -- an
+# unbounded feed would just grow forever as more venues/scrapes get added,
+# with no real benefit to a subscriber (nobody needs a heads-up about a
+# show 8 months out yet). 90 days was David's call.
+FEED_MAX_DAYS_AHEAD = 90
+
+
+def _resolve_feed_category_ids(args, public_choices):
+    """Which public categories a feed URL wants, from repeated
+    `?category=<id>` params -- same query-string shape as the calendar's
+    own filter bar (see _resolve_selected_category_ids() above), but with
+    different empty-selection semantics on purpose: the calendar
+    distinguishes "fresh, filter bar never touched" from "explicitly
+    submitted with everything unchecked" using a categories_submitted
+    marker, because a fresh calendar visit should default to just Music,
+    not silently show everything. A feed URL has no such "fresh visit" to
+    default -- it's either built with specific categories checked (feed_builder()
+    below), in which case honor exactly those, or it's the plain "every
+    upcoming event" global feed with no category= at all, which should
+    mean *every* public category, not zero. Same invalid-id handling as
+    _resolve_selected_category_ids(): a stale/hand-edited id that isn't
+    currently a public category is silently dropped."""
+    valid_ids = [c.id for c in public_choices]
+    requested = args.getlist("category", type=int)
+    if not requested:
+        return valid_ids
+    valid_id_set = set(valid_ids)
+    return [cid for cid in requested if cid in valid_id_set]
+
+
+def _feed_title(selected_venues, selected_categories):
+    """The RSS <title>/<h1> for a given filter combination -- e.g.
+    "Paradise City Music — Iron Horse Music Hall, Music" for a feed
+    scoped to one venue and one category, or a plain site-wide title for
+    the unfiltered global feed."""
+    parts = []
+    if selected_venues:
+        parts.append(", ".join(v.name for v in selected_venues))
+    if selected_categories:
+        parts.append(", ".join(c.name for c in selected_categories))
+    if not parts:
+        return "Paradise City Music — All Upcoming Events"
+    return "Paradise City Music — " + " · ".join(parts)
+
+
+@bp.route("/feed")
+def feed_builder():
+    """A small helper page: check off whichever venues and/or public
+    categories you want, and it hands you the resulting /feed.rss URL --
+    rather than a from-scratch filter UI, this deliberately mirrors the
+    calendar's own venue list and public-category pills (see
+    _public_category_choices() above), since those are the exact same
+    two axes the feed itself filters on. The "everything, no filters"
+    global feed is front and center above the picker, per David's ask to
+    lean into that as the headline option rather than making a visitor
+    build even the simplest possible feed by hand.
+
+    The actual URL-building happens client-side (see feed_builder.html's
+    own <script>) purely so the result updates live as checkboxes are
+    toggled, with no page reload/round-trip needed -- there's no
+    server-side state here at all, just the same venue/category lists
+    the calendar page already renders.
+    """
+    venues = Venue.query.order_by(Venue.name).all()
+    public_categories = _public_category_choices()
+    return render_template(
+        "feed_builder.html",
+        venues=venues,
+        public_categories=public_categories,
+        feed_max_days_ahead=FEED_MAX_DAYS_AHEAD,
+    )
+
+
+@bp.route("/feed.rss")
+def feed_rss():
+    """RSS 2.0 feed of upcoming approved events, filterable by one or
+    more venues and/or one or more public categories via repeated
+    `?venue=<id>` / `?category=<id>` query params -- built by
+    feed_builder() above, but just as valid hand-constructed or bookmarked
+    directly. No params at all (the plain /feed.rss link) is the global
+    "everything" feed.
+
+    <pubDate> is each item's own Event.created_at (when it was first
+    added to this calendar), not its start_datetime. That's the
+    deliberate, RSS-spec-correct choice, not an oversight: <pubDate> is
+    "when this item was published" per the RSS spec, and most feed
+    readers sort/flag "new" items by it -- a feed that used
+    start_datetime instead would have every item's <pubDate> sitting in
+    the *future* (a show's start date is always later than when it's
+    added), which readers generally don't handle well for "here's what's
+    new" notifications; some hide a future-dated item until that date
+    arrives, defeating the whole point of a heads-up feed. The actual
+    show date is instead the *first* thing in every item's own
+    description, and the whole feed is sorted by start_datetime (not
+    pubDate) so it still reads in calendar order.
+
+    FEED_MAX_DAYS_AHEAD caps how far forward the feed reaches (David's
+    call: 90 days), same is_approved-only visibility as the calendar
+    itself, and the same shared _base_query()/_resolve_feed_category_ids()
+    plumbing every other filtered view on this site already uses.
+    """
+    public_categories = _public_category_choices()
+    category_ids = _resolve_feed_category_ids(request.args, public_categories)
+    venue_ids = request.args.getlist("venue", type=int)
+
+    now = local_now()
+    cutoff = now + timedelta(days=FEED_MAX_DAYS_AHEAD)
+    events = (
+        _base_query(None, None, None, category_ids, venue_ids=venue_ids)
+        .filter(Event.start_datetime >= now, Event.start_datetime < cutoff)
+        .order_by(Event.start_datetime.asc())
+        .all()
+    )
+
+    selected_venues = (
+        Venue.query.filter(Venue.id.in_(venue_ids)).order_by(Venue.name).all() if venue_ids else []
+    )
+    valid_category_id_set = {c.id for c in public_categories}
+    selected_categories = (
+        [c for c in public_categories if c.id in category_ids]
+        if set(category_ids) != valid_category_id_set
+        else []
+    )
+
+    body = render_template(
+        "feed.xml",
+        events=events,
+        feed_title=_feed_title(selected_venues, selected_categories),
+        feed_self_url=request.url,
+        # datetime.utcnow(), NOT local_now() -- <lastBuildDate> goes
+        # through the same `| rfc822` filter as every item's <pubDate>
+        # (rfc822_utc() in app/utils.py), which assumes whatever naive
+        # datetime it's given is already genuine UTC and just labels it
+        # "+0000". local_now() is naive *Eastern* wall-clock time (see
+        # SITE_TIMEZONE's docstring) -- feeding that in directly would
+        # mislabel it as UTC and put <lastBuildDate> 4-5 hours off from
+        # the real moment, even though every event's own <pubDate>
+        # (built from the genuinely-UTC Event.created_at) would still be
+        # correct.
+        build_time_utc=datetime.utcnow(),
+    )
+    return Response(body, mimetype="application/rss+xml")
 
 
 @bp.route("/about")

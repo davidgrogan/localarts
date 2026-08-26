@@ -422,6 +422,29 @@ def create_app(test_config=None):
 
         return showtimes_line(value)
 
+    @app.template_filter("rfc822")
+    def rfc822_filter(value):
+        # A thin Jinja-filter wrapper around app.utils.rfc822_utc() so
+        # feed.xml can write `{{ event.created_at | rfc822 }}` for
+        # <pubDate>/<lastBuildDate> -- see main.py's feed_rss() and that
+        # function's own docstring for why <pubDate> uses created_at
+        # (when a listing was added) rather than start_datetime (when
+        # the show itself happens).
+        from app.utils import rfc822_utc
+
+        return rfc822_utc(value)
+
+    @app.template_filter("iso_local")
+    def iso_local_filter(value):
+        # A thin Jinja-filter wrapper around app.utils.iso_local_offset() so
+        # events/detail.html can write `{{ event.start_datetime | iso_local }}`
+        # for the schema.org Event JSON-LD block's startDate/endDate --
+        # unlike rfc822 above, this takes a naive *local* wall-clock value
+        # (start_datetime/end_datetime), not a naive-UTC one.
+        from app.utils import iso_local_offset
+
+        return iso_local_offset(value)
+
     @app.template_filter("artist_letter")
     def artist_letter_filter(name):
         # A thin Jinja-filter wrapper around app.utils.artist_display_letter()
