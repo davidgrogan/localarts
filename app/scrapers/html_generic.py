@@ -78,8 +78,24 @@ by `venue.scrape_config`, a JSON object with:
                       (e.g. 'page') -- if set, fetch_raw fetches pages
                       0..max_pages-1 by appending ?<page_param>=<n> to
                       events_url and concatenates the raw HTML",
-      "max_pages": "how many pages to fetch when page_param is set
-                    (default 1 -- i.e. no pagination)",
+      "page_url_template": "optional alternative to page_param, for sites
+                             whose pager puts the page number in the URL
+                             *path* rather than a query string -- e.g.
+                             UMass Amherst's events calendar, whose page 2
+                             link is /calendar/day/2 (query params
+                             unchanged), not /calendar/day?page=2. Contains
+                             a literal '{page}' placeholder, substituted
+                             with the 1-based page number (2, 3, ...) --
+                             fetch_raw() always fetches events_url itself
+                             unmodified as page 1, then, for page_num 1..
+                             max_pages-1, fetches
+                             page_url_template.format(page=page_num+1)
+                             instead of touching events_url at all. Takes
+                             precedence over page_param if both are
+                             (mistakenly) set.",
+      "max_pages": "how many pages to fetch when page_param or
+                    page_url_template is set (default 1 -- i.e. no
+                    pagination)",
       "user_agent": "optional override for the User-Agent header sent on
                       both the listing fetch and any description_from_link
                       follow-through fetch (default: this module's own
@@ -245,15 +261,21 @@ def fetch_raw(venue):
 
     config = _config(venue)
     page_param = config.get("page_param")
-    max_pages = int(config.get("max_pages") or 1) if page_param else 1
+    page_url_template = config.get("page_url_template")
+    max_pages = int(config.get("max_pages") or 1) if (page_param or page_url_template) else 1
     user_agent = config.get("user_agent") or USER_AGENT
 
     pages = []
     for page_num in range(max_pages):
-        url = venue.events_url
-        if page_param and page_num > 0:
-            sep = "&" if "?" in url else "?"
-            url = f"{url}{sep}{page_param}={page_num}"
+        if page_url_template and page_num > 0:
+            # Page number lives in the URL path, not a query string -- see
+            # page_url_template's own docstring above (UMass Amherst).
+            url = page_url_template.format(page=page_num + 1)
+        else:
+            url = venue.events_url
+            if page_param and page_num > 0:
+                sep = "&" if "?" in url else "?"
+                url = f"{url}{sep}{page_param}={page_num}"
         try:
             resp = requests.get(url, headers={"User-Agent": user_agent}, timeout=15)
             resp.raise_for_status()

@@ -805,6 +805,11 @@ like a `<meta content="...">` instead of visible text) and
 added for Amherst College -- see that venue's own write-up further down
 for the real-world case that motivated each.
 
+A fourth `html_generic.py` config key, `page_url_template`, was added for
+UMass Amherst -- an alternative to `page_param` for sites whose pager puts
+the page number in the URL *path* rather than a query string. See that
+venue's own write-up further down.
+
 **On Haze (hazenorthampton.org):** a custom Next.js site with its own
 built-in calendar widget, not a third-party embed. A plain fetch returns
 the full month-grid HTML already rendered, so no headless browser is
@@ -1345,6 +1350,60 @@ to be -- worth a look at the **Venues → Amherst College → Test scrape**
 preview's rendered image before trusting it blindly; if it turns out
 blank the same fix (`_download_poster()`-style re-hosting) would apply
 here too.
+
+**On UMass Amherst:** David supplied the exact calendar URL to use --
+`events.umass.edu/calendar/day?order=date&days=365&experience=&event_types%5B%5D=50764271776749`
+-- already filtered server-side to "Public/Everyone" events via its own
+`event_types[]` param (confirmed by the page's own `<title>`,
+"Public/Everyone Events on ..."). Unlike Amherst College above, which
+mixes public and students-only/internal events on one page with no way to
+filter except a client-side flag, no `require_selector` is needed here at
+all -- the URL itself already does the filtering.
+
+Confirmed server-rendered ("Localist"-style university-calendar CMS,
+`em-`-prefixed class names throughout -- e.g. each event is an
+`.em-card`) via a live same-origin `fetch(location.href)` call finding
+real event text in the raw response, so this reuses `html_generic.py`
+with no headless browser needed. Two things made this one of the cleanest
+venues in the project to wire up:
+
+- **Date source:** each event's `.em-card_event-date` holds two
+  `<em-local-time start="...">` custom elements (start, then end), each
+  carrying a full ISO 8601 timestamp with an explicit UTC offset (e.g.
+  `"2026-09-01T07:30:00-04:00"`) -- `date_selector` targets
+  `.em-card_event-date em-local-time` and `date_attr` is set to `"start"`,
+  which reads the *first* match (the start time) via `select_one()`. No
+  free-text date parsing needed at all.
+- **Pagination:** real numbered pagination ("Page 1 ... 5, Next page"),
+  but the page number lives in the URL *path*
+  (`/calendar/day/2`, `/calendar/day/3`, ...), not a query string --
+  `html_generic.py`'s existing `page_param` only knows how to append
+  `?<param>=<n>`, which can't express that. This session added a new
+  config key, `page_url_template`, containing a literal `{page}`
+  placeholder: `fetch_raw()` always fetches `events_url` itself
+  unmodified as page 1, then for each remaining page fetches
+  `page_url_template.format(page=<n>)` instead of touching `events_url`
+  at all. `max_pages=5` covers every page confirmed live (21 events/page).
+
+No `genre_selector` -- each card does carry its own category tag
+(confirmed selector: `.em-card_text > a.em-card_tag`, deliberately scoped
+past the direct-child `<a>` to exclude a separate "New" badge,
+`span.em-new-tag`, which shares the `em-card_tag` class but sits in a
+different spot in the markup) but it's a campus-event category
+("Reception/Open House", "Lecture", etc.), not a music genre -- same call
+as Amherst College's own entry, left for an admin to tag by hand via
+Review instead of mislabeling it. No `default_event_type` either, for the
+same reason: "public" here spans lectures, receptions, athletics, and
+exhibits as well as actual music/performance events.
+
+**Caveat:** same as Amherst College/CitySpace above -- verified against
+synthetic HTML (`test_umass_amherst.py`) built from real,
+individually-confirmed classes and attribute values (including the
+two-`em-local-time`/date_attr behavior and the `page_url_template`
+pagination substitution), not a live fetch, since this sandbox can't
+reach events.umass.edu. The very first real scrape should still be
+spot-checked on the **Venues → UMass Amherst → Test scrape** preview page
+before running **Run scrape now** for real.
 
 **On One Amber Lane (1 Amber Ln, Northampton):** confirmed Squarespace
 (body class fingerprint) via live browser inspection, so this venue
@@ -1890,7 +1949,7 @@ source .venv/bin/activate        # .venv\Scripts\activate on Windows
 pip install -r requirements.txt
 playwright install chromium      # one-time browser download, needed for rendered_html venues
 
-python seed.py                   # adds Iron Horse, Parlor Room, Academy of Music, Haze, Luthier's Co-Op, 33 Hawley, The Heavy Culture Cooperative, Quonk, BOMBYX Center for Arts & Equity, CitySpace, Amherst College, Amherst Cinema, One Amber Lane, DIY (catch-all for submitted one-off shows), sample artists/shows
+python seed.py                   # adds Iron Horse, Parlor Room, Academy of Music, Haze, Luthier's Co-Op, 33 Hawley, The Heavy Culture Cooperative, Quonk, BOMBYX Center for Arts & Equity, CitySpace, Amherst College, UMass Amherst, Amherst Cinema, One Amber Lane, DIY (catch-all for submitted one-off shows), sample artists/shows
 python run.py                    # http://127.0.0.1:5000
 ```
 

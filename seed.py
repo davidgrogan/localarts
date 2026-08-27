@@ -601,6 +601,75 @@ def main():
             ),
         )
 
+        umass_amherst = get_or_create_venue(
+            name="UMass Amherst",
+            slug="umass-amherst",
+            address="Amherst, MA",
+            city="Amherst",
+            state="MA",
+            website_url="https://www.umass.edu",
+            # David supplied this exact URL, pre-filtered server-side to
+            # "Public/Everyone" events via its event_types[] param
+            # (confirmed by the page's own <title>, "Public/Everyone
+            # Events on ...") -- unlike Amherst College's calendar, which
+            # mixes public and students-only/internal events on one page
+            # with no way to filter except a client-side flag, no
+            # require_selector is needed here at all -- the URL itself
+            # already does that filtering.
+            events_url=(
+                "https://events.umass.edu/calendar/day?order=date&days=365"
+                "&experience=&event_types%5B%5D=50764271776749"
+            ),
+            source_type="html",
+            # Confirmed server-rendered (a same-origin fetch(location.href)
+            # found real event text in the raw response, no headless
+            # browser needed) -- a "Localist"-style university-calendar
+            # CMS ("em-"-prefixed class names throughout), built on a
+            # genuinely clean date source: each event's
+            # .em-card_event-date holds two <em-local-time start="..."/>
+            # custom elements (start, then end), each carrying a full ISO
+            # 8601 timestamp with an explicit UTC offset (e.g.
+            # "2026-09-01T07:30:00-04:00") -- date_attr="start" reads that
+            # directly off the *first* one via select_one() (the start
+            # time), no free-text date parsing needed at all. Cleanest
+            # date source of any venue in this project so far.
+            #
+            # Real numbered pagination ("Page 1 ... 5, Next page"), but
+            # the page number lives in the URL *path*
+            # (/calendar/day/2, /calendar/day/3, ...), not a query
+            # string -- html_generic.py's existing page_param can't
+            # express that, so this session added page_url_template (see
+            # that module's own docstring) specifically for this case.
+            # max_pages=5 covers every page confirmed live (21 events/page,
+            # 100+ total across the year-ahead window the days=365 param
+            # requests).
+            #
+            # No genre_selector -- each card does carry its own category
+            # tag (".em-card_text > a.em-card_tag", deliberately scoped to
+            # exclude the separate "New" badge "span.em-new-tag", which
+            # shares the em-card_tag class) but it's a campus-event
+            # category ("Reception/Open House", "Lecture", etc.), not a
+            # music genre -- same call as Amherst College's own entry
+            # above, left for an admin to tag by hand via Review instead
+            # of mislabeling it as a music genre.
+            #
+            # No default_event_type -- like Amherst College/CitySpace,
+            # "public" here spans lectures, receptions, athletics, and
+            # exhibits as well as actual music/performance events, so
+            # everything lands untagged in the Review queue.
+            scrape_config=(
+                '{"item_selector": ".em-card", '
+                '"title_selector": ".em-card_title a", '
+                '"date_selector": ".em-card_event-date em-local-time", '
+                '"date_attr": "start", '
+                '"image_selector": ".em-card_image img.img_card", '
+                '"page_url_template": "https://events.umass.edu/calendar/day/'
+                '{page}?order=date&days=365&experience=&event_types%5B%5D='
+                '50764271776749", '
+                '"max_pages": 5}'
+            ),
+        )
+
         amherst_cinema = get_or_create_venue(
             name="Amherst Cinema",
             slug="amherst-cinema",
