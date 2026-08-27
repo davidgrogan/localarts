@@ -753,6 +753,31 @@ table.month-grid td.today { background: var(--gold-soft); border-color: var(--ac
 
 .artist-embed { margin: 0.75rem 0 0.5rem; }
 .artist-embed iframe { max-width: 100%; display: block; }
+
+/* /new-releases -- one card per hand-curated track (see main.py's
+   NEW_RELEASES), each a small Bandcamp player. Same auto-fill grid
+   approach as .artist-grid below, just a wider minmax since each card
+   needs to comfortably fit an embedded iframe rather than a small tile. */
+.release-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.25rem;
+  margin-top: 1rem;
+}
+.release-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1rem;
+  background: var(--paper-warm);
+}
+.release-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 0.5rem;
+}
+.release-title { margin: 0.15rem 0 0; font-size: 1.05rem; }
+.release-embed iframe { max-width: 100%; display: block; }
 /* The gap after the embed on an artist's profile page was still reading as
    "a lot of white space" even after the first pass at this -- the previous
    fix only reduced each side's margin, but adjacent margins in normal flow

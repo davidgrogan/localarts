@@ -638,6 +638,70 @@ def feed_rss():
     return Response(body, mimetype="application/rss+xml")
 
 
+# Hand-curated from a live scan of every local artist's Bandcamp page (via
+# the "bandcamp-new-releases" skill, run interactively through Claude in
+# Chrome -- Bandcamp blocks scripted/headless scraping, see
+# app/bandcamp_import.py's own docstring for the earlier feature that hit
+# the same wall) for releases from July-August 2026. NOT re-scanned live on
+# every page load -- this is a snapshot from that one scan, hardcoded here
+# the same deliberate way seed.py's placeholder_embed comment describes:
+# a real embed snippet swapped in by hand, not fetched at request time.
+# Re-run the skill and update this list by hand for a future edition.
+#
+# IMPORTANT, learned the hard way (David caught "Christmas Pig Song"
+# showing a July 2026 date when its own track page says December 1,
+# 2001): a track's *own* individual Bandcamp page is the only reliable
+# source for its release date. The initial scan instead trusted the
+# *album* page's "released <date>" line for whichever track link it found
+# first on that album -- fine for a genuinely new album, but wrong for any
+# album that's really a compilation/anthology/live-set bundling older
+# songs, which keep their own original release date on their own page even
+# once repackaged into something newly uploaded. Three of the original
+# twelve were wrong for exactly this reason (Angry Johnny And The
+# Killbillies' "Christmas Pig Song" -- 2001, bundled into a new "Welcome To
+# The Doomsday" collection; Dome Lettuce's "Stuck on Earth" -- Dec 2025,
+# before the cutoff; Fred Cracklin's "Head Meet Concrete" -- 2023, off a
+# "Live" album) and have been removed. The bandcamp-new-releases skill
+# itself has been corrected to verify every candidate against its own
+# track page before treating it as qualifying.
+NEW_RELEASES = [
+    {"artist": "Gentle Hen", "title": "Comfort Zone", "released": "August 21, 2026", "track_id": "235197250", "bandcamp_url": "https://gentlehen.bandcamp.com/track/comfort-zone-2"},
+    {"artist": "Alyssa Kai", "title": "chronic illness power fantasy", "released": "August 14, 2026", "track_id": "2456862956", "bandcamp_url": "https://lyskoi.bandcamp.com/track/chronic-illness-power-fantasy"},
+    {"artist": "The Suitcase Junket", "title": "Put Your Phone Down", "released": "August 11, 2026", "track_id": "1959259213", "bandcamp_url": "https://thesuitcasejunket.bandcamp.com/track/put-your-phone-down"},
+    {"artist": "Brokestring & the Empty Promises", "title": "Good News", "released": "August 7, 2026", "track_id": "3416702175", "bandcamp_url": "https://brokestring.bandcamp.com/track/good-news"},
+    {"artist": "NEONACH", "title": "Eye in the Sky", "released": "August 4, 2026", "track_id": "1216733992", "bandcamp_url": "https://neonach.bandcamp.com/track/eye-in-the-sky"},
+    {"artist": "Tommy Twilite", "title": "House of Cards", "released": "July 27, 2026", "track_id": "1554002702", "bandcamp_url": "https://tommytwilite.bandcamp.com/track/house-of-cards"},
+    {"artist": "The Colony Motel", "title": "Almah", "released": "July 19, 2026", "track_id": "3799119158", "bandcamp_url": "https://thecolonymotel.bandcamp.com/track/almah"},
+    {"artist": "mibble", "title": "Morning Dew Is Almost Over", "released": "July 19, 2026", "track_id": "3602496743", "bandcamp_url": "https://mibble.bandcamp.com/track/morning-dew-is-almost-over"},
+    {"artist": "Wishbone Zoe", "title": "Psyche's Romp", "released": "July 16, 2026", "track_id": "3070579675", "bandcamp_url": "https://wishbonezoe.bandcamp.com/track/psyches-romp"},
+]
+
+
+@bp.route("/new-releases")
+def new_releases():
+    """A hand-curated "what's new" page -- every local artist's most recent
+    Bandcamp release from a given window (right now: July-August 2026, see
+    NEW_RELEASES above), each with its own embedded player. Public, no
+    login needed, same as every other content page on this site (about,
+    venues, artists).
+
+    Looks up each entry's local Artist row by name so the artist's own name
+    can link back to their profile page here (Artist.slug isn't stored on
+    NEW_RELEASES, so this is a name match, not an id/slug lookup -- fine at
+    this scale, and it degrades gracefully to plain unlinked text below if
+    a name doesn't match, e.g. after a rename).
+    """
+    releases = []
+    for entry in NEW_RELEASES:
+        artist_row = Artist.query.filter_by(name=entry["artist"]).first()
+        releases.append({**entry, "artist_row": artist_row})
+    return render_template(
+        "new_releases.html",
+        releases=releases,
+        subtitle="July/August 2026: New tracks from local artists.",
+    )
+
+
 @bp.route("/about")
 def about_page():
     """The full "About this site" content -- its own page, linked from the
