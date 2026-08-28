@@ -15,7 +15,6 @@ from app.utils import (
     artist_sort_key,
     build_event_ics,
     build_event_jsonld,
-    resolve_image_url,
     slugify,
 )
 
@@ -666,6 +665,7 @@ def feed_rss():
 # itself has been corrected to verify every candidate against its own
 # track page before treating it as qualifying.
 NEW_RELEASES = [
+    {"artist": "Dome Lettuce", "title": "Summer Daze (feat. Frank Gambit)", "released": "August 28, 2026", "track_id": "2610592512", "bandcamp_url": "https://d0melettuce.bandcamp.com/track/summer-daze-feat-frank-gambit"},
     {"artist": "Cloudbelly", "title": "Oh, Antarctica!", "released": "August 21, 2026", "track_id": "4050548037", "bandcamp_url": "https://cloudbelly.bandcamp.com/track/oh-antarctica"},
     {"artist": "Gentle Hen", "title": "Comfort Zone", "released": "August 21, 2026", "track_id": "235197250", "bandcamp_url": "https://gentlehen.bandcamp.com/track/comfort-zone-2"},
     {"artist": "Alyssa Kai", "title": "chronic illness power fantasy", "released": "August 14, 2026", "track_id": "2456862956", "bandcamp_url": "https://lyskoi.bandcamp.com/track/chronic-illness-power-fantasy"},
@@ -687,9 +687,7 @@ def _build_releases():
     artist's own name can link back to their profile page (Artist.slug
     isn't stored on NEW_RELEASES, so this is a name match, not an id/slug
     lookup -- fine at this scale, and it degrades gracefully to plain
-    unlinked text if a name doesn't match, e.g. after a rename). Shared by
-    both new_releases() (the grid page) and new_releases_player() (the
-    player mockup below), so the two stay in sync automatically."""
+    unlinked text if a name doesn't match, e.g. after a rename)."""
     releases = []
     for entry in NEW_RELEASES:
         artist_row = Artist.query.filter_by(name=entry["artist"]).first()
@@ -708,68 +706,6 @@ def new_releases():
     return render_template(
         "new_releases.html",
         releases=_build_releases(),
-        subtitle=NEW_RELEASES_SUBTITLE,
-    )
-
-
-@bp.route("/new-releases/player")
-def new_releases_player():
-    """Mockup of a "track player" UI for the same NEW_RELEASES data as
-    new_releases() above -- David asked for a mockup of the UI direction
-    recommended in chat before any of this got built for real, so this
-    route exists to preview it, deliberately NOT linked from the main nav
-    yet (see base.html -- no <a> added there for this route). Reachable
-    only by typing the URL directly, same as any other unlinked page.
-
-    Recommended direction, and why: Bandcamp's embedded player is a
-    cross-origin iframe with no public JS API (no postMessage events, no
-    "track ended" hook the way YouTube's/Spotify's embeds offer), so
-    there's no reliable way for this page to know when a track actually
-    finishes playing. A duration-based countdown timer was floated as an
-    option, but it's a "dumb clock," not a real playback listener -- if a
-    visitor pauses the embedded player itself, this page would never know,
-    and a timer would silently advance to the next track out from under
-    them. Rather than ship something that *looks* synced but silently
-    drifts out of sync, this mockup drops the auto-advance timer entirely:
-    one big "Now Playing" panel (embed, artist photo/name, track title,
-    release date, Bandcamp link) plus Prev/Next controls and a clickable
-    full track list below it that jumps straight to any track. All
-    client-side (see new_releases_player.html's own <script>) -- no
-    page reload between tracks, just swapping the visible embed/info, and
-    no fake progress bar pretending to track real playback position.
-
-    Reuses _build_releases() so this always reflects the exact same
-    NEW_RELEASES data as the existing grid page -- no separate data source
-    to keep in sync by hand. artist_row.image_url is resolved server-side
-    (resolve_image_url()) into each release's own dict before this gets
-    JSON-serialized for the page's <script>, same reasoning as every other
-    template that calls resolve_image_url() at render time rather than
-    trusting a stored URL as-is (see that function's own docstring).
-    """
-    releases = _build_releases()
-    player_tracks = []
-    for r in releases:
-        artist_row = r["artist_row"]
-        player_tracks.append({
-            "artist": r["artist"],
-            "title": r["title"],
-            "released": r["released"],
-            "track_id": r["track_id"],
-            "bandcamp_url": r["bandcamp_url"],
-            "artist_photo_url": (
-                resolve_image_url(artist_row.image_url)
-                if artist_row and artist_row.image_url
-                else None
-            ),
-            "artist_profile_url": (
-                url_for("artists.detail", artist_id=artist_row.id)
-                if artist_row
-                else None
-            ),
-        })
-    return render_template(
-        "new_releases_player.html",
-        player_tracks=player_tracks,
         subtitle=NEW_RELEASES_SUBTITLE,
     )
 
