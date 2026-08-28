@@ -778,6 +778,67 @@ table.month-grid td.today { background: var(--gold-soft); border-color: var(--ac
 }
 .release-title { margin: 0.15rem 0 0; font-size: 1.05rem; }
 .release-embed iframe { max-width: 100%; display: block; }
+
+/* /new-releases/player -- mockup of a "keep listening track to track" UI
+   (see new_releases_player() in app/routes/main.py for the full
+   reasoning). Two stacked panels: a "Now Playing" card up top, and a
+   clickable full track list below it -- no timer/progress bar anywhere,
+   since there's no reliable way to know when a Bandcamp embed's track has
+   actually finished (see that route's docstring). */
+.player-page { margin-top: 1rem; }
+.now-playing {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1.25rem;
+  background: var(--paper-warm);
+  margin-bottom: 1.5rem;
+}
+.now-playing-artist {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+.np-title { margin: 0.1rem 0 0; font-size: 1.3rem; }
+.now-playing-embed iframe { max-width: 100%; display: block; margin-bottom: 0.75rem; }
+.player-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.85rem;
+  flex-wrap: wrap;
+}
+
+/* Full clickable track list underneath the Now Playing panel -- clicking
+   any row jumps straight to it (see the template's own <script>). */
+.track-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.track-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.85rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--line);
+  transition: background 0.1s ease;
+}
+.track-row:last-child { border-bottom: none; }
+.track-row:hover { background: var(--paper-warm); }
+.track-row.active { background: var(--accent-soft); }
+/* .artist-thumb.track-row-thumb (not just .track-row-thumb) -- needs to
+   out-specificity .artist-thumb's own 56px default further down this
+   file regardless of source order, since both would otherwise be
+   equal-specificity single-class selectors. */
+.artist-thumb.track-row-thumb { width: 40px; height: 40px; flex-shrink: 0; }
+.track-row-thumb-empty { background: var(--line); }
+.track-row-body { min-width: 0; }
+.track-row-body strong { display: block; }
 /* The gap after the embed on an artist's profile page was still reading as
    "a lot of white space" even after the first pass at this -- the previous
    fix only reduced each side's margin, but adjacent margins in normal flow

@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}New Releases Player{% endblock %}
+{% block content %}
+  <h1>New Releases &mdash; Player</h1>
+  <p class="meta" style="margin-bottom: 1.5rem;">
+    Mockup preview &mdash; not yet linked from the site menu. {{ subtitle }}
+  </p>
+
+  {% if player_tracks %}
+    <div class="player-page">
+      <div class="now-playing">
+        <div class="now-playing-embed">
+          <iframe id="np-iframe" style="border: 0; width: 100%; height: 120px;" src="" seamless title=""></iframe>
+        </div>
+        <div class="now-playing-info">
+          <div class="now-playing-artist">
+            <div class="artist-thumb" id="np-thumb" style="display: none;">
+              <img id="np-thumb-img" src="" alt="" loading="lazy">
+            </div>
+            <div>
+              <p class="meta" id="np-artist-line"></p>
+              <h2 class="np-title" id="np-title"></h2>
+            </div>
+          </div>
+          <p class="meta"><a id="np-bandcamp-link" href="#" target="_blank" rel="noopener">Listen on Bandcamp &rarr;</a></p>
+          <div class="player-controls">
+            <button type="button" class="btn btn-secondary" id="np-prev">&larr; Prev</button>
+            <span class="meta" id="np-position"></span>
+            <button type="button" class="btn" id="np-next">Next &rarr;</button>
+          </div>
+        </div>
+      </div>
+
+      {# Built by the script below from the same JSON payload the "Now
+         Playing" panel uses -- clicking any row jumps straight to that
+         track, no page reload, no auto-advance timer (see
+         new_releases_player() in app/routes/main.py for why: Bandcamp's
+         embed gives no way to detect when a track actually finishes, so
+         this mockup deliberately doesn't pretend to track real playback
+         position). #}
+      <ol class="track-list" id="track-list"></ol>
+    </div>
+
+    <script id="player-data" type="application/json">{{ player_tracks | tojson }}</script>
+    <script>
+      (function () {
+        var tracks = JSON.parse(document.getElementById("player-data").textContent);
+        var current = 0;
+
+        var iframe = document.getElementById("np-iframe");
+        var thumbWrap = document.getElementById("np-thumb");
+        var thumbImg = document.getElementById("np-thumb-img");
+        var artistLine = document.getElementById("np-artist-line");
+        var titleEl = document.getElementById("np-title");
+        var bandcampLink = document.getElementById("np-bandcamp-link");
+        var positionEl = document.getElementById("np-position");
+        var listEl = document.getElementById("track-list");
+
+        function embedSrc(trackId) {
+          return "https://bandcamp.com/EmbeddedPlayer/track=" + trackId +
+            "/size=large/bgcol=ffffff/linkcol=0687f5/tracklist=false/artwork=small/transparent=true/";
+        }
+
+        function escapeHtml(s) {
+          return String(s)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+        }
+
+        function render() {
+          var t = tracks[current];
+          iframe.src = embedSrc(t.track_id);
+          iframe.title = t.title + " by " + t.artist;
+
+          if (t.artist_photo_url) {
+            thumbImg.src = t.artist_photo_url;
+            thumbWrap.style.display = "";
+          } else {
+            thumbWrap.style.display = "none";
+          }
+
+          artistLine.innerHTML = (
+            t.artist_profile_url
+              ? '<a href="' + escapeHtml(t.artist_profile_url) + '">' + escapeHtml(t.artist) + "</a>"
+              : escapeHtml(t.artist)
+          ) + " &middot; released " + escapeHtml(t.released);
+          titleEl.textContent = t.title;
+          bandcampLink.href = t.bandcamp_url;
+          positionEl.textContent = "Track " + (current + 1) + " of " + tracks.length;
+
+          Array.prototype.forEach.call(listEl.querySelectorAll(".track-row"), function (row, i) {
+            row.classList.toggle("active", i === current);
+          });
+        }
+
+        function go(i) {
+          current = (i + tracks.length) % tracks.length;
+          render();
+        }
+
+        document.getElementById("np-prev").addEventListener("click", function () { go(current - 1); });
+        document.getElementById("np-next").addEventListener("click", function () { go(current + 1); });
+
+        tracks.forEach(function (t, i) {
+          var li = document.createElement("li");
+          li.className = "track-row";
+          li.innerHTML =
+            (t.artist_photo_url
+              ? '<div class="artist-thumb track-row-thumb"><img src="' + escapeHtml(t.artist_photo_url) + '" alt="" loading="lazy"></div>'
+              : '<div class="artist-thumb track-row-thumb track-row-thumb-empty"></div>') +
+            '<div class="track-row-body">' +
+              "<strong>" + escapeHtml(t.title) + "</strong>" +
+              '<div class="meta">' + escapeHtml(t.artist) + " &middot; " + escapeHtml(t.released) + "</div>" +
+            "</div>";
+          li.addEventListener("click", function () { go(i); });
+          listEl.appendChild(li);
+        });
+
+        render();
+      })();
+    </script>
+  {% else %}
+    <p class="empty-state">No tracks to preview yet.</p>
+  {% endif %}
+{% endblock %}
