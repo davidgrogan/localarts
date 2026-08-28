@@ -665,6 +665,7 @@ def feed_rss():
 # itself has been corrected to verify every candidate against its own
 # track page before treating it as qualifying.
 NEW_RELEASES = [
+    {"artist": "Cloudbelly", "title": "Oh, Antarctica!", "released": "August 21, 2026", "track_id": "4050548037", "bandcamp_url": "https://cloudbelly.bandcamp.com/track/oh-antarctica"},
     {"artist": "Gentle Hen", "title": "Comfort Zone", "released": "August 21, 2026", "track_id": "235197250", "bandcamp_url": "https://gentlehen.bandcamp.com/track/comfort-zone-2"},
     {"artist": "Alyssa Kai", "title": "chronic illness power fantasy", "released": "August 14, 2026", "track_id": "2456862956", "bandcamp_url": "https://lyskoi.bandcamp.com/track/chronic-illness-power-fantasy"},
     {"artist": "The Suitcase Junket", "title": "Put Your Phone Down", "released": "August 11, 2026", "track_id": "1959259213", "bandcamp_url": "https://thesuitcasejunket.bandcamp.com/track/put-your-phone-down"},
