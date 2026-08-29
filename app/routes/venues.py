@@ -18,7 +18,7 @@ SOURCE_TYPES = [
     ("ical", "iCal / .ics feed"),
     ("html", "Generic HTML (CSS selectors, static pages)"),
     ("rendered_html", "Headless browser (CSS selectors, JS-rendered pages / widgets)"),
-    ("elfsight_jsonld", "Elfsight widget (JSON-LD -- recommended for Elfsight Event Calendar embeds)"),
+    ("elfsight_jsonld", "Elfsight Event Calendar widget (reads the widget's own DOM directly, incl. inside a shadow root)"),
     ("haze_calendar", "Haze-style calendar widget (time[datetime] + aria-label based)"),
 ]
 
@@ -37,10 +37,14 @@ def _scannable_venues():
     )
 
 
-# Source types whose fetch_raw() goes through rendered_html.py's headless
-# Chromium (see that module's docstring, plus ludus.py/elfsight_jsonld.py/
-# venuepilot.py's own "reused as-is" fetch_raw imports -- README.md's
-# per-venue write-ups have the full story on each) -- these routinely take
+# Source types whose fetch_raw() drives a headless Chromium browser --
+# either by going straight through rendered_html.py's own fetch_raw
+# (ludus.py/venuepilot.py reuse it as-is; see that module's docstring),
+# or with their own Playwright session doing the same kind of thing
+# (elfsight_jsonld.py, which needs to query the live page directly to
+# reach content inside a shadow root -- see its own module docstring;
+# README.md's per-venue write-ups have the full story on each) -- these
+# routinely take
 # several times longer than a plain requests.get(). The Scan page's
 # per-venue chip uses this to show a "this can take 10-20s" hint instead
 # of the same bare "Scanning..." it shows for an instant plain-HTML fetch.

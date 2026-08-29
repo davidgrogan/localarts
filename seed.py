@@ -69,23 +69,30 @@ def main():
             city="Northampton",
             state="MA",
             website_url="https://ironhorse.org",
-            # The venue's actual show listing page. See app/scrapers/
-            # squarespace_json.py for how this gets turned into events --
-            # ironhorse.org is a Squarespace site, so the scraper hits
-            # this same URL with ?format=json appended.
-            events_url="https://ironhorse.org/shows",
-            # Confirmed via the scrape preview screen: this venue's calendar
-            # is an embedded Elfsight "Event Calendar" widget, not native
-            # Squarespace content (the Squarespace JSON's own collection
-            # reports itemCount: 0). Confirmed via a real rendered-page
-            # sample that each event card embeds a schema.org Event
-            # JSON-LD script tag (full ISO dates incl. year, description,
-            # location) -- much more reliable than the widget's visible
-            # DOM, which uses hashed class names and never shows a year.
+            # The venue's actual show listing page -- a Squarespace site,
+            # but the calendar on it is an embedded Elfsight "Event
+            # Calendar" widget, not native Squarespace content (confirmed
+            # via the scrape preview screen: the Squarespace JSON's own
+            # events collection reports itemCount: 0).
+            #
+            # As of Iron Horse's summer 2026 site redesign (see
+            # app/scrapers/elfsight_jsonld.py's module docstring for the
+            # full story), this same widget renders inside an *open shadow
+            # root* and no longer embeds any schema.org Event JSON-LD at
+            # all -- both were true before, and the scraper used to lean
+            # on the JSON-LD for the one field (year) the widget's visible
+            # date badge never shows. Confirmed via a real rendered-page
+            # sample that the widget's own event-card class names
+            # (`.eapp-events-calendar-*`) are otherwise unchanged, so the
+            # scraper now reads everything -- including location, in place
+            # of the vanished JSON-LD's location.name -- straight out of
+            # the visible DOM inside that shadow root, and infers the year
+            # itself (see module docstring for the heuristic) instead.
             # The Iron Horse's feed also covers several sibling "Parlor
             # Room Collective" venues (Black Birch Vineyard, Musician's
             # Workshop, etc.), so location_match filters events down to
             # ones actually at the Iron Horse.
+            events_url="https://ironhorse.org/shows",
             source_type="elfsight_jsonld",
             scrape_config='{"location_match": ["Iron Horse"]}',
             # Every show here is a live-music show, so scraped imports
@@ -101,7 +108,14 @@ def main():
             city="Northampton",
             state="MA",
             website_url="https://ironhorse.org",
-            events_url="https://ironhorse.org/parlorroomshows",
+            # Was "https://ironhorse.org/parlorroomshows" -- confirmed dead
+            # (a real 404 page) after Iron Horse's summer 2026 site
+            # redesign folded every "Parlor Room Collective" venue's
+            # listing into one unified, venue-filterable calendar on
+            # /shows (same URL as the Iron Horse row above). See
+            # app/scrapers/elfsight_jsonld.py's module docstring for the
+            # rest of what changed in that redesign.
+            events_url="https://ironhorse.org/shows",
             # Same shared Elfsight feed/"Parlor Room Collective" situation
             # as the Iron Horse above -- filter to this venue's own shows.
             source_type="elfsight_jsonld",

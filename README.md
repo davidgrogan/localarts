@@ -838,16 +838,29 @@ Adding a venue means picking one of these `source_type`s:
   CSS selector to wait for before capturing the page) and `wait_ms` (fallback
   fixed wait, default 3000ms).
 - **`elfsight_jsonld`** -- purpose-built for Elfsight's "Event Calendar"
-  widget. Fetches the page the same way `rendered_html` does, but instead of
-  CSS-selector-scraping the widget's visible DOM, it reads the schema.org
-  Event `<script type="application/ld+json">` block Elfsight embeds inside
-  every event card. That JSON-LD has a full ISO `startDate`/`endDate`
-  (year included), `description`, and `location.name` -- all more reliable
-  than the visible markup, which uses hashed, version-specific class names
-  and never shows a year in its date text at all. Same `wait_for_selector` /
-  `wait_ms` keys as `rendered_html`, plus `location_match` (list of
-  substrings matched case-insensitively against each event's JSON-LD
-  location name -- defaults to `[venue.name]`), `include_all_locations`
+  widget. The name is a bit of a misnomer now (kept for continuity with
+  existing venue rows -- renaming it would mean an extra migration step
+  for no real benefit): it used to read a schema.org Event
+  `<script type="application/ld+json">` block Elfsight embedded inside
+  every event card, but that stopped being an option once the Iron Horse's
+  widget (see the Iron Horse update below) both moved its cards inside an
+  **open shadow root** and dropped per-event JSON-LD entirely. Rather than
+  capturing the page's HTML as a string for a separate BeautifulSoup-based
+  `parse()` step (which can't see shadow DOM content at all, no matter the
+  selector), `fetch_raw()` now drives Playwright's own page-querying API
+  directly -- `eval_on_selector_all`, which pierces open shadow roots
+  automatically -- and returns already-structured per-event field data as
+  JSON instead of markup. The year, previously read off the JSON-LD (the
+  widget's visible date badge has never shown one), is now inferred:
+  since a venue's "upcoming shows" widget only ever lists events at or
+  after today, assuming this calendar year and bumping to next year only
+  if that lands before today covers the one case that actually matters.
+  Same `wait_for_selector` key as `rendered_html` (`wait_ms` is accepted
+  but unused now -- extraction polls for a stable card count instead of a
+  fixed delay, since this widget's real-world render time varies wildly,
+  confirmed anywhere from ~2 to ~15+ seconds), plus `location_match` (list
+  of substrings matched case-insensitively against each event's visible
+  location text -- defaults to `[venue.name]`), `include_all_locations`
   (bool, skips that filtering), and `category_include` (list of substrings,
   case-insensitive, matched against the same visible category text read
   for `genre` -- only matching events survive; see the 33 Hawley note
@@ -897,16 +910,72 @@ module and registering it in `app/scrapers/base.py`.
 widget with no public API -- confirmed by checking the scrape preview screen
 against `squarespace_json`, which showed the venue's own Squarespace
 collection reporting `itemCount: 0` (i.e. the events aren't Squarespace
-content at all, just an embedded third-party widget on top of it). A real
-rendered-page sample then showed each event card embeds a full schema.org
-Event JSON-LD block, so it's seeded with `source_type = "elfsight_jsonld"` and
+content at all, just an embedded third-party widget on top of it). It's
+seeded with `source_type = "elfsight_jsonld"` and
 `scrape_config = {"location_match": ["Iron Horse"]}` -- no manual selector
 work needed. That `location_match` filter matters because the Iron Horse's
 Elfsight feed is shared across several sibling "Parlor Room Collective"
 venues (Black Birch Vineyard, Musician's Workshop, The Parlor Room, etc.);
 without it, every show on the shared feed would get misattributed to the
 Iron Horse. The Parlor Room is seeded the same way, filtered to
-`["Parlor Room"]`, on the same feed URL. To finish wiring either one up:
+`["Parlor Room"]`, on the same feed URL.
+
+**Update, August 2026 -- Iron Horse site redesign broke the scraper:**
+David reported the Iron Horse "changed the way it lists its events" (a new
+unified, venue-filterable calendar right on the homepage). Confirmed via a
+real JS-executing browser (a plain fetch only ever sees the widget's empty
+mount div, so this needed an actual rendered-page look) that two things
+about the underlying Elfsight widget changed along with the site redesign:
+
+1. Its event cards now render inside an **open shadow root**
+   (`.es-embed-root`'s `.shadowRoot`), which is invisible to any approach
+   that captures a page's HTML as a string first (`page.content()`,
+   `outerHTML`, etc. all deliberately exclude shadow DOM content) --
+   there's no selector fix for that, the fetch itself has to reach into
+   the live page rather than a captured copy of it.
+2. It no longer embeds a schema.org Event JSON-LD script tag anywhere on
+   the page -- the only JSON-LD left is generic site-level
+   WebSite/Organization/LocalBusiness data, nothing per-event. The old
+   version of this scraper leaned on that JSON-LD for exactly one field
+   (the year -- the widget's visible date badge has never shown one), so
+   losing it meant needing a different source for that too.
+
+`app/scrapers/elfsight_jsonld.py` was rewritten to cope with both: its
+`fetch_raw()` now drives Playwright's own page-querying API directly
+(`eval_on_selector_all`, which -- unlike a plain `querySelectorAll` from
+outside -- pierces open shadow roots automatically) instead of capturing
+HTML for a separate BeautifulSoup-based `parse()` step, and the year is
+now *inferred* rather than read from anywhere: since a venue's "upcoming
+shows" widget only ever lists events at or after today, building the date
+with this calendar year and bumping to next year only if that lands
+before today (see `_infer_year()`'s docstring) covers the one case that
+actually matters (a Dec-viewed widget listing a Jan show). Every event
+card's own class names the scraper depends on
+(`.eapp-events-calendar-grid-item-container`, `-name`, `-time`,
+`-location`, `-category`, the date badge's `-month`/`-day`) turned out to
+be exactly unchanged by the redesign -- only *how* to reach them, and what
+supplies the year, needed to change.
+
+One more casualty of the redesign: `https://ironhorse.org/parlorroomshows`
+-- the Parlor Room's old separate listing URL -- is now a real dead page
+(confirmed: a genuine 404, not a slow load or redirect). Both venues now
+point at the same unified `https://ironhorse.org/shows`, same as before
+for the Iron Horse itself, differing only in each row's own
+`location_match`.
+
+**Follow-up bug (David's first real test-scrape after the rewrite came
+back empty):** the widget doesn't render at all until it's actually
+scrolled into view -- confirmed via a debug screenshot David sent over,
+showing the page's header/hero rendering fine with the entire calendar
+section permanently blank below it, no matter how long fetch_raw waited.
+`rendered_html.py` already has an `_auto_scroll()` helper for exactly
+this pattern (some venues' widgets sit well below the initial viewport
+and lazy-render only once scrolled to), but this module's rewrite --
+having moved off `rendered_html.py`'s fetch_raw entirely -- didn't call
+it. Fixed by calling that same helper (reused, not duplicated) right
+after the page loads and before waiting for the first card.
+
+To finish wiring either one up:
 
 1. `playwright install chromium` once (see below).
 2. Run **Venues → (venue) → Test scrape** and confirm the parsed events look
@@ -1482,8 +1551,10 @@ existing covered either of this venue's real quirks:
   element, so `date_selector` targets that meta tag and `date_attr` is
   set to `"content"`. Its ISO string carries an explicit UTC offset,
   which `html_generic.py`'s new `_to_local()` (mirroring
-  `elfsight_jsonld.py`'s own `_to_local()` and `squarespace_json.py`'s
-  `_ms_to_local()` from earlier this session) converts to naive
+  `elfsight_jsonld.py`'s own `_to_local()` -- since removed from that
+  module along with its JSON-LD parsing entirely, see the Iron Horse
+  update above -- and `squarespace_json.py`'s `_ms_to_local()` from
+  earlier this session) converts to naive
   America/New_York wall-clock time via a real `.astimezone()` call
   rather than just discarding the offset -- verified in
   `test_amherst_college.py` with a deliberately UTC-offset (`+00:00`)
@@ -1612,8 +1683,9 @@ came out stored/displayed as 3:00am Dec 29th). This is the same bug
 class already hit and fixed for the Elfsight scraper (Iron Horse/Parlor
 Room). Fixed with a new `_ms_to_local()` helper in `squarespace_json.py`
 that converts to timezone-aware UTC first, then `.astimezone()`s to
-America/New_York and drops the tzinfo -- mirroring
-`elfsight_jsonld.py`'s own `_to_local()`. Covered by
+America/New_York and drops the tzinfo -- mirroring what was at the time
+`elfsight_jsonld.py`'s own `_to_local()` (since removed along with that
+module's JSON-LD parsing -- see the Iron Horse update above). Covered by
 `test_squarespace_json.py`, which asserts the exact wrong-calendar-day
 case against a real epoch-ms value.
 
