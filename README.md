@@ -336,6 +336,170 @@ raw DDL like this) to survive a real Postgres deploy -- a nullable column
 only needs `default=`, since existing rows can just take NULL. This is
 also documented directly in `sync_schema.py`'s own docstring.
 
+## Calendar AJAX filtering (no full-page reload) and "Select all" categories
+
+Every filter control on the calendar page -- category pills, the venue and
+genre `<select>`s, the "only local artists" checkbox -- plus the view-toggle
+links (Next 7 Days/Month/List All), the month prev/next links, the "+N more"
+overflow link, and "Clear filters", now update the page via `fetch()`
+instead of a normal form submit or link navigation. The address bar still
+shows a real, bookmarkable, shareable URL identical to what the old
+full-page version would have produced; only *how* the visitor got there
+changed.
+
+**Backend**: `calendar()` in `app/routes/main.py` builds its render context
+exactly as before, then picks the template based on a header instead of
+picking a different route:
+
+```python
+template = "calendar_content.html" if request.headers.get("X-Requested-With") == "fetch" else "calendar.html"
+return render_template(template, ...)  # same kwargs either way
+```
+
+`calendar_content.html` is the exact inner slice of the old `calendar.html`
+that used to live inside the page (artists-this-week gallery, month grid,
+event-list/empty-state, category pills, filter selects) -- no `<html>`,
+nav, or footer. `calendar.html` now just wraps that fragment in a
+`#calendar-content` div and includes it with `{% include %}`:
+
+```html
+<div id="calendar-content">
+  {% include "calendar_content.html" %}
+</div>
+```
+
+A request that doesn't send the `X-Requested-With: fetch` header --
+directly typing the URL, a bookmark, "Clear filters" opened in a new tab,
+disabled JS -- always gets the full `calendar.html` page. This is additive,
+not a replacement for normal navigation.
+
+**Frontend** (`calendar.html`'s own `<script>`, kept outside
+`#calendar-content` since anything injected via `.innerHTML` never
+executes): a `loadCalendarUrl(url, options)` helper does the `fetch()`,
+swaps the response into `#calendar-content` via `innerHTML`, calls
+`history.pushState()` with the *final* URL (`resp.url`, so Flask's existing
+empty-week-redirects-to-List-All-view 302 is respected even though
+`fetch()` follows it transparently), and re-runs
+`reinitCalendarDynamic()` -- the function that re-wires the parts of the
+page that only matter within `#calendar-content` and need to run again
+after every swap (the "remember which weeks/months were open" state, the
+artist-this-week gallery nav, and the month-view hover popups).
+
+Everything that listens at the `document` or `window` level (the filter
+form's `change` handler, the delegated `click` handler for
+`.category-select-all` and any `a.calendar-nav-link`, and the `popstate`
+handler for the back/forward buttons) is bound exactly once, guarded by a
+`globalHandlersBound` flag, in `bindGlobalHandlersOnce()` -- since those
+targets are never replaced by the swap, binding them again on every
+`reinitCalendarDynamic()` call would stack duplicate listeners
+indefinitely. Any link inside `#calendar-content` that should go through
+this AJAX path instead of a normal navigation just needs
+`class="calendar-nav-link"`; the delegated click handler intercepts it,
+serializes the current filter form's state via `FormData`/`URLSearchParams`
+where relevant, and calls `loadCalendarUrl()`.
+
+The "Select all" control (`.category-select-all`, a plain `<button
+type="button">` sitting inline with the category pills) checks every
+category checkbox and re-submits the filter form -- same delegated `click`
+handler, same `submitFiltersForm()` path every checkbox change already
+used. Right beside it, "Clear" (`.category-clear-all`) does the opposite --
+unchecks every pill and re-submits -- so the two live together as each
+other's undo, rather than "Clear" only being reachable via the broader
+"Clear filters" link (which also resets venue/genre/local-artist, see
+below).
+
+A `#calendar-content.is-loading { opacity: 0.6 }` class is toggled for the
+duration of an in-flight fetch -- deliberately subtle (not a spinner or
+overlay) since these requests are normally fast and a heavier loading state
+would just flash distractingly on a good connection.
+
+### "More filters" panel and the sticky view-toggle bar
+
+David felt the calendar page was getting busy, so the filter bar's
+*secondary* controls -- the venue and genre `<select>`s, the "only show
+events with local artists" checkbox, and the "Clear filters" link -- now
+live inside a collapsible `<details class="filters-more">` panel, labeled
+"More filters". The category pills (and their Select all/Clear pair) stay
+outside this panel and always visible, since they're the primary filter,
+not a secondary refinement.
+
+Same native `<details>`/`<summary>` pattern as the "Local Artists Playing
+This Week" panel, including the same remember-it-per-browser behavior:
+`initRememberOpenState()` in `calendar.html` was generalized to take an
+element id, a `localStorage` key, and an optional `defaultOpenWide` flag,
+so both panels share one implementation instead of duplicating it. "More
+filters" is the only caller that passes that third argument -- it defaults
+open on a wide-enough screen and collapsed on a narrow one, but only the
+very first time a visitor shows up (nothing in `localStorage` yet); once
+they've toggled it themselves, that choice sticks.
+
+The view-toggle row (Next 7 Days / This Weekend / Month / List All) is
+`position: sticky; top: 0` (see `.view-toggle` in `style.css`), so it stays
+reachable while a long month grid or event list scrolls underneath it. An
+earlier version also had a "Filters" button in that row that jumped back up
+to "More filters" -- removed after David noticed it, since it turned out to
+rarely do anything visitor-visible unless you'd already scrolled deep into
+a long list, which read as more clutter than the sticky bar's actual job
+(staying reachable while switching view) was worth.
+
+### Free-text search (`q` query param)
+
+A search box (`.calendar-search`, `<input type="search" name="q">`) sits as
+its own full-width row above the category pills -- the control most
+visitors reach for first ("is there a show I'm looking for"), so it's kept
+outside "More filters" the same way the category pills are.
+`_base_query()` in `main.py` matches `q` case-insensitively against either
+the show's own title or any billed artist's name (`Event.title.ilike(...)
+OR Event.artists.any(Artist.name.ilike(...))`), covering both "I know the
+show name" and "I know who's playing" searches with one box. Threaded
+through everywhere venue/genre already are: `_build_month_grid()`, every
+`url_for('main.calendar', ...)` call in `calendar_content.html` (so
+switching view/month/page never silently drops an active search), and the
+empty-week/weekend-redirects-to-List-All logic. Deliberately *not* threaded
+into `_local_artists_playing_this_week()`, matching that gallery's existing
+independence from venue/genre -- it always shows every local artist's
+appearance this week regardless of what the rest of the filter bar is set
+to.
+
+Submits live, as-you-type, debounced 400ms (see the delegated `"input"`
+listener in `calendar.html` -- keyed off `event.target.name === "q"` so it
+never fires for the venue/genre selects or category checkboxes, which only
+ever need their own `"change"` handling). A delegated `"submit"` listener
+also intercepts a real form submission (pressing Enter in the search box is
+an implicit submit for a form with one text field and no submit button) and
+routes it through the same AJAX path instead of falling through to a real
+full-page GET.
+
+The search box is the one filter control a visitor might still be actively
+typing into when a debounced fetch fires -- every other control only
+submits on a discrete, completed choice, so losing focus on those never
+mattered. Without special handling, `#calendar-content`'s `innerHTML`
+getting replaced wholesale on every AJAX swap (see the AJAX filtering
+section above) would yank focus and cursor position out from under
+mid-sentence typing. `loadCalendarUrl()` in `calendar.html` captures
+whichever field is focused (if it's inside `#calendar-content`) along with
+its `selectionStart`/`selectionEnd` before the fetch, and restores focus
+plus cursor position onto the same-named field in the freshly-swapped
+markup afterward.
+
+### "This Weekend" view
+
+A fourth view alongside Next 7 Days/Month/List All, for the common case of
+"what's on Friday through Sunday" rather than a rolling 7-day window that
+buries the weekend in the middle of the list on, say, a Tuesday.
+`_this_weekend_bounds(today)` in `main.py` returns that Friday-through-Sunday
+window as `(start, end)` with `end` exclusive (the following Monday) --
+deliberately NOT the naive `(4 - today.weekday()) % 7` "days until next
+Friday" formula, since that wraps all the way around to *next* Friday if
+`today` is a Saturday or Sunday, which would skip the weekend actually in
+progress. Saturday and Sunday are handled as their own cases, counting
+backward to that same weekend's Friday instead -- see that function's own
+docstring for the full reasoning.
+
+Shares the same empty-view-redirects-to-List-All behavior the week view
+already had (see that logic's own comment in `calendar()`), now scoped to
+`view in ("week", "weekend")` rather than just `"week"`.
+
 ## Local artist Genre/Category Tags, filtering, and the featured-artist spotlight
 
 An artist's **Genre Tags** (e.g. "Electronica", "New Wave", "Americana") and

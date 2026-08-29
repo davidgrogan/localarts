@@ -1,409 +1,57 @@
 {% extends "base.html" %}
 {% block title %}Calendar{% endblock %}
 {% block content %}
-  {# The full "About this site" content moved to its own page (see
-     main.py's about_page(), linked from the main nav) -- it used to be
-     shown inline here (collapsed by default) but that kept the calendar's
-     actual point (the show listings) further down the page than it
-     needed to be. This one line stays, though: a fixed caution (not part
-     of the admin-editable About content -- see app/utils.py's
-     VENUE_CAUTION_NOTE) shown here and on every show's own Event Details
-     page, since that's the copy actually useful right where a visitor is
-     deciding what to go see. #}
-  <p class="hero-note" style="margin-bottom: 1.25rem;"><strong>{{ venue_caution_note }}</strong></p>
-
-  {% if artists_this_week %}
-    {# Every local artist's appearance at a show landing in this same
-       7-day window (see main.py's _local_artists_playing_this_week()) --
-       one card per (artist, show) pair, so an artist playing twice this
-       week (or a bill with more than one local act) gets a card each.
-       Replaces the old single-random-artist spotlight. The gallery itself
-       is a plain horizontally-scrolling flex row (CSS scroll-snap) so it
-       works via touch/trackpad swipe with no JS at all -- the Prev/Next
-       buttons below are just a more discoverable way to do the same
-       scroll, wired up in the <script> at the bottom of this page. #}
-    <details class="featured-artist" id="artists-this-week-details" open>
-      <summary>Local Artists Playing This Week! <span class="toggle-icon" aria-hidden="true">&#9660;</span></summary>
-      <div class="artist-week-gallery-wrap">
-        <div class="artist-week-gallery" id="artist-week-gallery">
-          {% for spot in artists_this_week %}
-            {% set artist = spot.artist %}
-            {% set e = spot.event %}
-            <div class="artist-week-card">
-              {% if artist.image_url %}
-                <div class="artist-thumb featured-artist-thumb"><img src="{{ artist.image_url }}" alt="" loading="lazy"></div>
-              {% endif %}
-              <p class="meta">
-                At
-                {% if e.display_venue_link %}
-                  <a href="{{ e.display_venue_link }}" target="_blank" rel="noopener">{{ e.display_venue_name }}</a>
-                {% else %}
-                  {{ e.display_venue_name }}
-                {% endif %}
-                on {{ e.start_datetime | dtfmt("%a %b %-d, %-I:%M %p") }}
-              </p>
-              <h3>{{ artist.name }}</h3>
-              {% if artist.genre_tags %}
-                <p class="meta">
-                  {% for g in artist.genre_tags %}<span class="genre-tag">{{ g.name }}</span>{% endfor %}
-                </p>
-              {% endif %}
-              {% if artist.embed_code %}
-                <div class="artist-embed">{{ artist.embed_code | safe }}</div>
-              {% endif %}
-              <a class="btn btn-small" href="{{ url_for('artists.detail', artist_id=artist.id) }}">View artist profile &rarr;</a>
-            </div>
-          {% endfor %}
-        </div>
-        {% if artists_this_week | length > 1 %}
-          {# Server-side this only knows the *count* of cards, not whether
-             they'll actually overflow the gallery's width -- on a wide
-             enough screen, 2 (or even 3) cards fit side by side with
-             nothing to scroll to, and the Prev/Next/"1 of 2" counter below
-             would be actively misleading in that case (a visitor can
-             already see every card, so "1 of 2" reads like there's a
-             second screen's worth of content hiding behind Next). The
-             <script> at the bottom of this page hides this whole block
-             with JS once the page has actually laid out, if the gallery
-             isn't scrollable -- see that script's updateNavVisibility(). #}
-          <div class="artist-week-nav" id="artist-week-nav">
-            <button type="button" class="btn btn-small btn-secondary" id="artist-week-prev" aria-label="Previous artist">&larr; Prev</button>
-            <span class="artist-week-count" id="artist-week-count"></span>
-            <button type="button" class="btn btn-small btn-secondary" id="artist-week-next" aria-label="Next artist">Next &rarr;</button>
-          </div>
-        {% endif %}
-      </div>
-    </details>
-  {% endif %}
-
-  <h2 class="section-heading">Upcoming shows</h2>
-  {% if view == 'week' %}
-    <p class="meta">Showing {{ week_start | dtfmt("%b %-d") }}&ndash;{{ week_end | dtfmt("%b %-d") }}.</p>
-  {% endif %}
-
-  {# One toggleable pill per public category (see EventType.is_public_category
-     in models.py and the "Manage categories" admin page) -- Music is
-     checked by default on a fresh visit, every other category opt-in.
-     Deliberately its own row, above the rest of the filter bar: this is
-     now the primary "what kind of thing am I looking at" choice, not a
-     secondary refinement like venue/genre. Lives inside the same <form>
-     below (the fieldset tag doesn't break that), so checking/unchecking
-     a pill submits the whole filter bar together. #}
-  <form class="filters" method="get">
-    <input type="hidden" id="view-field" name="view" value="{{ view }}">
-    {# Distinguishes "the filter form was submitted with every category
-       pill unchecked" from "this is a fresh visit that never touched the
-       filter bar" -- see _resolve_selected_category_ids()'s docstring in
-       main.py for why that distinction matters. Every submission of this
-       form includes it, since it's a plain (non-checkbox) hidden field --
-       EXCEPT when the venue dropdown below disables it right before
-       submitting, on purpose, so picking a venue defaults to every public
-       category instead of collapsing back to just Music. #}
-    <input type="hidden" id="categories-submitted-field" name="categories_submitted" value="1">
-    {% if public_categories %}
-      <fieldset class="category-toggles">
-        {% for c in public_categories %}
-          <label class="category-pill">
-            <input type="checkbox" name="category" value="{{ c.id }}"
-              {% if c.id in selected_category_ids %}checked{% endif %} onchange="this.form.submit()">
-            {{ c.name }}
-          </label>
-        {% endfor %}
-      </fieldset>
-    {% endif %}
-    {# Disabling the categories_submitted hidden field before this
-       particular submit (a disabled field just doesn't get included in
-       the form data -- standard HTML behavior, nothing server-side to
-       undo) makes _resolve_selected_category_ids() treat picking a venue
-       as a "fresh" categories state, same as a first-ever visit -- except
-       with venue_selected=True this time, so it defaults to showing every
-       public category for that venue rather than falling back to Music.
-       Whatever pills happen to be checked still get submitted alongside
-       it, but the resolver ignores the "category" param entirely whenever
-       categories_submitted is missing, so that's harmless. #}
-    <select name="venue" onchange="document.getElementById('categories-submitted-field').disabled = true; this.form.submit()">
-      <option value="">All venues</option>
-      {% for v in venues %}
-        <option value="{{ v.id }}" {% if v.id == selected_venue %}selected{% endif %}>{{ v.name }}</option>
-      {% endfor %}
-    </select>
-    <!-- Local artist filter removed for now -- coming back to this later. -->
-    <select name="genre" onchange="document.getElementById('view-field').value='list'; this.form.submit()">
-      <option value="">All genres</option>
-      {% for g in genres %}
-        <option value="{{ g }}" {% if g == selected_genre %}selected{% endif %}>{{ g }}</option>
-      {% endfor %}
-    </select>
-    <!-- "Only show first date of recurring events" toggle hidden for now,
-         per David's ask -- the underlying hide_recurring query param,
-         main.py's GROUP_RECURRING_EVENTS grouping logic, and the
-         view-toggle/clear-filters links below are all untouched, so this
-         is a one-line uncomment to bring the checkbox back later.
-    <label class="recurring-toggle">
-      <input type="checkbox" name="hide_recurring" value="1" {% if hide_recurring %}checked{% endif %} onchange="this.form.submit()">
-      Only show first date of recurring events
-    </label>
-    -->
-    <label class="recurring-toggle">
-      <input type="checkbox" name="only_local_artists" value="1" {% if only_local_artists %}checked{% endif %} onchange="this.form.submit()">
-      Show only events with local artists
-    </label>
-    {% if selected_venue or selected_genre or hide_recurring or only_local_artists or categories_customized %}
-      <a class="clear" href="{{ url_for('main.calendar', view=view) }}">Clear filters</a>
-    {% endif %}
-  </form>
-
-  {# Every one of these links carries category=selected_category_ids
-     (url_for repeats a list value as one "category=" param per id) plus
-     categories_submitted=1, so switching view/month/page never silently
-     resets back to the Music-only default -- whatever's currently
-     selected stays selected. #}
-  <div class="view-toggle">
-    <a class="btn btn-small {{ '' if view == 'week' else 'btn-secondary' }}" href="{{ url_for('main.calendar', view='week', venue=selected_venue, genre=selected_genre, hide_recurring=('1' if hide_recurring else none), only_local_artists=('1' if only_local_artists else none), category=selected_category_ids, categories_submitted=1) }}">Next 7 Days</a>
-    <a class="btn btn-small {{ '' if view == 'month' else 'btn-secondary' }}" href="{{ url_for('main.calendar', view='month', venue=selected_venue, genre=selected_genre, only_local_artists=('1' if only_local_artists else none), category=selected_category_ids, categories_submitted=1) }}">Month</a>
-    <a class="btn btn-small {{ '' if view == 'list' else 'btn-secondary' }}" href="{{ url_for('main.calendar', view='list', venue=selected_venue, genre=selected_genre, hide_recurring=('1' if hide_recurring else none), only_local_artists=('1' if only_local_artists else none), category=selected_category_ids, categories_submitted=1) }}">List All</a>
+  {# #calendar-content wraps calendar_content.html's own markup (the
+     filter bar, "Local Artists Playing This Week", month grid / event
+     list -- everything that changes when a filter/view/month changes).
+     calendar.html itself (this file) never gets re-fetched after the
+     first load -- only calendar_content.html's own rendered HTML gets
+     swapped into this div's innerHTML on every AJAX filter/nav
+     interaction (see the <script> below). Splitting it this way means
+     app/routes/main.py's calendar() route can hand back either the full
+     page (this file, extending base.html) or just this inner slice
+     (calendar_content.html alone) from the exact same context, depending
+     on whether the request came from a real navigation or this page's
+     own fetch() calls -- see that route's own comment. #}
+  <div id="calendar-content">
+    {% include "calendar_content.html" %}
   </div>
 
-  {% if view == 'month' %}
-    <div class="month-nav">
-      <a href="{{ url_for('main.calendar', view='month', month=grid.prev_month, venue=selected_venue, genre=selected_genre, only_local_artists=('1' if only_local_artists else none), category=selected_category_ids, categories_submitted=1) }}">&larr; Prev</a>
-      <span class="month-label">{{ grid.month_name }}</span>
-      <a href="{{ url_for('main.calendar', view='month', month=grid.next_month, venue=selected_venue, genre=selected_genre, only_local_artists=('1' if only_local_artists else none), category=selected_category_ids, categories_submitted=1) }}">Next &rarr;</a>
-    </div>
-
-    {# Hover/focus popup for a grid-event link (see the <script> at the
-       bottom of this file) -- a day cell only has room for time + title,
-       so this is where the rest (image, venue, artists, description)
-       shows up without a click-through to the full event page. One
-       shared, empty element reused for whichever event is currently
-       hovered/focused, positioned and filled in by JS rather than one
-       pre-rendered per event (cheaper, and avoids fighting each day
-       cell's own overflow:hidden/scroll, which would otherwise clip a
-       popup nested inside it). #}
-    <div id="event-popup" class="event-popup" role="tooltip"></div>
-
-    <table class="month-grid">
-      <thead>
-        <tr><th>Sun</th><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Sat</th></tr>
-      </thead>
-      <tbody>
-        {% for week in grid.weeks %}
-          <tr>
-            {% for day in week %}
-              {% if day == 0 %}
-                <td class="empty-day"></td>
-              {% else %}
-                <td class="{{ 'today' if day == grid.today_day else '' }}">
-                  <div class="day-number">{{ day }}</div>
-                  <div class="day-events">
-                    {% for e in grid.events_by_day.get(day, []) %}
-                      {% set local_artists = e.artists | selectattr("is_local") | list %}
-                      {% set popup_image = (e.image_url if e.image_url else (e.venue.image_url if e.venue.image_url else '')) | resolve_image_url %}
-                      <div class="grid-event {{ 'grid-event-local' if local_artists else '' }}">
-                        {% if local_artists %}<span class="grid-local-star">&#9733;</span>{% endif %}
-                        {% if e.genre %}<span class="grid-genre-dot"></span>{% endif %}
-                        <a
-                          class="grid-event-link"
-                          href="{{ url_for('main.event_detail', event_id=e.id) }}"
-                          data-title="{{ e.title }}"
-                          data-time="{{ e.start_datetime | dtfmt('%a %b %-d, %-I:%M %p') }}"
-                          data-venue="{{ e.display_venue_name }}"
-                          {% if e.venue.city and not e.custom_venue_name %}data-citystate="{{ e.venue.city }}, {{ e.venue.state }}"{% endif %}
-                          {% if e.genre %}data-genre="{{ e.genre }}"{% endif %}
-                          {% if e.artists %}data-artists="{{ e.artists | map(attribute='name') | join(', ') }}"{% endif %}
-                          {% if local_artists %}data-local="1"{% endif %}
-                          {% if e.description %}data-description="{{ e.description | striptags | truncate(160) }}"{% endif %}
-                          {% if popup_image %}data-image="{{ popup_image }}"{% endif %}
-                        >{{ e.start_datetime | dtfmt("%-I:%M %p") }} {{ e.title }}</a>
-                      </div>
-                    {% endfor %}
-                    {% if grid.overflow_by_day.get(day) %}
-                      {# Caps how many shows render inline per day (see
-                         _build_month_grid()'s docstring in main.py for why
-                         -- the original month view got pulled for exactly
-                         this reason once the venue list grew). "List All"
-                         is the honest way to see literally every show on a
-                         packed day, so this links there rather than
-                         claiming to expand in place. #}
-                      <a class="grid-event-overflow" href="{{ url_for('main.calendar', view='list', venue=selected_venue, genre=selected_genre, only_local_artists=('1' if only_local_artists else none), category=selected_category_ids, categories_submitted=1) }}">+{{ grid.overflow_by_day[day] }} more</a>
-                    {% endif %}
-                  </div>
-                </td>
-              {% endif %}
-            {% endfor %}
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  {% else %}
-    {% if items %}
-      <ul class="event-list">
-        {% set ns = namespace(current_day=None) %}
-        {% for item in items %}
-          {% set e = item.event %}
-          {% set day_key = e.start_datetime.date() %}
-          {% if day_key != ns.current_day %}
-            {% set ns.current_day = day_key %}
-            <li class="day-header">
-              {% if today and day_key == today.date() %}
-                Today &mdash; {{ e.start_datetime | dtfmt("%A, %B %-d") }}
-              {% elif tomorrow and day_key == tomorrow %}
-                Tomorrow &mdash; {{ e.start_datetime | dtfmt("%A, %B %-d") }}
-              {% else %}
-                {{ e.start_datetime | dtfmt("%A, %B %-d") }}
-              {% endif %}
-            </li>
-          {% endif %}
-          {% set local_artists = e.artists | selectattr("is_local") | list %}
-          <li class="event-card {{ 'event-card-local' if local_artists else '' }}">
-            <div class="event-date">{{ e.start_datetime | dtfmt("%-I:%M %p") }}</div>
-            {# A show with no flyer of its own falls back to its venue's
-               photo (e.g. the room, the marquee -- see Venue.image_url,
-               set on the venue's own edit page) before falling all the
-               way back to the bare site logo -- so cards for venues that
-               bothered to add a photo don't look as blank as an event
-               that truly has nothing to show. #}
-            {% if e.image_url %}
-              <a class="event-thumb" href="{{ url_for('main.event_detail', event_id=e.id) }}"><img src="{{ e.image_url | resolve_image_url }}" alt="" loading="lazy"></a>
-            {% elif e.venue.image_url %}
-              <a class="event-thumb" href="{{ url_for('main.event_detail', event_id=e.id) }}"><img src="{{ e.venue.image_url | resolve_image_url }}" alt="" loading="lazy"></a>
-            {% else %}
-              <a class="event-thumb event-thumb-fallback" href="{{ url_for('main.event_detail', event_id=e.id) }}"><img src="{{ url_for('static', filename='logo.svg') }}" alt="" loading="lazy"></a>
-            {% endif %}
-            <div class="event-main">
-              <div class="event-title">
-                {% if e.ticket_url %}<a href="{{ e.ticket_url }}" target="_blank" rel="noopener" {% if e.description %}title="{{ e.description }}" class="has-description"{% endif %}>{{ e.title }}</a>{% else %}<span {% if e.description %}title="{{ e.description }}" class="has-description"{% endif %}>{{ e.title }}</span>{% endif %}
-                {% if item.is_series %}
-                  <span class="recurring-badge" title="{{ item.count }} dates total">
-                    &#8635; {{ item.badge or "Recurring" }}{% if item.range_end %} &middot; thru {{ item.range_end | dtfmt("%b %-d") }}{% endif %}
-                  </span>
-                {% endif %}
-                {% if local_artists %}<span class="local-artist-badge" title="Features {{ local_artists | map(attribute='name') | join(', ') }}">&#9733; Local Artist</span>{% endif %}
-                {% if e.genre %}<span class="genre-tag">{{ e.genre }}</span>{% endif %}
-                {# Category pills (Music/Comedy/Theater/etc, distinct from
-                   the genre pill above -- .type-tag's teal vs .genre-tag's
-                   clay) only show once more than one category is
-                   selected at once. With just Music selected (the common
-                   case, and the default), every card would carry the
-                   same redundant "Music" badge -- the exact reason these
-                   were removed entirely during the site's original
-                   Music-only pivot. Now that multiple categories can be
-                   visible together, they're genuinely useful again for
-                   telling a Comedy card apart from a Music one at a
-                   glance. Only an event's *public* category tags show
-                   here -- an internal-only tag (e.g. "karaoke") never
-                   surfaces on the public calendar regardless. #}
-                {% if selected_category_ids | length > 1 %}
-                  {% for t in e.event_types | selectattr("is_public_category") %}
-                    <span class="type-tag">{{ t.name }}</span>
-                  {% endfor %}
-                {% endif %}
-              </div>
-              {% set showtimes = e.description | showtimes_line %}
-              {% if showtimes %}
-                {# Currently only ever set for Amherst Cinema's films --
-                   see showtimes_line()'s docstring in app/utils.py for
-                   why this is scoped to that one leading-paragraph shape
-                   rather than showing an arbitrary description preview
-                   under every event's title (Quonk's descriptions in
-                   particular are full paragraphs that would blow up
-                   every card). A no-op span for every other venue. #}
-                <div class="event-showtimes">{{ showtimes }}</div>
-              {% endif %}
-              <div class="event-venue">
-                {% if e.display_venue_link %}
-                  <a href="{{ e.display_venue_link }}" target="_blank" rel="noopener">{{ e.display_venue_name }}</a>
-                {% else %}
-                  {{ e.display_venue_name }}
-                {% endif %}
-                {# City/state belong to the placeholder Venue (e.g. "DIY"),
-                   not the one-off spot itself, so they're suppressed once
-                   custom_venue_name is set -- same reasoning as
-                   display_venue_link's docstring in models.py. #}
-                {% if e.venue.city and not e.custom_venue_name %} &middot; {{ e.venue.city }}, {{ e.venue.state }}{% endif %}
-              </div>
-              {% if e.artists %}
-                <div class="event-artists">
-                  Featuring:
-                  {% for a in e.artists %}
-                    <a href="{{ url_for('artists.detail', artist_id=a.id) }}">{{ a.name }}</a>{% if not loop.last %}, {% endif %}
-                  {% endfor %}
-                </div>
-              {% endif %}
-              <div class="event-link">
-                <a href="{{ url_for('main.event_detail', event_id=e.id) }}">Event Details &rarr;</a>
-                {% if e.ticket_url %}
-                  &middot; <a href="{{ e.ticket_url }}" target="_blank" rel="noopener">View on venue site &rarr;</a>
-                {% endif %}
-                {# Links this one occurrence, not the whole recurring series
-                   (see item.is_series below) -- a series' own start/end
-                   date range isn't a single calendar-app-importable event,
-                   just this card's specific date/time, same as
-                   "Event Details" above already only ever points at this
-                   one occurrence's own Event row. #}
-                &middot; <a href="{{ url_for('main.event_ics', event_id=e.id) }}">Add to calendar</a>
-              </div>
-              {% if is_admin %}
-                <div class="event-actions">
-                  {% if not e.artists %}
-                    <a href="{{ url_for('artists.new_artist', from_event=e.id) }}">+ Add as local artist</a>
-                  {% endif %}
-                  <a href="{{ url_for('events.edit_event', event_id=e.id) }}">Edit</a>
-                  <form method="post" action="{{ url_for('events.delete_event', event_id=e.id) }}" onsubmit="return confirm('Delete this show?');">
-                    <button type="submit">Delete</button>
-                  </form>
-                  {% if item.is_series %}
-                    <span class="meta">(editing/deleting only affects this one occurrence, {{ item.count }} total)</span>
-                  {% endif %}
-                </div>
-              {% endif %}
-            </div>
-          </li>
-        {% endfor %}
-      </ul>
-    {% else %}
-      <p class="empty-state">
-        {% if not selected_category_ids %}
-          {# Every category pill unchecked -- literally nothing to show,
-             distinct from "no shows found in the ones you picked." #}
-          Select at least one category above to see shows.
-        {% elif view == 'week' %}
-          No shows in the next 7 days. Try <a href="{{ url_for('main.calendar', view='list', venue=selected_venue, genre=selected_genre, only_local_artists=('1' if only_local_artists else none)) }}">List All</a> to see what's further out.
-        {% elif is_admin %}
-          No upcoming shows yet. <a href="{{ url_for('events.new_event') }}">Add one</a>, or add a venue and try a scrape.
-        {% else %}
-          No upcoming shows yet -- check back soon.
-        {% endif %}
-      </p>
-    {% endif %}
-  {% endif %}
-
   <script>
+    // ---- One-time setup (runs once, at initial page load) --------------
+
     // Remembers whichever open/closed state a visitor last left the
     // "Local Artists Playing This Week!" panel in, and restores it on
-    // every later page load -- localStorage rather than a cookie/server
-    // session since this is purely a per-browser display preference with
-    // no need to round-trip to the server (and no admin login is required
-    // to have a preference remembered). ("About this site" used to have
-    // its own remembered panel here too, before that content moved to its
-    // own page -- see main.py's about_page().)
-    (function () {
-      function rememberOpenState(elementId, storageKey) {
-        var el = document.getElementById(elementId);
-        if (!el) return;
-        var stored = localStorage.getItem(storageKey);
-        if (stored !== null) {
-          // Overrides this page's server-rendered default (open/closed)
-          // with whatever the visitor last chose -- only once we know
-          // they've actually chosen something before.
-          el.open = stored === "1";
-        }
-        el.addEventListener("toggle", function () {
-          localStorage.setItem(storageKey, el.open ? "1" : "0");
-        });
+    // every later render (initial load *and* every AJAX swap, since that
+    // whole <details> element gets replaced along with everything else
+    // in #calendar-content each time) -- localStorage rather than a
+    // cookie/server session since this is purely a per-browser display
+    // preference with no need to round-trip to the server.
+    // Generalized to take an element id + its own storage key (was
+    // hard-coded to just the artists-this-week panel) so the same
+    // remember-it-per-browser behavior can cover the new "More filters"
+    // panel below without duplicating this logic. defaultOpenWide is only
+    // consulted the very first time a visitor shows up (nothing in
+    // localStorage yet) -- "More filters" defaults open on a
+    // wide-enough screen and collapsed on a narrow one, same
+    // once-at-load width check initArtistWeekGallery() already relies on
+    // for its own layout-dependent decision. Every *other* panel just
+    // omits defaultOpenWide and keeps whatever its plain HTML `open`
+    // attribute already says, unchanged from before this was
+    // generalized.
+    function initRememberOpenState(elementId, storageKey, defaultOpenWide) {
+      var el = document.getElementById(elementId);
+      if (!el) return;
+      var stored = localStorage.getItem(storageKey);
+      if (stored !== null) {
+        el.open = stored === "1";
+      } else if (defaultOpenWide !== undefined && !defaultOpenWide) {
+        el.open = false;
       }
-      rememberOpenState("artists-this-week-details", "pcm_artists_this_week_open");
-    })();
+      el.addEventListener("toggle", function () {
+        localStorage.setItem(storageKey, el.open ? "1" : "0");
+      });
+    }
 
     // Prev/Next buttons for the "Local Artists Playing This Week!" gallery
     // -- the gallery itself is a plain CSS scroll-snap flex row (see
@@ -411,7 +59,10 @@
     // arrow-key scrolling already work with zero JS. These buttons just
     // give visitors a more obvious, clickable way to do the same scroll,
     // one card at a time, and keep a "2 of 5" style counter in sync with
-    // whichever card is currently snapped into view.
+    // whichever card is currently snapped into view. Called again after
+    // every AJAX swap (the gallery's own DOM nodes are new each time, so
+    // old listeners went away with the old nodes -- nothing to clean up,
+    // just re-bind against whatever's on the page now).
     //
     // David reported the counter/buttons were confusing when, say, both
     // of only 2 cards already fit on screen side by side with nothing to
@@ -419,11 +70,14 @@
     // visitor could already see in full. updateNavVisibility() hides the
     // whole Prev/Next/counter block whenever the gallery genuinely isn't
     // scrollable (scrollWidth <= clientWidth), and re-checks on window
-    // resize, since how many 320px-ish cards fit side by side depends on
-    // viewport width, not just card count -- the same 3-card gallery
-    // might need no buttons on a wide desktop window but need them again
-    // once that window's narrowed or on mobile.
-    (function () {
+    // resize (bound once, see bindGlobalHandlersOnce() below), since how
+    // many 320px-ish cards fit side by side depends on viewport width,
+    // not just card count.
+    var artistWeekResizeTimer;
+    // Debounce timer for the search box's live-as-you-type filtering --
+    // see the delegated "input" listener near the bottom of this script.
+    var searchDebounceTimer;
+    function initArtistWeekGallery() {
       var gallery = document.getElementById("artist-week-gallery");
       if (!gallery) return;
       var cards = gallery.querySelectorAll(".artist-week-card");
@@ -439,12 +93,13 @@
         var overflowing = gallery.scrollWidth > gallery.clientWidth + 1;
         navEl.style.display = overflowing ? "" : "none";
       }
-
-      var resizeTimer;
-      window.addEventListener("resize", function () {
-        clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(updateNavVisibility, 150);
-      });
+      // Exposed on window so the one-time resize listener (see
+      // bindGlobalHandlersOnce()) can call whichever gallery is currently
+      // on the page -- re-registering a fresh resize listener on every
+      // swap would stack up duplicates that never go away for the
+      // lifetime of the page, since window listeners don't get cleaned
+      // up just because the gallery element they refer to was replaced.
+      window.__pcmUpdateArtistWeekNav = updateNavVisibility;
       updateNavVisibility();
 
       function currentIndex() {
@@ -479,13 +134,14 @@
       if (nextBtn) nextBtn.addEventListener("click", function () { scrollToCard(currentIndex() + 1); });
       gallery.addEventListener("scroll", updateCount, { passive: true });
       updateCount();
-    })();
+    }
 
     // Month view's hover/focus popup -- a day cell only fits time + title
-    // (see the .grid-event-link data-* attributes above), so this fills
-    // in the rest (image, venue, artists, description) without a
-    // click-through, which was David's actual ask once the month view
-    // came back and the cramped cells were fresh in his mind again.
+    // (see the .grid-event-link data-* attributes in calendar_content.html),
+    // so this fills in the rest (image, venue, artists, description)
+    // without a click-through, which was David's actual ask once the
+    // month view came back and the cramped cells were fresh in his mind
+    // again.
     //
     // One shared #event-popup element, filled in and repositioned on
     // every hover/focus rather than one pre-rendered popup per event --
@@ -494,104 +150,117 @@
     // overflow:hidden/scroll (a nested, cell-local popup would be cut off
     // exactly where it's most likely to actually go, since a packed cell
     // is exactly when the popup earns its keep).
-    (function () {
-      var popup = document.getElementById("event-popup");
+    //
+    // Split into two pieces on purpose: bindMonthPopupLinksOnce() below
+    // attaches the document-level "click anywhere else closes it" and
+    // the window-level scroll/resize-closes-it handlers exactly once,
+    // ever (see bindGlobalHandlersOnce()) -- those targets (document,
+    // window) never get replaced by an AJAX swap, so re-running that
+    // part on every swap would silently pile up duplicate listeners for
+    // the rest of the page's life. initMonthPopupLinks() (this function)
+    // is the part that's safe, and necessary, to re-run on every swap --
+    // it only touches *this render's* .grid-event-link elements, which
+    // are brand new DOM nodes each time (their old listeners went away
+    // with the old nodes, nothing to unbind).
+    var monthPopupEl = null;
+    var monthPopupHideTimer = null;
+    var monthPopupActiveLink = null;
+
+    function escapeHtmlForPopup(value) {
+      return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function buildMonthPopupHtml(link) {
+      var d = link.dataset;
+      var html = "";
+      if (d.image) {
+        html += '<img class="event-popup-image" src="' + escapeHtmlForPopup(d.image) + '" alt="">';
+      }
+      html += '<div class="event-popup-body">';
+      html += '<div class="event-popup-title">' + escapeHtmlForPopup(d.title) + "</div>";
+
+      var subline = escapeHtmlForPopup(d.venue);
+      if (d.citystate) subline += " &middot; " + escapeHtmlForPopup(d.citystate);
+      html += '<div class="event-popup-meta">' + escapeHtmlForPopup(d.time) + " &middot; " + subline + "</div>";
+
+      if (d.genre) {
+        html += '<div class="event-popup-genre">' + escapeHtmlForPopup(d.genre) + "</div>";
+      }
+      if (d.artists) {
+        html += '<div class="event-popup-artists">' + (d.local ? "&#9733; " : "") + "Featuring: " + escapeHtmlForPopup(d.artists) + "</div>";
+      }
+      if (d.description) {
+        html += '<div class="event-popup-description">' + escapeHtmlForPopup(d.description) + "</div>";
+      }
+      html += '<a class="event-popup-footer" href="' + escapeHtmlForPopup(link.getAttribute("href")) + '">View full details &rarr;</a>';
+      html += "</div>";
+      return html;
+    }
+
+    function positionMonthPopup(link) {
+      var popup = monthPopupEl;
+      var rect = link.getBoundingClientRect();
+      var width = popup.offsetWidth;
+      var height = popup.offsetHeight;
+      var margin = 8;
+
+      var left = rect.left;
+      if (left + width > window.innerWidth - margin) {
+        left = window.innerWidth - width - margin;
+      }
+      if (left < margin) left = margin;
+
+      var top = rect.bottom + 6;
+      if (top + height > window.innerHeight - margin) {
+        top = rect.top - height - 6;
+      }
+      if (top < margin) top = margin;
+
+      popup.style.left = left + "px";
+      popup.style.top = top + "px";
+    }
+
+    function showMonthPopup(link) {
+      var popup = monthPopupEl;
+      clearTimeout(monthPopupHideTimer);
+      popup.innerHTML = buildMonthPopupHtml(link);
+      popup.classList.add("is-visible");
+      positionMonthPopup(link);
+    }
+
+    function scheduleHideMonthPopup() {
+      monthPopupHideTimer = setTimeout(function () {
+        if (monthPopupEl) monthPopupEl.classList.remove("is-visible");
+      }, 150);
+    }
+
+    // (hover: hover) is false on phones/tablets -- there's no mouse to
+    // hover with, so mouseenter/mouseleave either never fire or fire in
+    // a confusing synthetic way right before a tap's click event. Some
+    // touch laptops/hybrids report true here too, which is fine: they
+    // do have a real hover-capable pointer, so the mouse-based path
+    // below works for them as-is. Computed once (doesn't change between
+    // renders), not per-call.
+    var supportsHoverForPopup = !!(window.matchMedia && window.matchMedia("(hover: hover)").matches);
+
+    function initMonthPopupLinks() {
+      monthPopupEl = document.getElementById("event-popup");
       var links = document.querySelectorAll(".grid-event-link");
-      if (!popup || !links.length) return;
+      if (!monthPopupEl || !links.length) return;
+      monthPopupActiveLink = null;
 
-      var hideTimer = null;
-
-      function escapeHtml(value) {
-        return String(value || "")
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;")
-          .replace(/'/g, "&#39;");
-      }
-
-      function buildPopupHtml(link) {
-        var d = link.dataset;
-        var html = "";
-        if (d.image) {
-          html += '<img class="event-popup-image" src="' + escapeHtml(d.image) + '" alt="">';
-        }
-        html += '<div class="event-popup-body">';
-        html += '<div class="event-popup-title">' + escapeHtml(d.title) + "</div>";
-
-        var subline = escapeHtml(d.venue);
-        if (d.citystate) subline += " &middot; " + escapeHtml(d.citystate);
-        html += '<div class="event-popup-meta">' + escapeHtml(d.time) + " &middot; " + subline + "</div>";
-
-        if (d.genre) {
-          html += '<div class="event-popup-genre">' + escapeHtml(d.genre) + "</div>";
-        }
-        if (d.artists) {
-          html += '<div class="event-popup-artists">' + (d.local ? "&#9733; " : "") + "Featuring: " + escapeHtml(d.artists) + "</div>";
-        }
-        if (d.description) {
-          html += '<div class="event-popup-description">' + escapeHtml(d.description) + "</div>";
-        }
-        html += '<a class="event-popup-footer" href="' + escapeHtml(link.getAttribute("href")) + '">View full details &rarr;</a>';
-        html += "</div>";
-        return html;
-      }
-
-      function positionPopup(link) {
-        var rect = link.getBoundingClientRect();
-        var width = popup.offsetWidth;
-        var height = popup.offsetHeight;
-        var margin = 8;
-
-        var left = rect.left;
-        if (left + width > window.innerWidth - margin) {
-          left = window.innerWidth - width - margin;
-        }
-        if (left < margin) left = margin;
-
-        var top = rect.bottom + 6;
-        if (top + height > window.innerHeight - margin) {
-          // Not enough room below -- try above the event instead.
-          top = rect.top - height - 6;
-        }
-        if (top < margin) top = margin;
-
-        popup.style.left = left + "px";
-        popup.style.top = top + "px";
-      }
-
-      function showPopup(link) {
-        clearTimeout(hideTimer);
-        popup.innerHTML = buildPopupHtml(link);
-        popup.classList.add("is-visible");
-        positionPopup(link);
-      }
-
-      function scheduleHide() {
-        hideTimer = setTimeout(function () {
-          popup.classList.remove("is-visible");
-        }, 150);
-      }
-
-      // (hover: hover) is false on phones/tablets -- there's no mouse to
-      // hover with, so mouseenter/mouseleave either never fire or fire in
-      // a confusing synthetic way right before a tap's click event. Some
-      // touch laptops/hybrids report true here too, which is fine: they
-      // do have a real hover-capable pointer, so the mouse-based path
-      // below works for them as-is.
-      var supportsHover = !!(window.matchMedia && window.matchMedia("(hover: hover)").matches);
-
-      if (supportsHover) {
+      if (supportsHoverForPopup) {
         links.forEach(function (link) {
-          link.addEventListener("mouseenter", function () { showPopup(link); });
-          link.addEventListener("mouseleave", scheduleHide);
-          link.addEventListener("focus", function () { showPopup(link); });
-          link.addEventListener("blur", scheduleHide);
+          link.addEventListener("mouseenter", function () { showMonthPopup(link); });
+          link.addEventListener("mouseleave", scheduleHideMonthPopup);
+          link.addEventListener("focus", function () { showMonthPopup(link); });
+          link.addEventListener("blur", scheduleHideMonthPopup);
         });
-        // Keeps the popup open while the pointer travels from the event
-        // link into the popup itself (e.g. to click "View full details").
-        popup.addEventListener("mouseenter", function () { clearTimeout(hideTimer); });
-        popup.addEventListener("mouseleave", scheduleHide);
       } else {
         // Touch: tap-to-preview, tap again (or tap "View full details") to
         // actually go there. A day's first tap on any given show shows the
@@ -599,44 +268,260 @@
         // touch visitor would never see it at all, since nothing "hovers"
         // on a touchscreen. Tapping the *same* event a second time, or the
         // popup's own link, lets the click through normally.
-        var activeLink = null;
-
         links.forEach(function (link) {
           link.addEventListener("click", function (event) {
-            if (activeLink === link) {
+            if (monthPopupActiveLink === link) {
               // Second tap on an already-previewed event -- let it navigate.
               return;
             }
             event.preventDefault();
-            // is-active gives the previewed event a visible highlight --
-            // without it, a tap that doesn't navigate anywhere would just
-            // look broken/unresponsive rather than "showing you something".
-            if (activeLink) activeLink.classList.remove("is-active");
-            activeLink = link;
+            if (monthPopupActiveLink) monthPopupActiveLink.classList.remove("is-active");
+            monthPopupActiveLink = link;
             link.classList.add("is-active");
-            showPopup(link);
+            showMonthPopup(link);
           });
         });
-
-        // Tapping anywhere that isn't a show (or the open popup itself,
-        // e.g. its "View full details" link) closes whatever's open, so
-        // the next tap on a *different* event previews fresh instead of
-        // immediately navigating -- closest() on the click target, not
-        // this handler firing at all, is what makes the opening tap above
-        // exempt from immediately closing what it just opened.
-        document.addEventListener("click", function (event) {
-          if (event.target.closest(".grid-event-link, #event-popup")) return;
-          popup.classList.remove("is-visible");
-          if (activeLink) activeLink.classList.remove("is-active");
-          activeLink = null;
-        });
       }
+    }
+
+    // ---- Global handlers, bound exactly once regardless of how many
+    // times the calendar's content gets swapped via AJAX -------------------
+    var globalHandlersBound = false;
+    function bindGlobalHandlersOnce() {
+      if (globalHandlersBound) return;
+      globalHandlersBound = true;
+
+      window.addEventListener("resize", function () {
+        clearTimeout(artistWeekResizeTimer);
+        artistWeekResizeTimer = setTimeout(function () {
+          if (window.__pcmUpdateArtistWeekNav) window.__pcmUpdateArtistWeekNav();
+        }, 150);
+      });
+
+      // Tapping/clicking anywhere that isn't a show (or the open popup
+      // itself, e.g. its "View full details" link) closes whatever's
+      // open -- checks event.target fresh on every real click, so it
+      // stays correct no matter how many times the underlying
+      // .grid-event-link elements have been replaced by an AJAX swap
+      // since this listener was bound.
+      document.addEventListener("click", function (event) {
+        if (event.target.closest(".grid-event-link, #event-popup")) return;
+        if (monthPopupEl) monthPopupEl.classList.remove("is-visible");
+        if (monthPopupActiveLink) monthPopupActiveLink.classList.remove("is-active");
+        monthPopupActiveLink = null;
+      });
 
       // A stale, already-positioned popup left open while the page
       // scrolls or resizes would float over the wrong spot -- simplest
       // fix is just to close it rather than continuously reposition.
-      window.addEventListener("scroll", function () { popup.classList.remove("is-visible"); }, { passive: true });
-      window.addEventListener("resize", function () { popup.classList.remove("is-visible"); });
-    })();
+      window.addEventListener("scroll", function () {
+        if (monthPopupEl) monthPopupEl.classList.remove("is-visible");
+      }, { passive: true });
+      window.addEventListener("resize", function () {
+        if (monthPopupEl) monthPopupEl.classList.remove("is-visible");
+      });
+    }
+
+    // Re-runs everything above that needs fresh DOM references after
+    // #calendar-content's innerHTML gets replaced -- called once on
+    // initial page load, and again after every successful AJAX swap.
+    function reinitCalendarDynamic() {
+      initRememberOpenState("artists-this-week-details", "pcm_artists_this_week_open");
+      // See initRememberOpenState()'s own comment above for why this
+      // particular call passes a third argument and the one above
+      // doesn't. 600px matches every other narrow-screen breakpoint in
+      // style.css (@media (max-width: 600px), used throughout).
+      initRememberOpenState("filters-more-details", "pcm_filters_more_open", window.innerWidth >= 600);
+      initArtistWeekGallery();
+      initMonthPopupLinks();
+    }
+
+    // ---- AJAX filtering/navigation --------------------------------------
+    //
+    // Every category checkbox, the venue/genre dropdowns, the "only local
+    // artists" checkbox, "Select all", and every link marked
+    // class="calendar-nav-link" (view toggle, month prev/next, "+N more",
+    // the clear-filters link, the empty-state's own "List All" link)
+    // re-fetch this same page instead of doing a real full-page navigation --
+    // fetches send X-Requested-With: fetch, which main.py's calendar()
+    // route uses to hand back calendar_content.html's bare fragment
+    // instead of the full calendar.html page (see that route's own
+    // comment). The response gets swapped straight into #calendar-content,
+    // and history.pushState() updates the address bar to match -- so the
+    // URL a visitor ends up on (and can copy/bookmark/share, or reach
+    // again via the back button) is exactly the same real, plain GET URL
+    // this page has always used; only *how* it got there changed.
+    //
+    // Both listeners are delegated on document (never on anything inside
+    // #calendar-content itself, which gets replaced wholesale on every
+    // swap) so they keep working against whatever's currently on the
+    // page without ever needing to be re-bound.
+    var calendarContentEl = null;
+
+    function loadCalendarUrl(url, options) {
+      options = options || {};
+      if (!calendarContentEl) calendarContentEl = document.getElementById("calendar-content");
+      if (!calendarContentEl) return;
+      calendarContentEl.classList.add("is-loading");
+
+      // The search box (input[name="q"]) is the one control in here a
+      // visitor might still be actively typing into when a fetch fires
+      // (see the debounced "input" listener below) -- every other
+      // control (checkboxes, selects) only ever submits on a discrete
+      // change, so losing focus on those never mattered before. Without
+      // this, #calendar-content's innerHTML getting replaced wholesale
+      // on every swap would yank focus (and the cursor position) out
+      // from under mid-sentence typing. Captured before the fetch,
+      // restored after the swap below onto whichever same-named field
+      // exists in the fresh markup.
+      var refocusName = null, refocusStart = null, refocusEnd = null;
+      var active = document.activeElement;
+      if (active && active.name === "q" && calendarContentEl.contains(active)) {
+        refocusName = active.name;
+        refocusStart = active.selectionStart;
+        refocusEnd = active.selectionEnd;
+      }
+
+      fetch(url, { headers: { "X-Requested-With": "fetch" } })
+        .then(function (resp) {
+          if (!resp.ok) throw new Error("Bad response: " + resp.status);
+          return resp.text().then(function (html) {
+            return { html: html, finalUrl: resp.url };
+          });
+        })
+        .then(function (result) {
+          calendarContentEl.innerHTML = result.html;
+          calendarContentEl.classList.remove("is-loading");
+          if (!options.isPopState) {
+            history.pushState({ pcmCalendar: true }, "", result.finalUrl);
+          }
+          reinitCalendarDynamic();
+          if (refocusName) {
+            var freshField = calendarContentEl.querySelector('[name="' + refocusName + '"]');
+            if (freshField) {
+              freshField.focus();
+              if (freshField.setSelectionRange && refocusStart != null) {
+                freshField.setSelectionRange(refocusStart, refocusEnd);
+              }
+            }
+          }
+        })
+        .catch(function () {
+          // Never leave a visitor stuck with a dead filter bar over a
+          // network hiccup or unexpected error -- fall back to a real
+          // navigation, exactly what would have happened without any of
+          // this AJAX wiring at all.
+          window.location.href = url;
+        });
+    }
+
+    function submitFiltersForm(form) {
+      var params = new URLSearchParams(new FormData(form));
+      var action = form.getAttribute("action") || window.location.pathname;
+      loadCalendarUrl(action + "?" + params.toString());
+    }
+
+    document.addEventListener("change", function (event) {
+      // The search box handles itself via the debounced "input" listener
+      // below (plus the "submit" listener for an Enter press) -- letting
+      // its "change" event (fires on blur) *also* call
+      // submitFiltersForm() here would usually just be a harmless
+      // redundant fetch, but skip it explicitly rather than rely on that.
+      if (event.target.name === "q") return;
+
+      var form = event.target.closest("form.filters");
+      if (!form) return;
+
+      if (event.target.name === "venue") {
+        // Same special case the old inline onchange handled: picking a
+        // venue treats the category selection as "fresh" (defaults to
+        // every public category for that venue) rather than collapsing
+        // back to just Music -- see _resolve_selected_category_ids()'s
+        // docstring in main.py.
+        var catField = form.querySelector("#categories-submitted-field");
+        if (catField) catField.disabled = true;
+      }
+      if (event.target.name === "genre") {
+        var viewField = form.querySelector("#view-field");
+        if (viewField) viewField.value = "list";
+      }
+      submitFiltersForm(form);
+    });
+
+    // Live-as-you-type search -- debounced (waits for a pause in typing)
+    // rather than firing on every single keystroke, so a fast typist
+    // doesn't trigger a fetch per letter. "input" (not "change") since it
+    // fires immediately as the value changes, not just on blur -- see
+    // loadCalendarUrl()'s own focus-preservation comment for why the
+    // search box needs special handling that the other, discrete-choice
+    // filter controls (checkboxes/selects) never did.
+    document.addEventListener("input", function (event) {
+      if (event.target.name !== "q") return;
+      var form = event.target.closest("form.filters");
+      if (!form) return;
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(function () {
+        submitFiltersForm(form);
+      }, 400);
+    });
+
+    // Intercepts a real form submission -- e.g. pressing Enter inside the
+    // search box, which browsers treat as an implicit submit given a
+    // form with exactly one text-ish field and no other submit control.
+    // Without this, that Enter press would trigger a genuine full-page
+    // GET, undoing all of the AJAX wiring above for that one interaction.
+    // Also immediately flushes any pending debounce (above) rather than
+    // doing both a submit-now and a delayed duplicate one shortly after.
+    document.addEventListener("submit", function (event) {
+      var form = event.target.closest("form.filters");
+      if (!form) return;
+      event.preventDefault();
+      clearTimeout(searchDebounceTimer);
+      submitFiltersForm(form);
+    });
+
+    document.addEventListener("click", function (event) {
+      var selectAllBtn = event.target.closest(".category-select-all");
+      if (selectAllBtn) {
+        event.preventDefault();
+        var form = selectAllBtn.closest("form.filters");
+        if (!form) return;
+        form.querySelectorAll('input[name="category"]').forEach(function (cb) {
+          cb.checked = true;
+        });
+        submitFiltersForm(form);
+        return;
+      }
+
+      // "Clear" pill's opposite: unchecks every category
+      // checkbox and re-submits, same submitFiltersForm() path Select
+      // all already uses. Deliberately only touches the category
+      // checkboxes, not venue/genre/local-artist -- that broader reset
+      // stays the clear-filters link's job, inside "More filters" below.
+      var clearAllBtn = event.target.closest(".category-clear-all");
+      if (clearAllBtn) {
+        event.preventDefault();
+        var clearForm = clearAllBtn.closest("form.filters");
+        if (!clearForm) return;
+        clearForm.querySelectorAll('input[name="category"]').forEach(function (cb) {
+          cb.checked = false;
+        });
+        submitFiltersForm(clearForm);
+        return;
+      }
+
+      var navLink = event.target.closest("a.calendar-nav-link");
+      if (navLink) {
+        event.preventDefault();
+        loadCalendarUrl(navLink.href);
+      }
+    });
+
+    window.addEventListener("popstate", function () {
+      loadCalendarUrl(window.location.href, { isPopState: true });
+    });
+
+    bindGlobalHandlersOnce();
+    reinitCalendarDynamic();
   </script>
 {% endblock %}

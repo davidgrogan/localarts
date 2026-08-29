@@ -198,7 +198,7 @@ h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; lett
    .featured-artist -- no JS needed. Each summary gets an explicit round
    icon badge with the toggle glyph inside it -- a solid-colored circle
    reads clearly as a button -- plus a soft hover tint as a second cue. */
-.hero > summary, .featured-artist > summary {
+.hero > summary, .featured-artist > summary, .filters-more > summary {
   cursor: pointer;
   list-style: none;
   display: flex;
@@ -219,7 +219,8 @@ h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; lett
   background: rgba(0, 0, 0, 0.04);
 }
 .hero > summary::-webkit-details-marker,
-.featured-artist > summary::-webkit-details-marker { display: none; }
+.featured-artist > summary::-webkit-details-marker,
+.filters-more > summary::-webkit-details-marker { display: none; }
 .toggle-icon {
   display: inline-flex;
   align-items: center;
@@ -233,7 +234,7 @@ h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; lett
   line-height: 1;
   transition: transform 0.15s ease;
 }
-.hero:not([open]) .toggle-icon, .featured-artist:not([open]) .toggle-icon {
+.hero:not([open]) .toggle-icon, .featured-artist:not([open]) .toggle-icon, .filters-more:not([open]) .toggle-icon {
   transform: rotate(-90deg);
 }
 .hero > summary { color: var(--accent); }
@@ -242,6 +243,34 @@ h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; lett
 .featured-artist > summary { color: var(--accent); }
 .featured-artist > summary .toggle-icon { background: var(--accent); }
 .featured-artist[open] > summary { margin-bottom: 0.75rem; }
+.filters-more > summary { color: var(--accent); font-size: 0.8rem; }
+.filters-more > summary .toggle-icon { background: var(--accent); width: 20px; height: 20px; }
+.filters-more[open] > summary { margin-bottom: 0.6rem; }
+
+/* Collapsible home for the calendar's *secondary* filter
+   controls (venue, genre, local-artist toggle, "Clear filters"),
+   keeping the calendar page feeling less busy. The
+   category pills above stay outside this panel and always visible on
+   purpose -- they're the primary filter, not a secondary refinement
+   (see the .category-toggles fieldset's own comment in
+   calendar_content.html). Same rounded-box treatment as .featured-artist
+   but a plain paper-warm fill rather than the gold spotlight wash, since
+   this is a utility panel, not a highlight. */
+.filters-more {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+  margin: 0 0 1.25rem;
+  background: var(--paper-warm);
+  width: 100%;
+}
+.filters-more-body {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+  padding-top: 0.25rem;
+}
 
 .featured-artist {
   border: 1px solid var(--line);
@@ -358,6 +387,24 @@ h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; lett
   border-radius: 8px;
   font-family: inherit;
 }
+/* Free-text search box -- its own full-width row above the category
+   pills (width: 100% forces the wrap inside .filters' flex-wrap row, same
+   trick .category-toggles and .filters-more already use), since it's the
+   control most visitors reach for first rather than a secondary
+   refinement alongside venue/genre. Slightly larger padding/font than
+   the plain selects so it reads as "the" search box, not just another
+   filter control. */
+.calendar-search {
+  width: 100%;
+  padding: 0.55rem 0.8rem;
+  font-size: 0.95rem;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-family: inherit;
+  margin: 0 0 0.75rem;
+}
 .filters a.clear {
   padding: 0.35rem 0.5rem;
   font-size: 0.9rem;
@@ -433,6 +480,34 @@ h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; lett
   color: var(--accent);
   font-weight: 600;
 }
+/* Sits inline with the pills themselves (same flex row, see
+   .category-toggles above) -- self-aligns to the row's vertical center
+   and picks up a little breathing room from whichever pill comes right
+   before it, rather than needing its own dedicated line. */
+.category-select-all {
+  align-self: center;
+  font-size: 0.85rem;
+  margin-left: 0.25rem;
+}
+/* "Clear" -- Select all's opposite, so it sits right beside it rather
+   than only being reachable via the broader "Clear filters" link inside
+   "More filters" (which also resets venue/genre/local-artist). Same
+   .link-button muted styling as Select all -- no visual reason to make
+   one louder than the other, they're equally common actions. */
+.category-clear-all {
+  align-self: center;
+  font-size: 0.85rem;
+}
+
+/* Calendar page's AJAX filtering (see calendar.html's own <script>) --
+   a brief, subtle dim on #calendar-content while a fetch() is in
+   flight, so a slow connection reads as "working on it" rather than a
+   filter click that silently did nothing. Not a full spinner/overlay on
+   purpose -- these fetches are typically fast (same data this page
+   would've reloaded anyway, just without the surrounding chrome), so
+   anything more elaborate would flash in and out distractingly on a fast
+   connection. */
+#calendar-content.is-loading { opacity: 0.6; transition: opacity 0.1s ease; }
 
 /* /feed (feed_builder.html) -- the readonly URL box + Copy/Preview
    buttons row. Same row-of-controls shape as .filters/.inline-form, but
@@ -605,7 +680,27 @@ h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; lett
 
 .empty-state { color: var(--muted); padding: 2rem 0; }
 
-.view-toggle { margin: 0.25rem 0 1.25rem; display: flex; gap: 0.5rem; }
+/* Sticky so the view toggle stays reachable while a long month grid or
+   event list scrolls underneath, instead of a visitor having to scroll
+   all the way back to the top just to switch view. A
+   solid --paper background (matching the page) plus a thin bottom
+   border is what keeps it readable over whatever scrolls past below it
+   -- no shadow, to stay in keeping with this site's flat, hairline-border
+   look rather than introducing a new elevation style just for this bar.
+   z-index only needs to clear this page's own content (month-grid cells,
+   event cards) -- nothing else on the calendar page uses position:
+   sticky/fixed to compete with it. */
+.view-toggle {
+  margin: 0.25rem 0 1.25rem;
+  display: flex;
+  gap: 0.5rem;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--paper);
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--line);
+}
 
 /* Month grid view -- brought back after an earlier removal (see
    main.py's _build_month_grid() docstring: it was pulled once because it

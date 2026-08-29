@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from flask import Blueprint, Response, abort, flash, redirect, render_template, request, session, url_for
-from sqlalchemy import and_
+from sqlalchemy import and_, or_
 
 from app.auth import login_required
 from app.models import db, Event, Venue, Artist, EventType
@@ -130,7 +130,7 @@ def _resolve_selected_category_ids(args, public_choices, venue_selected):
     return [cid for cid in requested if cid in valid_ids]
 
 
-def _base_query(venue_id, artist_id, selected_genre, category_ids, only_local_artists=False, venue_ids=None):
+def _base_query(venue_id, artist_id, selected_genre, category_ids, only_local_artists=False, venue_ids=None, search_query=None):
     query = Event.query.filter(Event.is_approved.is_(True))
     if not category_ids:
         # No public category selected at all (an explicit "everything
@@ -174,6 +174,19 @@ def _base_query(venue_id, artist_id, selected_genre, category_ids, only_local_ar
         # .any() (an EXISTS subquery) rather than a join -- a join here
         # would duplicate a show once per local artist it features.
         query = query.filter(Event.artists.any(Artist.is_local.is_(True)))
+    if search_query:
+        # Matches against the show's own title OR any billed artist's
+        # name -- covers both "I know the show name" (a festival, a
+        # residency) and "I know who's playing" (an artist billed under a
+        # generic show title like "Open Mic Night") searches with one
+        # box. Same case-insensitive substring approach as the genre
+        # filter above -- good enough at this site's scale, not a real
+        # full-text search. .any() again to avoid duplicating a show once
+        # per matching artist on its bill.
+        like = f"%{search_query}%"
+        query = query.filter(
+            or_(Event.title.ilike(like), Event.artists.any(Artist.name.ilike(like)))
+        )
     return query
 
 
@@ -258,7 +271,37 @@ def _parse_month_param(month_param, today):
     return today.year, today.month
 
 
-def _build_month_grid(year, month, venue_id, artist_id, selected_genre, category_ids, only_local_artists, today):
+def _this_weekend_bounds(today):
+    """Friday through Sunday, whichever set is "this weekend" as of `today`
+    -- powers the "This Weekend" view. `today.weekday()` is Monday=0 ...
+    Sunday=6, so Friday is 4.
+
+    Deliberately NOT the naive "days until the next Friday" calculation
+    (`(4 - today.weekday()) % 7`) -- that formula only works Monday
+    through Friday. Visit on a Saturday or Sunday and it wraps all the way
+    around to *next* Friday, which would make "This Weekend" skip the
+    weekend actually in progress -- exactly the one a visitor loading the
+    page on a Saturday afternoon is asking about. So Saturday/Sunday are
+    handled as their own cases, counting backward to that same weekend's
+    Friday instead.
+
+    Returns (start, end) as local-midnight datetimes with `end` exclusive
+    (the Monday after), matching this file's other date-range helpers
+    (e.g. week_end in calendar() below) -- filter with
+    `start <= dt < end`."""
+    weekday = today.weekday()
+    if weekday == 4:  # Friday -- the weekend starts today
+        friday = today
+    elif weekday == 5:  # Saturday -- yesterday was this weekend's Friday
+        friday = today - timedelta(days=1)
+    elif weekday == 6:  # Sunday -- this weekend's Friday was 2 days ago
+        friday = today - timedelta(days=2)
+    else:  # Monday(0) through Thursday(3) -- count forward to the next Friday
+        friday = today + timedelta(days=4 - weekday)
+    return friday, friday + timedelta(days=3)
+
+
+def _build_month_grid(year, month, venue_id, artist_id, selected_genre, category_ids, only_local_artists, today, search_query=None):
     """Fetch this month's approved events in the currently-selected
     categories (respecting whichever venue/genre/local-artist filters are
     active -- same _base_query() every other view uses) and lay them out
@@ -286,7 +329,7 @@ def _build_month_grid(year, month, venue_id, artist_id, selected_genre, category
         prev_month_param = f"{year}-{month - 1:02d}"
 
     month_events = (
-        _base_query(venue_id, artist_id, selected_genre, category_ids, only_local_artists)
+        _base_query(venue_id, artist_id, selected_genre, category_ids, only_local_artists, search_query=search_query)
         .filter(Event.start_datetime >= month_start, Event.start_datetime < next_month_start)
         .order_by(Event.start_datetime.asc())
         .all()
@@ -324,13 +367,19 @@ def calendar():
     venue_id = request.args.get("venue", type=int)
     artist_id = request.args.get("artist", type=int)
     genre_param = request.args.get("genre", "").strip() or None
-    # "week" (the next 7 days) is the default landing view; "list" is the
-    # full unbounded upcoming-shows list; "month" is the grid view (see
-    # _build_month_grid() above -- brought back at David's request after
-    # an earlier removal, now with a per-day cap so a busy day doesn't
-    # blow out the whole grid).
+    # Free-text search against a show's title or any billed artist's name
+    # (see _base_query()'s own docstring for the matching logic) -- "q" to
+    # match the common URL convention for a search box, kept as its own
+    # param rather than overloading genre/venue.
+    search_query = request.args.get("q", "").strip() or None
+    # "week" (the next 7 days) is the default landing view; "weekend" is
+    # Friday-through-Sunday (see _this_weekend_bounds() above); "list" is
+    # the full unbounded upcoming-shows list; "month" is the grid view
+    # (see _build_month_grid() above -- brought back at David's request
+    # after an earlier removal, now with a per-day cap so a busy day
+    # doesn't blow out the whole grid).
     view = request.args.get("view", "week")
-    if view not in ("week", "list", "month"):
+    if view not in ("week", "weekend", "list", "month"):
         view = "week"
     # Defaults to the plain flat list (every occurrence shown) -- the
     # collapsed/badged view is opt-in via this checkbox, not automatic.
@@ -363,8 +412,10 @@ def calendar():
     # The week view still only *displays* items whose next occurrence
     # falls in that window; it just computes the grouping from complete
     # data first.
+    weekend_start, weekend_end = _this_weekend_bounds(today)
+
     all_upcoming = (
-        _base_query(venue_id, artist_id, genre_param, selected_category_ids, only_local_artists)
+        _base_query(venue_id, artist_id, genre_param, selected_category_ids, only_local_artists, search_query=search_query)
         .filter(Event.start_datetime >= today)
         .order_by(Event.start_datetime.asc())
         .all()
@@ -377,34 +428,42 @@ def calendar():
 
     if view == "week":
         items = [item for item in items if item.event.start_datetime < week_end]
+    elif view == "weekend":
+        items = [
+            item for item in items
+            if weekend_start <= item.event.start_datetime < weekend_end
+        ]
+
+    if view in ("week", "weekend") and categories_customized and not items:
         # A category pill that just got checked (or unchecked down to a
         # combination) can easily have nothing landing in the next 7 days
-        # even though real shows exist further out -- e.g. the only
-        # upcoming Comedy night is in three weeks. Rather than showing an
-        # empty "Next 7 Days" view and making the visitor notice and click
-        # "List All" themselves, redirect straight there. Scoped to
+        # (or this weekend) even though real shows exist further out --
+        # e.g. the only upcoming Comedy night is in three weeks. Rather
+        # than showing an empty view and making the visitor notice and
+        # click "List All" themselves, redirect straight there. Scoped to
         # "the category filter was actually touched this request"
         # (categories_customized) so a plain, filter-untouched empty week
-        # -- which just means it's a genuinely quiet week -- still shows
-        # the normal empty state instead of silently jumping to List All
-        # every time.
-        if categories_customized and not items:
-            return redirect(url_for(
-                "main.calendar",
-                view="list",
-                venue=venue_id,
-                genre=genre_param,
-                hide_recurring=("1" if hide_recurring else None),
-                only_local_artists=("1" if only_local_artists else None),
-                category=selected_category_ids,
-                categories_submitted=1,
-            ))
+        # or weekend -- which just means it's genuinely quiet -- still
+        # shows the normal empty state instead of silently jumping to
+        # List All every time.
+        return redirect(url_for(
+            "main.calendar",
+            view="list",
+            venue=venue_id,
+            genre=genre_param,
+            q=search_query,
+            hide_recurring=("1" if hide_recurring else None),
+            only_local_artists=("1" if only_local_artists else None),
+            category=selected_category_ids,
+            categories_submitted=1,
+        ))
 
     grid = None
     if view == "month":
         year, month = _parse_month_param(request.args.get("month"), today)
         grid = _build_month_grid(
-            year, month, venue_id, artist_id, genre_param, selected_category_ids, only_local_artists, today
+            year, month, venue_id, artist_id, genre_param, selected_category_ids, only_local_artists, today,
+            search_query=search_query,
         )
 
     venues = Venue.query.order_by(Venue.name).all()
@@ -417,8 +476,23 @@ def calendar():
     genres = _distinct_genres(selected_category_ids)
     artists_this_week = _local_artists_playing_this_week(today, week_end, selected_category_ids)
 
+    # Every filter control, view-toggle link, and month-nav link on the
+    # calendar page is AJAX-driven client-side (see calendar.html's own
+    # <script>) rather than a full page load -- it fetches this same
+    # route with this header set, swaps the response straight into
+    # #calendar-content, and updates the address bar via
+    # history.pushState. calendar_content.html is exactly the inner
+    # slice of calendar.html that used to be everything *inside*
+    # #calendar-content -- same context, same data, just without the
+    # surrounding <html>/nav/footer chrome a fetch() call has no use for.
+    # A direct browser navigation (typing the URL, a bookmark, "Clear
+    # filters" opened in a new tab, disabled JS, etc.) never sends this
+    # header, so it always gets the full page -- this is additive, not a
+    # replacement for normal navigation.
+    template = "calendar_content.html" if request.headers.get("X-Requested-With") == "fetch" else "calendar.html"
+
     return render_template(
-        "calendar.html",
+        template,
         items=items,
         grid=grid,
         view=view,
@@ -426,12 +500,15 @@ def calendar():
         tomorrow=(today + timedelta(days=1)).date(),
         week_start=today,
         week_end=week_end - timedelta(days=1),
+        weekend_start=weekend_start,
+        weekend_end=weekend_end - timedelta(days=1),
         venues=venues,
         artists=artists,
         genres=genres,
         selected_venue=venue_id,
         selected_artist=artist_id,
         selected_genre=genre_param,
+        selected_search=search_query,
         hide_recurring=hide_recurring,
         only_local_artists=only_local_artists,
         artists_this_week=artists_this_week,
