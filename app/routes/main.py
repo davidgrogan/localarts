@@ -742,6 +742,7 @@ def feed_rss():
 # itself has been corrected to verify every candidate against its own
 # track page before treating it as qualifying.
 NEW_RELEASES = [
+    {"artist": "Ray Mason", "title": "Amusement Park", "released": "August 31, 2026", "track_id": "930914865", "bandcamp_url": "https://raymason.bandcamp.com/track/amusement-park-2"},
     {"artist": "Dome Lettuce", "title": "Summer Daze (feat. Frank Gambit)", "released": "August 28, 2026", "track_id": "2610592512", "bandcamp_url": "https://d0melettuce.bandcamp.com/track/summer-daze-feat-frank-gambit"},
     {"artist": "Cloudbelly", "title": "Oh, Antarctica!", "released": "August 21, 2026", "track_id": "4050548037", "bandcamp_url": "https://cloudbelly.bandcamp.com/track/oh-antarctica"},
     {"artist": "Gentle Hen", "title": "Comfort Zone", "released": "August 21, 2026", "track_id": "235197250", "bandcamp_url": "https://gentlehen.bandcamp.com/track/comfort-zone-2"},
