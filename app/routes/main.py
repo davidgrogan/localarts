@@ -748,12 +748,15 @@ NEW_RELEASES = [
     {"artist": "Gentle Hen", "title": "Comfort Zone", "released": "August 21, 2026", "track_id": "235197250", "bandcamp_url": "https://gentlehen.bandcamp.com/track/comfort-zone-2"},
     {"artist": "Alyssa Kai", "title": "chronic illness power fantasy", "released": "August 14, 2026", "track_id": "2456862956", "bandcamp_url": "https://lyskoi.bandcamp.com/track/chronic-illness-power-fantasy"},
     {"artist": "The Suitcase Junket", "title": "Put Your Phone Down", "released": "August 11, 2026", "track_id": "1959259213", "bandcamp_url": "https://thesuitcasejunket.bandcamp.com/track/put-your-phone-down"},
+    {"artist": "Wallace Field", "title": "Fantasy", "released": "August 11, 2026", "track_id": "2254086092", "bandcamp_url": "https://wallacefield.bandcamp.com/track/fantasy"},
     {"artist": "Brokestring & the Empty Promises", "title": "Good News", "released": "August 7, 2026", "track_id": "3416702175", "bandcamp_url": "https://brokestring.bandcamp.com/track/good-news"},
     {"artist": "NEONACH", "title": "Eye in the Sky", "released": "August 4, 2026", "track_id": "1216733992", "bandcamp_url": "https://neonach.bandcamp.com/track/eye-in-the-sky"},
+    {"artist": "Love Offering", "title": "Every Breath", "released": "July 30, 2026", "track_id": "1854041450", "bandcamp_url": "https://loveoffering.bandcamp.com/track/every-breath"},
     {"artist": "Tommy Twilite", "title": "House of Cards", "released": "July 27, 2026", "track_id": "1554002702", "bandcamp_url": "https://tommytwilite.bandcamp.com/track/house-of-cards"},
     {"artist": "The Colony Motel", "title": "Almah", "released": "July 19, 2026", "track_id": "3799119158", "bandcamp_url": "https://thecolonymotel.bandcamp.com/track/almah"},
     {"artist": "mibble", "title": "Morning Dew Is Almost Over", "released": "July 19, 2026", "track_id": "3602496743", "bandcamp_url": "https://mibble.bandcamp.com/track/morning-dew-is-almost-over"},
     {"artist": "Wishbone Zoe", "title": "Psyche's Romp", "released": "July 16, 2026", "track_id": "3070579675", "bandcamp_url": "https://wishbonezoe.bandcamp.com/track/psyches-romp"},
+    {"artist": "Kimaya Diggs", "title": "I know that I'm perfect", "released": "July 9, 2026", "track_id": "4065160134", "bandcamp_url": "https://kimayadiggs.bandcamp.com/track/i-know-that-im-perfect"},
 ]
 
 
