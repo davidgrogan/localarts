@@ -223,6 +223,19 @@ class Artist(db.Model):
     image_url = db.Column(db.Text)
     # Artist's own site or Bandcamp page -- whichever they use most.
     website_url = db.Column(db.String(500))
+    # LEGACY -- superseded by the general-purpose ArtistLink table below.
+    # These two columns briefly held one single-purpose (title, URL) pair
+    # for a Freak Scene newsletter write-up; the very next ask was "let me
+    # add *multiple* links, with a title and a link each," so that became
+    # its own real one-to-many table instead of a second bespoke column
+    # pair. Left in place (nullable, no longer read or written by the
+    # artist form/routes) purely so app/__init__.py's
+    # _migrate_freak_scene_links() has somewhere to read any
+    # already-entered Freak Scene link from and carry it into a real
+    # ArtistLink row the first time this runs on an install that has one
+    # set -- see that function's own docstring.
+    freak_scene_url = db.Column(db.String(500))
+    freak_scene_title = db.Column(db.String(300))
     # Raw embed HTML from Bandcamp's or YouTube's own "Embed" snippet
     # generator (an <iframe>, typically), rendered as-is on the artist's
     # page. Trusted input -- only the site admin enters this, never a
@@ -238,9 +251,57 @@ class Artist(db.Model):
     events = db.relationship("Event", secondary=event_artists, back_populates="artists")
     genre_tags = db.relationship("GenreTag", secondary=artist_genre_tags, back_populates="artists")
     category_tags = db.relationship("EventType", secondary=artist_event_types, back_populates="artists")
+    # An artist's "Artist Links" -- an admin-managed, arbitrary-length list
+    # of (title, URL) pairs shown in their own section on the artist page
+    # (press write-ups, social links, merch, whatever). See ArtistLink
+    # below. cascade="all, delete-orphan" so deleting an artist cleans up
+    # its links too, same pattern as GigSubmission's converted_event
+    # *isn't* cascaded (a deliberate exception noted there) -- here there's
+    # no reason a link should ever outlive the artist it belongs to.
+    # order_by keeps them in the order an admin arranged them via the
+    # form's sort_order field, falling back to insertion order (id) for
+    # any tie.
+    links = db.relationship(
+        "ArtistLink", back_populates="artist", cascade="all, delete-orphan",
+        order_by="ArtistLink.sort_order, ArtistLink.id",
+    )
 
     def __repr__(self):
         return f"<Artist {self.name}>"
+
+
+class ArtistLink(db.Model):
+    """One (title, URL) link in an artist's "Artist Links" section --
+    press write-ups (e.g. a Freak Scene newsletter feature), social media,
+    merch, whatever an admin wants to point visitors at. Deliberately a
+    real one-to-many table rather than another single-purpose column pair
+    on Artist (like the old Artist.freak_scene_url/freak_scene_title it
+    replaces -- see those columns' own "LEGACY" docstring in this file),
+    since the whole point is supporting more than one link per artist.
+
+    Managed entirely through the artist form's repeatable "Artist Links"
+    row list (see artists/form.html and _resolve_artist_links() in
+    app/routes/artists.py), which replaces an artist's whole link list on
+    every save rather than diffing individual rows -- same "just replace
+    the collection" pattern already used for genre_tags/category_tags on
+    Artist, simpler than reconciling adds/edits/removes/reorders
+    individually for a list this small.
+    """
+
+    id = db.Column(db.Integer, primary_key=True)
+    artist_id = db.Column(db.Integer, db.ForeignKey("artist.id"), nullable=False)
+
+    title = db.Column(db.String(300), nullable=False)
+    url = db.Column(db.String(500), nullable=False)
+    # Admin-controlled ordering (set to each row's position in the form
+    # when saved) rather than free-form drag-and-drop -- simple to
+    # implement and plenty for a handful of links per artist.
+    sort_order = db.Column(db.Integer, default=0, nullable=False)
+
+    artist = db.relationship("Artist", back_populates="links")
+
+    def __repr__(self):
+        return f"<ArtistLink {self.title!r} -> {self.url}>"
 
 
 class Event(db.Model):

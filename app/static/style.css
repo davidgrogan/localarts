@@ -933,6 +933,25 @@ form.stacked .checkbox-row label { display: inline; margin: 0; }
 form.stacked .actions { margin-top: 1.5rem; }
 .hp-field { position: absolute; left: -9999px; top: -9999px; }
 
+/* Repeatable "Artist Links" row list on the artist form (see
+   addArtistLinkRow()/removeArtistLinkRow() in artists/form.html) -- title
+   + URL inputs side by side plus a Remove button, overriding the default
+   `form.stacked input[...]` width:100% (each input would otherwise claim
+   the whole row on its own) with a higher-specificity descendant
+   selector instead of !important. */
+form.stacked .artist-link-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+form.stacked .artist-link-row input[type="text"],
+form.stacked .artist-link-row input[type="url"] {
+  width: auto;
+  flex: 1;
+  min-width: 0;
+}
+
 /* Flyer thumbnail in the Gig Submissions review table (gigs/review.html)
    -- rectangular (a flyer is a poster/flyer image, not a headshot),
    fixed small size so a very tall or very wide upload doesn't blow out
@@ -1024,6 +1043,121 @@ form.stacked .actions { margin-top: 1.5rem; }
   .artist-hero { flex-direction: column; align-items: flex-start; text-align: left; }
   .artist-hero-thumb { width: 96px; height: 96px; }
 }
+
+/* Artist detail page (artists/detail.html) -- the page itself used to
+   just be a bare h1 + inline meta line + a plain table, no card treatment
+   at all, unlike almost everywhere else on the site. This gives it the
+   same "rounded card, accent top border" language as the calendar page's
+   .hero, with a big photo (this is the one page where the photo is the
+   main event, not a supporting thumbnail) sitting next to the
+   name/tags/link. Square, not circular -- matches the /artists list
+   page's own tile treatment (.artist-tile-photo's aspect-ratio: 1/1),
+   after the first pass here used a circle; a slight border-radius (not
+   50%) keeps it from feeling as sharp-cornered as a flyer thumbnail. */
+.artist-profile-hero {
+  display: flex;
+  gap: 1.75rem;
+  align-items: center;
+  background: var(--paper-warm);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--accent);
+  border-radius: 16px;
+  padding: 1.75rem 2rem;
+  margin: 0.5rem 0 1.5rem;
+}
+.artist-profile-photo {
+  width: 180px;
+  height: 180px;
+  flex-shrink: 0;
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--line);
+  box-shadow: 0 4px 14px rgba(43, 42, 39, 0.12);
+}
+.artist-profile-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.artist-profile-body { min-width: 0; }
+.artist-profile-body h1 { margin-bottom: 0.4rem; }
+.artist-profile-body .meta { margin: 0.3rem 0; }
+.artist-profile-hometown { color: var(--muted); font-size: 0.9rem; }
+.artist-profile-hometown::before { content: "\2022"; margin: 0 0.5rem; color: var(--line); }
+/* Bio gets its own lightly-set-off block (rather than a bare <p>) so it
+   doesn't visually run straight into the hero card above or the embed
+   player below -- pre-line preserves an admin's own paragraph breaks,
+   same convention as .event-detail-description. Centered (both the text
+   and, via margin: 0 auto, the 65ch block itself) per David's ask. */
+.artist-profile-bio {
+  white-space: pre-line;
+  line-height: 1.6;
+  max-width: 65ch;
+  margin: 0 auto 0.5rem;
+  text-align: center;
+}
+/* Centers just the artist detail page's own embedded player -- see the
+   template comment on why this is a second class layered on top of the
+   shared .artist-embed rather than a change to that rule itself. Flexbox
+   (rather than text-align + display:inline-block on the iframe) so this
+   reliably centers the player regardless of whatever width Bandcamp's/
+   YouTube's own embed snippet happens to set on its iframe -- once an
+   element is a flex item, justify-content centers it without needing to
+   fight the iframe's own display:block (set by the shared .artist-embed
+   iframe rule) via specificity/source-order at all. */
+.artist-profile-embed { display: flex; justify-content: center; }
+@media (max-width: 600px) {
+  .artist-profile-hero { flex-direction: column; align-items: flex-start; text-align: left; padding: 1.5rem; gap: 1.1rem; }
+  .artist-profile-photo { width: 128px; height: 128px; }
+}
+
+/* Section headers on the artist page ("Artist Links", "Upcoming Shows")
+   -- a plain h2 elsewhere on the site is fine sitting between paragraphs
+   of running content, but back-to-back section headers on a profile page
+   read better as distinct, labeled blocks: a short accent-colored dash,
+   uppercase tracked label, and a hairline rule to visually close off
+   whatever was above. Higher specificity than the bare `h2` rule (class
+   beats element) so this overrides its default margin/size everywhere
+   it's used, without needing !important. */
+.profile-section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink);
+  margin: 2.5rem 0 1rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 2px solid var(--line);
+}
+.profile-section-title::before {
+  content: "";
+  width: 22px;
+  height: 3px;
+  flex-shrink: 0;
+  background: var(--accent);
+  border-radius: 2px;
+}
+
+/* "Artist Links" list (see ArtistLink in models.py) -- a short vertical
+   stack of button-like rows rather than plain inline text links, so a
+   handful of press/social/merch links reads as a real, scannable section
+   instead of a run-on sentence of anchors. */
+.artist-links-list { list-style: none; padding: 0; margin: 0 0 0.5rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.artist-links-list a {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper-warm);
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 0.92rem;
+  text-decoration: none;
+}
+.artist-links-list a::after { content: "\2192"; margin-left: auto; color: var(--accent); opacity: 0.7; }
+.artist-links-list a:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 
 .artist-search {
   display: block;

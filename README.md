@@ -614,6 +614,82 @@ sqlite db) now records "these have been placed at least once on this
 install"; once it exists, a missing placeholder title means it was deleted
 on purpose, and `seed.py` leaves it gone instead of bringing it back.
 
+## Artist Links, and the artist detail page redesign
+
+The artist detail page (`artists/detail.html`) used to be a bare `<h1>` +
+inline meta line + plain HTML table -- messy compared to the rest of the
+site, and went through two passes to get where it is now:
+
+**Pass 1** added a single `Artist.freak_scene_url`/`freak_scene_title`
+column pair for one link to a Freak Scene newsletter write-up (Freak Scene
+is a local music newsletter that runs profile pieces on local artists),
+shown as "Read *&lt;title&gt;* in Freak Scene" with the title itself
+linked, and gave the page its first real hero-card treatment.
+
+**Pass 2** replaced that single-purpose pair with a real one-to-many
+**Artist Links** feature (`ArtistLink` model -- `artist_id`, `title`,
+`url`, `sort_order`) once it was clear one bespoke column pair wouldn't
+scale to "let me add multiple links, each with a title and a link" --
+press write-ups (Freak Scene among them), socials, merch, anything an
+admin wants to point a visitor at. `Artist.links` (`cascade="all,
+delete-orphan"`, ordered by `sort_order` then `id`) is managed entirely
+through a repeatable row list on the artist form (`artists/form.html`'s
+`#artist-links-rows` + `addArtistLinkRow()`/`removeArtistLinkRow()` JS,
+submitted as parallel `link_titles`/`link_urls` lists and turned into
+`ArtistLink` rows by `_resolve_artist_links()` in
+`app/routes/artists.py`) -- every save replaces the artist's whole link
+list wholesale, same "just replace the collection" pattern already used
+for Genre/Category Tags, rather than diffing individual row edits.
+
+The old `freak_scene_url`/`freak_scene_title` columns are still on
+`Artist` (nullable, no longer read or written anywhere) purely so
+`_migrate_freak_scene_links()` in `app/__init__.py` -- a self-healing
+startup migration in the same style as
+`_bootstrap_default_public_category()` -- has somewhere to read an
+already-entered Freak Scene link from and carry it into a real
+`ArtistLink` row the first time this runs on an install that has one set,
+clearing the legacy columns afterward so it doesn't come back if that
+same link is later deleted on purpose.
+
+The detail page itself, as it stands now:
+
+- A hero card (`.artist-profile-hero`) up top -- same "rounded card, accent
+  top border" language as the calendar page's own `.hero` -- with a big
+  180px **square** photo (`.artist-profile-photo`; square rather than
+  circular after the first pass here used a circle, to match the
+  `/artists` list page's own tile treatment -- falls back to the site logo
+  like every other photo slot on the site when `image_url` is unset) next
+  to the name, Genre/Category Tags, and hometown. No links live in the
+  hero anymore -- see the next bullet.
+- The bio (`.artist-profile-bio`) gets its own lightly-set-off block
+  instead of a bare `<p>`, `white-space: pre-line` so an admin's own
+  paragraph breaks survive (same convention as `.event-detail-description`),
+  and is center-aligned (both the text and the block itself, via
+  `margin: 0 auto`) per David's ask -- as is the embedded player
+  (`.artist-profile-embed`, layered on top of the shared `.artist-embed`
+  so this doesn't also re-center the *other* place that class is reused,
+  the "Local Artists Playing This Week!" gallery on the calendar).
+- An **"Artist Links"** section, listing `Artist.website_url` (labeled
+  just **"Bandcamp"** here regardless of what's actually in that field --
+  it used to be its own separate hero button, moved in per David's ask)
+  first, followed by every `ArtistLink` row -- each shown as a full-width
+  button-style row (`.artist-links-list`), title as the link text, arrow
+  accent on the right. Only rendered when there's at least one link
+  total (`website_url` or `links`).
+- An **"Upcoming Shows"** section, rendered as the same `.event-list`/
+  `.event-card` markup the calendar itself uses for every other show
+  listing (just without a per-card thumbnail -- this page already has its
+  own big photo up top), instead of the old plain `<table class="plain">`.
+- Both section headings share a `.profile-section-title` treatment --
+  small accent-colored dash, uppercase tracked label, hairline rule below
+  -- so back-to-back sections read as distinct labeled blocks rather than
+  a run of plain `<h2>`s.
+
+Every block above -- bio, embed, Artist
+Links, upcoming shows -- only renders when there's actually something to
+show, so a sparse artist (no photo/bio/tags/links yet) still renders
+cleanly rather than showing empty labels.
+
 ## Local Artists index layout (`/artists`)
 
 Replaced the old category-dropdown + "only upcoming shows" toggle (both

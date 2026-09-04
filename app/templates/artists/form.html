@@ -115,6 +115,24 @@
       Optional. Shows up as an embedded player on the artist's page.
     </div>
 
+    <label>Artist Links</label>
+    <div class="hint">
+      Optional. Add as many links as you want -- press write-ups (Freak Scene, etc.), social
+      media, merch, whatever's worth pointing visitors at. Each needs a title (the text visitors
+      click) and the link itself. Shown in their own "Artist Links" section on the artist's page,
+      in the order added below.
+    </div>
+    <div id="artist-links-rows">
+      {% for link in (artist.links if artist else []) %}
+        <div class="artist-link-row">
+          <input type="text" name="link_titles" value="{{ link.title }}" placeholder="Link title, e.g. Freak Scene: Comet & the Roadrunners Are Ready to Fly" aria-label="Link title">
+          <input type="url" name="link_urls" value="{{ link.url }}" placeholder="https://..." aria-label="Link URL">
+          <button type="button" class="btn btn-secondary btn-small" onclick="removeArtistLinkRow(this)">Remove</button>
+        </div>
+      {% endfor %}
+    </div>
+    <button type="button" class="btn btn-secondary btn-small" onclick="addArtistLinkRow()" style="margin-top:0.4rem;">+ Add a link</button>
+
     <label for="bio">Bio</label>
     <textarea id="bio" name="bio" rows="4">{{ artist.bio if artist else '' }}</textarea>
 
@@ -128,6 +146,28 @@
       {% if artist %}<a class="btn btn-secondary" href="{{ url_for('artists.detail', artist_id=artist.id) }}">Cancel</a>{% endif %}
     </div>
   </form>
+
+  <script>
+    // Adds/removes rows in the "Artist Links" repeatable list above.
+    // Deliberately plain add-a-row-to-the-DOM JS, not a full client-side
+    // framework -- link_titles/link_urls are submitted as two same-length
+    // parallel lists (see _resolve_artist_links() in
+    // app/routes/artists.py), so a fresh row just needs the same two
+    // named inputs as the server-rendered ones above.
+    function addArtistLinkRow() {
+      const row = document.createElement("div");
+      row.className = "artist-link-row";
+      row.innerHTML =
+        '<input type="text" name="link_titles" placeholder="Link title, e.g. Freak Scene: Comet & the Roadrunners Are Ready to Fly" aria-label="Link title">' +
+        '<input type="url" name="link_urls" placeholder="https://..." aria-label="Link URL">' +
+        '<button type="button" class="btn btn-secondary btn-small" onclick="removeArtistLinkRow(this)">Remove</button>';
+      document.getElementById("artist-links-rows").appendChild(row);
+      row.querySelector('input[name="link_titles"]').focus();
+    }
+    function removeArtistLinkRow(button) {
+      button.closest(".artist-link-row").remove();
+    }
+  </script>
 
   <script>
     // Fills in the form above from whatever the "Import from Bandcamp"

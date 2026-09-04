@@ -1,19 +1,46 @@
 {% extends "base.html" %}
 {% block title %}{{ artist.name }}{% endblock %}
 {% block content %}
-  <h1>{{ artist.name }} {% if not artist.is_local %}<span class="source-tag">touring</span>{% endif %}</h1>
-  {% if artist.image_url %}
-    <div class="artist-thumb-large"><img src="{{ artist.image_url }}" alt=""></div>
-  {% endif %}
-  <p class="meta">
-    {% for g in artist.genre_tags %}<span class="genre-tag">{{ g.name }}</span>{% endfor %}
-    {% for c in artist.category_tags %}<span class="type-tag">{{ c.name }}</span>{% endfor %}
-    {% if artist.hometown %} &middot; {{ artist.hometown }}{% endif %}
-    {% if artist.website_url %} &middot; <a href="{{ artist.website_url }}" target="_blank" rel="noopener">Bandcamp / website</a>{% endif %}
-  </p>
-  {% if artist.bio %}<p>{{ artist.bio }}</p>{% endif %}
+  {# Hero card: photo + name/tags/link side by side (stacks on mobile --
+     see .artist-profile-hero's media query in style.css), same "rounded
+     card, accent top border" language as the calendar page's own .hero,
+     so an artist's page reads as a real destination instead of a bare
+     heading + table like it used to. Photo is square (.artist-profile-photo),
+     matching the /artists list page's own tile treatment
+     (.artist-tile-photo) rather than the circular thumb used elsewhere --
+     David's ask, after the first pass used a circle here. #}
+  <div class="artist-profile-hero">
+    <div class="artist-profile-photo">
+      {% if artist.image_url %}
+        <img src="{{ artist.image_url }}" alt="">
+      {% else %}
+        {# Same "fall back to the bare site logo" convention used
+           everywhere else an artist/event/venue photo is missing (see
+           the calendar's .event-thumb-fallback, .artist-tile-fallback-img). #}
+        <img class="artist-tile-fallback-img" src="{{ url_for('static', filename='logo.svg') }}" alt="">
+      {% endif %}
+    </div>
+    <div class="artist-profile-body">
+      <h1>{{ artist.name }} {% if not artist.is_local %}<span class="source-tag">touring</span>{% endif %}</h1>
+      {% if artist.genre_tags or artist.category_tags or artist.hometown %}
+        <p class="meta">
+          {% for g in artist.genre_tags %}<span class="genre-tag">{{ g.name }}</span>{% endfor %}
+          {% for c in artist.category_tags %}<span class="type-tag">{{ c.name }}</span>{% endfor %}
+          {% if artist.hometown %}<span class="artist-profile-hometown">{{ artist.hometown }}</span>{% endif %}
+        </p>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if artist.bio %}<div class="artist-profile-bio">{{ artist.bio }}</div>{% endif %}
   {% if artist.embed_code %}
-    <div class="artist-embed">{{ artist.embed_code | safe }}</div>
+    {# artist-profile-embed on top of the shared .artist-embed -- centers
+       just this one usage (the player is the visual focal point of the
+       whole page) without touching the other place .artist-embed is
+       reused (the "Local Artists Playing This Week!" gallery cards on the
+       calendar), which stay left-aligned inside their own fixed-size
+       cards. #}
+    <div class="artist-embed artist-profile-embed">{{ artist.embed_code | safe }}</div>
   {% endif %}
 
   {% if is_admin %}
@@ -25,24 +52,54 @@
     </div>
   {% endif %}
 
-  <h2>Upcoming shows</h2>
-  {% if upcoming_events %}
-    <table class="plain">
-      <tr><th>Date</th><th>Show</th><th>Venue</th></tr>
-      {% for e in upcoming_events %}
-        <tr>
-          <td>{{ e.start_datetime | dtfmt("%b %-d, %Y %-I:%M %p") }}</td>
-          <td>{{ e.title }}</td>
-          <td>
-            {% if e.display_venue_link %}
-              <a href="{{ e.display_venue_link }}" target="_blank" rel="noopener">{{ e.display_venue_name }}</a>
-            {% else %}
-              {{ e.display_venue_name }}
-            {% endif %}
-          </td>
-        </tr>
+  {% if artist.website_url or artist.links %}
+    {# An admin-managed list of arbitrary (title, URL) links -- press
+       write-ups (e.g. a Freak Scene newsletter feature), socials, merch,
+       whatever's worth pointing a visitor at (see ArtistLink in
+       models.py) -- plus Bandcamp/website (Artist.website_url, still its
+       own dedicated field, not an ArtistLink row) folded in as the first
+       entry, always just labeled "Bandcamp" here regardless of what's
+       actually in that field, per David's ask. Only rendered (heading
+       included) when there's at least one link total, same "don't show
+       an empty section" convention as everything else on this page. #}
+    <h2 class="profile-section-title">Artist Links</h2>
+    <ul class="artist-links-list">
+      {% if artist.website_url %}
+        <li><a href="{{ artist.website_url }}" target="_blank" rel="noopener">Bandcamp</a></li>
+      {% endif %}
+      {% for link in artist.links %}
+        <li><a href="{{ link.url }}" target="_blank" rel="noopener">{{ link.title }}</a></li>
       {% endfor %}
-    </table>
+    </ul>
+  {% endif %}
+
+  <h2 class="profile-section-title">Upcoming Shows</h2>
+  {% if upcoming_events %}
+    {# Same .event-list/.event-card language the calendar uses for every
+       other show listing on the site, just without a per-card thumbnail
+       (this page already has its own big photo up top) -- so "here's
+       where to see them next" reads as a real, familiar show list instead
+       of a bare data table. #}
+    <ul class="event-list">
+      {% for e in upcoming_events %}
+        <li class="event-card">
+          <div class="event-date">{{ e.start_datetime | dtfmt("%b %-d") }}<br>{{ e.start_datetime | dtfmt("%-I:%M %p") }}</div>
+          <div class="event-main">
+            <div class="event-title">
+              <a href="{{ url_for('main.event_detail', event_id=e.id) }}">{{ e.title }}</a>
+            </div>
+            <div class="event-venue">
+              {% if e.display_venue_link %}
+                <a href="{{ e.display_venue_link }}" target="_blank" rel="noopener">{{ e.display_venue_name }}</a>
+              {% else %}
+                {{ e.display_venue_name }}
+              {% endif %}
+              {% if e.venue.city and not e.custom_venue_name %} &middot; {{ e.venue.city }}, {{ e.venue.state }}{% endif %}
+            </div>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
   {% else %}
     <p class="empty-state">No upcoming shows.</p>
   {% endif %}

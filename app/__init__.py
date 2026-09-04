@@ -34,6 +34,8 @@ _COLUMN_MIGRATIONS = {
     "artist": [
         ("embed_code", "TEXT"),
         ("image_url", "TEXT"),
+        ("freak_scene_url", "VARCHAR(500)"),
+        ("freak_scene_title", "VARCHAR(300)"),
     ],
     "venue": [
         ("default_event_type_id", "INTEGER"),
@@ -259,6 +261,54 @@ def _migrate_renamed_categories():
         db.session.commit()
 
 
+def _migrate_freak_scene_links():
+    """One-time carry-over of the old single-purpose
+    Artist.freak_scene_url/freak_scene_title pair (see those columns'
+    "LEGACY" docstring in models.py) into a real ArtistLink row, for any
+    install where one was already filled in before "Artist Links" existed
+    -- so upgrading to the new multi-link feature doesn't silently drop
+    it.
+
+    ArtistLink itself doesn't need a migration guard the way the columns
+    below do -- it's a brand-new table, and db.create_all() (called right
+    before this in create_app(), see below) already creates any
+    completely missing table on every backend, unlike a new *column* on
+    an existing table, which SQLite handles via
+    _run_sqlite_column_migrations() above but Postgres only ever gets via
+    a manual `sync_schema.py --apply` run. So the only real guard needed
+    here is _column_exists() on the *source* columns, same reasoning as
+    _bootstrap_default_public_category()/_migrate_renamed_categories()
+    above: those are old columns Postgres won't have picked up yet on a
+    deploy where sync_schema.py --apply hasn't run in this exact order.
+
+    Runs on every app start, but is a no-op after the first time it finds
+    something to migrate: it clears freak_scene_url/freak_scene_title on
+    each artist it migrates, so there's nothing left to re-migrate next
+    time -- and, importantly, so an admin who later deletes that same
+    ArtistLink on purpose (e.g. decides the Freak Scene mention doesn't
+    belong anymore) has that deletion actually stick instead of it
+    reappearing on the next restart."""
+    from app.models import Artist, ArtistLink
+
+    if not _column_exists("artist", "freak_scene_url"):
+        return
+    candidates = Artist.query.filter(
+        Artist.freak_scene_url.isnot(None), Artist.freak_scene_url != ""
+    ).all()
+    if not candidates:
+        return
+    for artist in candidates:
+        db.session.add(ArtistLink(
+            artist=artist,
+            title=artist.freak_scene_title or "Freak Scene write-up",
+            url=artist.freak_scene_url,
+            sort_order=0,
+        ))
+        artist.freak_scene_url = None
+        artist.freak_scene_title = None
+    db.session.commit()
+
+
 def create_app(test_config=None):
     app = Flask(__name__, instance_relative_config=True)
 
@@ -376,6 +426,7 @@ def create_app(test_config=None):
         _run_sqlite_column_migrations()
         _bootstrap_default_public_category()
         _migrate_renamed_categories()
+        _migrate_freak_scene_links()
 
     @app.template_filter("dtfmt")
     def dtfmt(value, fmt="%a %b %-d, %Y  %-I:%M %p"):

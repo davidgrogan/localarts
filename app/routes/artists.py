@@ -2,7 +2,7 @@ import random
 
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 
-from app.models import db, Artist, Event, GenreTag, EventType
+from app.models import db, Artist, ArtistLink, Event, GenreTag, EventType
 from app.utils import (
     slugify,
     get_or_create_genre_tag,
@@ -63,6 +63,38 @@ def _resolve_category_tags(form):
             if tag and tag not in tags:
                 tags.append(tag)
     return tags
+
+
+def _resolve_artist_links(form):
+    """Turns the artist form's repeatable "Artist Links" rows into a list
+    of brand-new ArtistLink objects (not yet attached to any artist -- the
+    caller assigns them via `artist.links = ...`, which -- combined with
+    that relationship's cascade="all, delete-orphan" in models.py --
+    replaces the artist's whole link list on every save, same "just
+    replace the collection" pattern _resolve_genre_tags()/
+    _resolve_category_tags() above already use for Artist's other
+    list-valued fields. Simpler than diffing individual row
+    adds/edits/removes/reorders for a list this small.
+
+    link_titles/link_urls are two same-length parallel lists (one entry
+    per row the form rendered -- see artists/form.html's JS for how rows
+    are added/removed), zipped back together here. A row with a title but
+    no URL is dropped entirely (nothing to link to); a URL with no title
+    falls back to using the URL itself as the link text, same idea as
+    _migrate_freak_scene_links()'s generic-title fallback in
+    app/__init__.py. sort_order is just each row's position in the
+    submitted form -- good enough since the form itself is the only way
+    to reorder them."""
+    titles = form.getlist("link_titles")
+    urls = form.getlist("link_urls")
+    links = []
+    for i, (title, url) in enumerate(zip(titles, urls)):
+        title = title.strip()
+        url = url.strip()
+        if not url:
+            continue
+        links.append(ArtistLink(title=title or url, url=url, sort_order=i))
+    return links
 
 
 def _find_artist_matching_title(title):
@@ -187,6 +219,7 @@ def new_artist():
         artist.image_url = request.form.get("image_url", "").strip()
         artist.website_url = request.form.get("website_url", "").strip()
         artist.embed_code = request.form.get("embed_code", "").strip()
+        artist.links = _resolve_artist_links(request.form)
         artist.is_local = bool(request.form.get("is_local"))
         artist.genre_tags = _resolve_genre_tags(request.form)
         artist.category_tags = _resolve_category_tags(request.form)
@@ -247,6 +280,7 @@ def edit_artist(artist_id):
         artist.image_url = request.form.get("image_url", "").strip()
         artist.website_url = request.form.get("website_url", "").strip()
         artist.embed_code = request.form.get("embed_code", "").strip()
+        artist.links = _resolve_artist_links(request.form)
         artist.is_local = bool(request.form.get("is_local"))
         artist.genre_tags = _resolve_genre_tags(request.form)
         artist.category_tags = _resolve_category_tags(request.form)
