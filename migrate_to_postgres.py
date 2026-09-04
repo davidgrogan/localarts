@@ -48,23 +48,38 @@ SQLITE_PATH = os.path.join(BASE_DIR, "instance", "local_music.sqlite3")
 #
 # genre_tag / artist_genre_tags / artist_event_types were added alongside
 # the local-artist Genre/Category Tags feature -- if a future model adds
-# another tag table or association table, it needs an entry here too, or
-# this script will silently skip copying it (as happened with these three
-# the first time around, and with site_setting below the second time
-# around -- see it missing from this list is exactly why an admin-edited
-# "About this site" change made locally and pushed via deploy_all.sh
-# didn't show up on the droplet: sync_schema.py/git pull carry the code
-# and table structure over fine, but this script is what actually copies
-# *row data* like that edit, and it can only copy tables it's told about.
-# site_setting has no foreign keys pointing at or from it, so unlike
-# everything else here its position in the list doesn't matter.
+# another table (a new tag table, association table, or a child table
+# like artist_link below), it needs an entry here too, or this script will
+# silently skip copying it. This has now happened three times: those three
+# tables the first time, site_setting the second time (missing from this
+# list is exactly why an admin-edited "About this site" change made
+# locally and pushed via deploy_all.sh didn't show up on the droplet), and
+# artist_link the third time (added for the Artist Links feature --
+# missing from this list is exactly why David's own edit to an artist's
+# link, id 40, didn't show up on the droplet after a deploy_all.sh run,
+# even though the artist_link table itself *did* get created there --
+# sync_schema.py/git pull carry the code and table structure over fine,
+# but this script is what actually copies *row data* like that edit, and
+# it can only copy tables it's told about). artist_link has to come after
+# artist (its artist_id foreign key points there); site_setting has no
+# foreign keys pointing at or from it, so unlike everything else here its
+# position in the list doesn't matter.
+#
+# gig_submission was *also* missing here, found by cross-checking this
+# list against db.metadata.tables while fixing the artist_link gap above
+# -- same bug, pre-dating Artist Links entirely (it's had a real
+# converted_event_id foreign key to event.id since the gig-submission
+# feature shipped). Comes after event for the same FK-ordering reason as
+# artist_link above.
 TABLES_IN_ORDER = [
     "site_setting",
     "event_type",
     "genre_tag",
     "venue",
     "artist",
+    "artist_link",
     "event",
+    "gig_submission",
     "event_artists",
     "event_event_types",
     "artist_genre_tags",

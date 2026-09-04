@@ -2199,6 +2199,23 @@ place again, or simplest of all, just re-enter the text directly via the
 droplet's own `/about/edit` page instead of relying on local->droplet
 sync for a single-row change.
 
+**Happened again** with `artist_link` (the Artist Links feature's own
+table): David edited a link on artist id 40 locally, ran `deploy_all.sh`,
+and the edit didn't show up on the droplet -- same root cause, `artist_link`
+had never been added to `TABLES_IN_ORDER` either, so `sync_schema.py`'s own
+`db.create_all()` step correctly created the *table* on the droplet (which
+is why nothing errored, and why it looked like "the UI changes got pushed"
+-- the code and schema genuinely were up to date), but
+`migrate_to_postgres.py` had no idea to copy *rows* out of it. Fixed the
+same way, and while fixing it, cross-checked the *entire* list against
+`db.metadata.tables` (every table `app/models.py` actually declares) rather
+than eyeballing it -- which turned up a second, independent, pre-existing
+gap: `gig_submission` had never been in the list either, all the way back
+to when that feature first shipped. Both are now in `TABLES_IN_ORDER`, and
+that same "diff the list against `db.metadata.tables`" check is worth
+re-running by hand next time a new table gets added, rather than trusting
+that whoever added it remembered this file.
+
 ## Keeping scraped data honest
 
 Scraping isn't just "find new shows" -- venues change times, and sometimes
