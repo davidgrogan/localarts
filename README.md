@@ -2216,6 +2216,25 @@ that same "diff the list against `db.metadata.tables`" check is worth
 re-running by hand next time a new table gets added, rather than trusting
 that whoever added it remembered this file.
 
+Adding `gig_submission` immediately surfaced a second, different bug on
+David's very next real run: a `psycopg2.errors.ForeignKeyViolation` on
+`gig_submission_converted_event_id_fkey`, because one submission's
+`converted_event_id` pointed at an event he'd deleted locally sometime
+after converting it. That's not actually invalid *by design* --
+`GigSubmission.converted_event_id`'s own docstring in models.py is
+explicit that this is meant to be allowed to dangle (kept as a "this is
+where it went" audit trail rather than cascade-deleted). It only ever
+worked locally because Flask-SQLAlchemy never turns on SQLite's `PRAGMA
+foreign_keys`, so SQLite has silently never enforced this or any other FK
+in this app -- Postgres does, for real, so copying that one row over as-is
+blew up the whole batch insert. Fixed in `migrate_to_postgres.py`'s main
+copy loop: it now tracks which event ids actually got copied, and nulls
+out any `gig_submission.converted_event_id` that doesn't point at one of
+them before inserting -- the submission itself (status, lineup, etc.)
+still copies over fine; only the now-meaningless dangling pointer is
+dropped, and prints how many it nulled so it's visible in the script's
+output rather than silent.
+
 ## Keeping scraped data honest
 
 Scraping isn't just "find new shows" -- venues change times, and sometimes

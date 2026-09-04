@@ -123,10 +123,45 @@ def main():
             dst_conn.execute(text(f'TRUNCATE TABLE "{table_name}" RESTART IDENTITY CASCADE'))
 
         with src_engine.connect() as src_conn:
+            # Populated once the "event" table's own turn comes up (it's
+            # ahead of "gig_submission" in TABLES_IN_ORDER) -- see the
+            # gig_submission handling below for why this is needed at all.
+            copied_event_ids = set()
             for table_name in TABLES_IN_ORDER:
                 src_table = src_meta.tables[table_name]
                 dst_table = dst_meta.tables[table_name]
                 rows = [dict(row._mapping) for row in src_conn.execute(select(src_table))]
+
+                if table_name == "event":
+                    copied_event_ids = {row["id"] for row in rows}
+
+                if table_name == "gig_submission":
+                    # GigSubmission.converted_event_id is allowed to
+                    # "dangle" once its Event is deleted -- deliberately
+                    # kept (not cascaded) as a "this is where it went"
+                    # audit trail; see that column's own docstring in
+                    # models.py. SQLite never enforces foreign keys by
+                    # default (Flask-SQLAlchemy doesn't turn on `PRAGMA
+                    # foreign_keys`), so a locally-dangling reference like
+                    # that has always silently worked -- but Postgres
+                    # *does* enforce its FK constraints for real, so
+                    # copying one over as-is blows up the whole batch
+                    # insert with a ForeignKeyViolation (confirmed live:
+                    # exactly what happened to David's first run after
+                    # gig_submission was added to TABLES_IN_ORDER --
+                    # converted_event_id=360 pointing at an event he'd
+                    # since deleted). Null out just the dangling ones here
+                    # -- everything else about the submission still
+                    # copies over fine, and that event doesn't exist on
+                    # the droplet either way.
+                    dangling = 0
+                    for row in rows:
+                        if row["converted_event_id"] is not None and row["converted_event_id"] not in copied_event_ids:
+                            row["converted_event_id"] = None
+                            dangling += 1
+                    if dangling:
+                        print(f"    (nulled {dangling} converted_event_id reference(s) pointing at a since-deleted event)")
+
                 if rows:
                     dst_conn.execute(insert(dst_table), rows)
                 print(f"  {table_name}: copied {len(rows)} row(s)")
