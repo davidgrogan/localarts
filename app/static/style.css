@@ -288,6 +288,7 @@ h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; lett
 .artist-week-gallery-wrap { margin-top: 0.25rem; }
 .artist-week-gallery {
   display: flex;
+  align-items: stretch;
   gap: 1rem;
   overflow-x: auto;
   scroll-snap-type: x mandatory;
@@ -298,22 +299,43 @@ h2 { font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; lett
   flex: 0 0 auto;
   scroll-snap-align: start;
   width: min(320px, 85vw);
-  /* No fixed height here on purpose. This used to be a hard-coded
-     height: 480px + overflow: hidden, specifically to keep every card
-     the same size despite content varying a lot (no photo/no tags/no
-     embed on some cards) -- but a real artist's actual embed code (a
-     "large" Bandcamp album player, a YouTube embed, etc.) or several
-     wrapped genre tags can easily run taller than 480px, and
-     overflow: hidden was silently cropping that content instead of
-     ever growing the card -- reported by David as cards "sometimes not
-     long enough height-wise." Uniform card height still happens
-     automatically here: .artist-week-gallery is a flex row with the
-     default align-items: stretch, so every card in it already stretches
-     to match its tallest sibling's *natural* content height -- this
-     just lets that natural height grow instead of clipping to a fixed
-     number. margin-top: auto on the "View artist profile" link (below)
-     still pins it to the same spot at the bottom of every card, same as
-     before. */
+  /* Third pass at this card's height -- see git history/README for the
+     first two. Pass 1: a hard-coded height: 480px + overflow: hidden to
+     keep every card the same size -- broke when a real artist's embed
+     (a "large" Bandcamp player, a YouTube embed) or several wrapped
+     genre tags ran taller than 480px, silently cropping that content
+     (David: cards "sometimes not long enough height-wise"). Pass 2:
+     dropped the fixed height and let .artist-week-gallery's default
+     align-items: stretch size every card to its tallest sibling's full
+     natural height instead -- fixed the cropping, but an artist with a
+     lot more going on (Dan Langa's 9 wrapped genre tags, e.g.) then
+     stretched every *other* card in that week's row to match, leaving a
+     lot of visible empty space at their own bottoms (David: panel
+     looking "really tall" with "a lot of dead space"). Pass 3, here:
+     David wants every card the same size regardless -- so bring back a
+     fixed height (keeps cards uniform, no dead-space stretching) but
+     pair it with overflow-y: auto instead of pass 1's overflow: hidden,
+     so an unusually tall card (lots of tags, a taller embed) scrolls
+     internally instead of silently losing content. align-items: stretch
+     above (the flex row's default -- listed explicitly now, since this
+     card's own height is what actually caps things) means every card
+     fills the row's full height either way.
+
+     600px was picked to fit the *common* case with zero scrolling: a
+     photo, a couple lines of venue text, up to ~8-9 genre tags (most
+     artists have far fewer), and the "size=large" Bandcamp embed most
+     artists' embed_code actually uses -- confirmed by checking every
+     local artist's embed_code height attribute directly, that's 120px.
+     A first attempt at 460px was still clipping that common case (David:
+     "cutting off the bottom of the cards"). A genuine minority of
+     artists have a much taller "large art" embed (~470px, vs. the
+     common 120px) or an unusually long tag list (10+) -- for those,
+     this card scrolls internally rather than growing to fit, since a
+     card tall enough to fit a 470px embed with zero scrolling would
+     make *every* card that size, reintroducing the original dead-space
+     problem for the other 80-some artists who don't have one. */
+  height: 600px;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   border: 1px solid var(--line);
@@ -798,7 +820,6 @@ table.month-grid td.today { background: var(--gold-soft); border-color: var(--ac
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 8px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
   overflow: hidden;
   visibility: hidden;
   opacity: 0;
@@ -1072,7 +1093,6 @@ form.stacked .artist-link-row input[type="url"] {
   border-radius: 14px;
   overflow: hidden;
   background: var(--line);
-  box-shadow: 0 4px 14px rgba(43, 42, 39, 0.12);
 }
 .artist-profile-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .artist-profile-body { min-width: 0; }
