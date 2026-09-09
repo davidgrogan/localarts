@@ -1,5 +1,27 @@
 {% extends "base.html" %}
 {% block title %}{{ event.title }}{% endblock %}
+
+{# Per-show Open Graph/Twitter Card overrides -- what makes a shared
+   `/show/<id>` link unfurl in iMessage/WhatsApp/Slack/etc. with this
+   show's own title/image instead of the generic Paradise City Music
+   logo (see base.html's blocks for the site-wide default these
+   replace). og_description/twitter_description reuse the same
+   date/venue/price line already on the page (the <p class="meta">
+   right below) so the two stay in sync rather than drifting apart. #}
+{% block og_title %}{{ event.title }}{% endblock %}
+{% block twitter_title %}{{ event.title }}{% endblock %}
+{% set og_meta_line %}{{ event.start_datetime | dtfmt("%A, %B %-d, %Y, %-I:%M %p") }} at {{ event.display_venue_name }}{% if event.price_info %} -- {{ event.price_info }}{% endif %}{% endset %}
+{% block og_description %}{{ og_meta_line }}{% endblock %}
+{% block twitter_description %}{{ og_meta_line }}{% endblock %}
+{# Falls back to the venue's own photo, same "no event photo? use the
+   venue's" rule the on-page <img> below already follows -- and falls
+   all the way back to base.html's generic logo (via {{ super() }}) if
+   neither exists, rather than pointing a crawler at a blank/missing
+   image. external=True is the one place this site needs an absolute
+   (not relative) image URL -- see resolve_image_url()'s own docstring. #}
+{% block og_image %}{% if event.image_url %}{{ event.image_url | resolve_image_url(external=True) }}{% elif event.venue.image_url %}{{ event.venue.image_url | resolve_image_url(external=True) }}{% else %}{{ super() }}{% endif %}{% endblock %}
+{% block twitter_image %}{% if event.image_url %}{{ event.image_url | resolve_image_url(external=True) }}{% elif event.venue.image_url %}{{ event.venue.image_url | resolve_image_url(external=True) }}{% else %}{{ super() }}{% endif %}{% endblock %}
+
 {% block content %}
   {# Structured data for search engines (Google's "rich result" Event
      markup) -- see app/utils.py's build_event_jsonld() for what's in

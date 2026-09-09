@@ -448,7 +448,7 @@ def create_app(test_config=None):
         return flyer_url(flyer_filename)
 
     @app.template_filter("resolve_image_url")
-    def resolve_image_url_filter(value):
+    def resolve_image_url_filter(value, external=False):
         # A thin Jinja-filter wrapper around app.utils.resolve_image_url()
         # -- apply this to every Event.image_url/Venue.image_url render
         # site (never Artist.image_url, which is always a pasted external
@@ -458,9 +458,15 @@ def create_app(test_config=None):
         # stored -- see resolve_image_url()'s own docstring for why that
         # matters when local dev and the droplet are mounted under
         # different URL prefixes.
+        #
+        # external=True (e.g. `{{ event.image_url | resolve_image_url(external=True) }}`)
+        # is only for building an og:image/twitter:image URL -- see
+        # resolve_image_url()'s own external= param docstring for why
+        # that one spot needs an absolute URL instead of the normal
+        # relative one.
         from app.utils import resolve_image_url
 
-        return resolve_image_url(value)
+        return resolve_image_url(value, external=external)
 
     @app.template_filter("showtimes_line")
     def showtimes_line_filter(value):

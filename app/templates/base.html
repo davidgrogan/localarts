@@ -3,7 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Paradise City Music</title>
+  {# Was a bare "Paradise City Music" with no block -- every page that
+     defines {% block title %} (events/detail.html, artists/detail.html,
+     etc.) has been silently doing nothing this whole time, since Jinja
+     only fills in a child's block where the parent actually places one.
+     Found while wiring up per-event og:title/og:image below; fixed here
+     too since it's the same underlying gap. #}
+  <title>{% block title %}Paradise City Music{% endblock %}</title>
 
   <!-- Icons: SVG for modern browser tabs, PNG fallbacks for anything that
        doesn't render SVG favicons/icons (notably iOS home-screen icons and
@@ -20,17 +26,28 @@
        they can find, often with unpredictable results -- explicit tags make
        the "Paradise City Music" title and logo show up reliably instead.
        og:image points at a real PNG (not logo.svg) since SVG isn't reliably
-       rendered by link-preview crawlers, most notably iMessage's. -->
+       rendered by link-preview crawlers, most notably iMessage's.
+
+       og:image/twitter:image are now blocks (default: the site's generic
+       og-image.png/logo), so a single show's own page (events/detail.html)
+       can override them with that event's own flyer/photo instead -- see
+       that template's og_image block. Whatever a child template puts in
+       these blocks must be a fully-qualified absolute URL (crawlers fetch
+       it directly, with no page to resolve a relative path against) --
+       for an Event/Venue image_url that means piping it through
+       `| resolve_image_url(external=True)` rather than the plain
+       `| resolve_image_url` used for on-page <img> tags (see that
+       filter's own docstring in app/__init__.py for why the two differ). -->
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Paradise City Music">
   <meta property="og:title" content="{% block og_title %}Paradise City Music{% endblock %}">
   <meta property="og:description" content="{% block og_description %}Live music calendar for Northampton, MA -- aggregated from local venue listings, with a spotlight on local artists.{% endblock %}">
-  <meta property="og:image" content="{{ url_for('static', filename='og-image.png', _external=True) }}">
+  <meta property="og:image" content="{% block og_image %}{{ url_for('static', filename='og-image.png', _external=True) }}{% endblock %}">
   <meta property="og:url" content="{{ request.url }}">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="{% block twitter_title %}Paradise City Music{% endblock %}">
   <meta name="twitter:description" content="{% block twitter_description %}Live music calendar for Northampton, MA -- aggregated from local venue listings, with a spotlight on local artists.{% endblock %}">
-  <meta name="twitter:image" content="{{ url_for('static', filename='og-image.png', _external=True) }}">
+  <meta name="twitter:image" content="{% block twitter_image %}{{ url_for('static', filename='og-image.png', _external=True) }}{% endblock %}">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

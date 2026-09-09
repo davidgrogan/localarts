@@ -551,7 +551,7 @@ def resolve_uploaded_image_url(form, files, file_field="flyer_image", url_field=
     return form.get(url_field, "").strip() or None
 
 
-def flyer_url(flyer_filename):
+def flyer_url(flyer_filename, external=False):
     """The public URL for a saved flyer filename (see save_flyer_upload()
     above), or None if there isn't one. Needs an active Flask app/request
     context for url_for() -- every caller (routes, templates) already has
@@ -590,12 +590,21 @@ def flyer_url(flyer_filename):
     requires a fully-qualified absolute URL and would reject this
     relative value outright, blocking the form from submitting even
     without the admin touching the field. Both are `type="text"` now.
+
+    external=True is the one deliberate exception to all of the above --
+    used only for building an og:image/twitter:image URL (see
+    resolve_image_url()'s own external= param), which *must* be absolute
+    (link-preview crawlers fetch it directly, with no page context to
+    resolve a relative URL against) and is built fresh from the current
+    request on every page load rather than stored anywhere, so none of
+    the "frozen at upload time" staleness this function's docstring
+    otherwise warns about ever applies to it.
     """
     if not flyer_filename:
         return None
     from flask import url_for
 
-    return url_for("static", filename=f"uploads/flyers/{flyer_filename}")
+    return url_for("static", filename=f"uploads/flyers/{flyer_filename}", _external=external)
 
 
 # The literal path fragment every locally-uploaded flyer/photo's URL
@@ -605,7 +614,7 @@ def flyer_url(flyer_filename):
 _FLYER_URL_MARKER = "/static/uploads/flyers/"
 
 
-def resolve_image_url(value):
+def resolve_image_url(value, external=False):
     """Turn a stored Event.image_url/Venue.image_url value into the URL
     to actually put in an `<img src="...">` (or a form field's prefilled
     value) *right now*, in *this* request -- rather than trusting the
@@ -630,11 +639,20 @@ def resolve_image_url(value):
       DEPLOY.md) instead of wherever the upload happened to occur.
 
     None/empty values pass through unchanged (nothing to resolve).
+
+    external=True asks for an absolute URL instead of the normal relative
+    one -- the one case that needs it is building an event/venue's
+    og:image (see events/detail.html's og_image block): a link-preview
+    crawler (iMessage, WhatsApp, Slack, ...) fetches that URL directly,
+    with no page to resolve a relative "/static/..." path against, so it
+    has to be absolute there specifically. Only affects the
+    locally-uploaded-flyer branch -- an already-absolute pasted external
+    URL is unaffected either way, since it's returned unchanged.
     """
     if not value or _FLYER_URL_MARKER not in value:
         return value
     filename = value.rsplit(_FLYER_URL_MARKER, 1)[-1]
-    return flyer_url(filename)
+    return flyer_url(filename, external=external)
 
 
 # How long a show is assumed to run when Event.end_datetime was never set
