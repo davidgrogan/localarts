@@ -719,11 +719,14 @@ def feed_rss():
 # the "bandcamp-new-releases" skill, run interactively through Claude in
 # Chrome -- Bandcamp blocks scripted/headless scraping, see
 # app/bandcamp_import.py's own docstring for the earlier feature that hit
-# the same wall) for releases from July-August 2026. NOT re-scanned live on
-# every page load -- this is a snapshot from that one scan, hardcoded here
-# the same deliberate way seed.py's placeholder_embed comment describes:
-# a real embed snippet swapped in by hand, not fetched at request time.
-# Re-run the skill and update this list by hand for a future edition.
+# the same wall). NOT re-scanned live on every page load -- each group below
+# is a snapshot from one scan, hardcoded here the same deliberate way
+# seed.py's placeholder_embed comment describes: a real embed snippet
+# swapped in by hand, not fetched at request time. Re-run the skill and add
+# a new group (newest first) for a future edition -- older groups are kept
+# rather than replaced, each under its own dated subtitle, so the page
+# reads as a running "what's new" history rather than always just the
+# latest month.
 #
 # IMPORTANT, learned the hard way (David caught "Christmas Pig Song"
 # showing a July 2026 date when its own track page says December 1,
@@ -741,53 +744,65 @@ def feed_rss():
 # "Live" album) and have been removed. The bandcamp-new-releases skill
 # itself has been corrected to verify every candidate against its own
 # track page before treating it as qualifying.
-NEW_RELEASES = [
-    {"artist": "Ray Mason", "title": "Amusement Park", "released": "August 31, 2026", "track_id": "930914865", "bandcamp_url": "https://raymason.bandcamp.com/track/amusement-park-2"},
-    {"artist": "Dome Lettuce", "title": "Summer Daze (feat. Frank Gambit)", "released": "August 28, 2026", "track_id": "2610592512", "bandcamp_url": "https://d0melettuce.bandcamp.com/track/summer-daze-feat-frank-gambit"},
-    {"artist": "Cloudbelly", "title": "Oh, Antarctica!", "released": "August 21, 2026", "track_id": "4050548037", "bandcamp_url": "https://cloudbelly.bandcamp.com/track/oh-antarctica"},
-    {"artist": "Gentle Hen", "title": "Comfort Zone", "released": "August 21, 2026", "track_id": "235197250", "bandcamp_url": "https://gentlehen.bandcamp.com/track/comfort-zone-2"},
-    {"artist": "Alyssa Kai", "title": "chronic illness power fantasy", "released": "August 14, 2026", "track_id": "2456862956", "bandcamp_url": "https://lyskoi.bandcamp.com/track/chronic-illness-power-fantasy"},
-    {"artist": "The Suitcase Junket", "title": "Put Your Phone Down", "released": "August 11, 2026", "track_id": "1959259213", "bandcamp_url": "https://thesuitcasejunket.bandcamp.com/track/put-your-phone-down"},
-    {"artist": "Wallace Field", "title": "Fantasy", "released": "August 11, 2026", "track_id": "2254086092", "bandcamp_url": "https://wallacefield.bandcamp.com/track/fantasy"},
-    {"artist": "Brokestring & the Empty Promises", "title": "Good News", "released": "August 7, 2026", "track_id": "3416702175", "bandcamp_url": "https://brokestring.bandcamp.com/track/good-news"},
-    {"artist": "NEONACH", "title": "Eye in the Sky", "released": "August 4, 2026", "track_id": "1216733992", "bandcamp_url": "https://neonach.bandcamp.com/track/eye-in-the-sky"},
-    {"artist": "Love Offering", "title": "Every Breath", "released": "July 30, 2026", "track_id": "1854041450", "bandcamp_url": "https://loveoffering.bandcamp.com/track/every-breath"},
-    {"artist": "Tommy Twilite", "title": "House of Cards", "released": "July 27, 2026", "track_id": "1554002702", "bandcamp_url": "https://tommytwilite.bandcamp.com/track/house-of-cards"},
-    {"artist": "The Colony Motel", "title": "Almah", "released": "July 19, 2026", "track_id": "3799119158", "bandcamp_url": "https://thecolonymotel.bandcamp.com/track/almah"},
-    {"artist": "mibble", "title": "Morning Dew Is Almost Over", "released": "July 19, 2026", "track_id": "3602496743", "bandcamp_url": "https://mibble.bandcamp.com/track/morning-dew-is-almost-over"},
-    {"artist": "Wishbone Zoe", "title": "Psyche's Romp", "released": "July 16, 2026", "track_id": "3070579675", "bandcamp_url": "https://wishbonezoe.bandcamp.com/track/psyches-romp"},
-    {"artist": "Kimaya Diggs", "title": "I know that I'm perfect", "released": "July 9, 2026", "track_id": "4065160134", "bandcamp_url": "https://kimayadiggs.bandcamp.com/track/i-know-that-im-perfect"},
+NEW_RELEASE_GROUPS = [
+    {
+        "subtitle": "September/October 2026: New tracks from local artists.",
+        "releases": [
+            {"artist": "Problem With Dragons", "title": "Deeply Divided", "released": "September 11, 2026", "track_id": "2906098078", "bandcamp_url": "https://problemwithdragons.bandcamp.com/track/deeply-divided"},
+            {"artist": "Into the Maw of Charybdis", "title": "These Damned Ancient Ruins", "released": "September 11, 2026", "track_id": "2617845030", "bandcamp_url": "https://intothemawofcharybdis.bandcamp.com/track/these-damned-ancient-ruins"},
+            {"artist": "Cloudbelly", "title": "Poppa", "released": "September 9, 2026", "track_id": "2436863028", "bandcamp_url": "https://cloudbelly.bandcamp.com/track/poppa-2"},
+        ],
+    },
+    {
+        "subtitle": "July/August 2026: New tracks from local artists.",
+        "releases": [
+            {"artist": "Ray Mason", "title": "Amusement Park", "released": "August 31, 2026", "track_id": "930914865", "bandcamp_url": "https://raymason.bandcamp.com/track/amusement-park-2"},
+            {"artist": "Dome Lettuce", "title": "Summer Daze (feat. Frank Gambit)", "released": "August 28, 2026", "track_id": "2610592512", "bandcamp_url": "https://d0melettuce.bandcamp.com/track/summer-daze-feat-frank-gambit"},
+            {"artist": "Cloudbelly", "title": "Oh, Antarctica!", "released": "August 21, 2026", "track_id": "4050548037", "bandcamp_url": "https://cloudbelly.bandcamp.com/track/oh-antarctica"},
+            {"artist": "Gentle Hen", "title": "Comfort Zone", "released": "August 21, 2026", "track_id": "235197250", "bandcamp_url": "https://gentlehen.bandcamp.com/track/comfort-zone-2"},
+            {"artist": "Alyssa Kai", "title": "chronic illness power fantasy", "released": "August 14, 2026", "track_id": "2456862956", "bandcamp_url": "https://lyskoi.bandcamp.com/track/chronic-illness-power-fantasy"},
+            {"artist": "The Suitcase Junket", "title": "Put Your Phone Down", "released": "August 11, 2026", "track_id": "1959259213", "bandcamp_url": "https://thesuitcasejunket.bandcamp.com/track/put-your-phone-down"},
+            {"artist": "Wallace Field", "title": "Fantasy", "released": "August 11, 2026", "track_id": "2254086092", "bandcamp_url": "https://wallacefield.bandcamp.com/track/fantasy"},
+            {"artist": "Brokestring & the Empty Promises", "title": "Good News", "released": "August 7, 2026", "track_id": "3416702175", "bandcamp_url": "https://brokestring.bandcamp.com/track/good-news"},
+            {"artist": "NEONACH", "title": "Eye in the Sky", "released": "August 4, 2026", "track_id": "1216733992", "bandcamp_url": "https://neonach.bandcamp.com/track/eye-in-the-sky"},
+            {"artist": "Love Offering", "title": "Every Breath", "released": "July 30, 2026", "track_id": "1854041450", "bandcamp_url": "https://loveoffering.bandcamp.com/track/every-breath"},
+            {"artist": "Tommy Twilite", "title": "House of Cards", "released": "July 27, 2026", "track_id": "1554002702", "bandcamp_url": "https://tommytwilite.bandcamp.com/track/house-of-cards"},
+            {"artist": "The Colony Motel", "title": "Almah", "released": "July 19, 2026", "track_id": "3799119158", "bandcamp_url": "https://thecolonymotel.bandcamp.com/track/almah"},
+            {"artist": "mibble", "title": "Morning Dew Is Almost Over", "released": "July 19, 2026", "track_id": "3602496743", "bandcamp_url": "https://mibble.bandcamp.com/track/morning-dew-is-almost-over"},
+            {"artist": "Wishbone Zoe", "title": "Psyche's Romp", "released": "July 16, 2026", "track_id": "3070579675", "bandcamp_url": "https://wishbonezoe.bandcamp.com/track/psyches-romp"},
+            {"artist": "Kimaya Diggs", "title": "I know that I'm perfect", "released": "July 9, 2026", "track_id": "4065160134", "bandcamp_url": "https://kimayadiggs.bandcamp.com/track/i-know-that-im-perfect"},
+        ],
+    },
 ]
 
 
-NEW_RELEASES_SUBTITLE = "July/August 2026: New tracks from local artists."
-
-
-def _build_releases():
-    """Looks up each NEW_RELEASES entry's local Artist row by name so the
+def _build_release_groups():
+    """Looks up each release entry's local Artist row by name so the
     artist's own name can link back to their profile page (Artist.slug
-    isn't stored on NEW_RELEASES, so this is a name match, not an id/slug
-    lookup -- fine at this scale, and it degrades gracefully to plain
-    unlinked text if a name doesn't match, e.g. after a rename)."""
-    releases = []
-    for entry in NEW_RELEASES:
-        artist_row = Artist.query.filter_by(name=entry["artist"]).first()
-        releases.append({**entry, "artist_row": artist_row})
-    return releases
+    isn't stored in NEW_RELEASE_GROUPS, so this is a name match, not an
+    id/slug lookup -- fine at this scale, and it degrades gracefully to
+    plain unlinked text if a name doesn't match, e.g. after a rename)."""
+    groups = []
+    for group in NEW_RELEASE_GROUPS:
+        releases = []
+        for entry in group["releases"]:
+            artist_row = Artist.query.filter_by(name=entry["artist"]).first()
+            releases.append({**entry, "artist_row": artist_row})
+        groups.append({"subtitle": group["subtitle"], "releases": releases})
+    return groups
 
 
 @bp.route("/new-releases")
 def new_releases():
     """A hand-curated "what's new" page -- every local artist's most recent
-    Bandcamp release from a given window (right now: July-August 2026, see
-    NEW_RELEASES above), each with its own embedded player. Public, no
-    login needed, same as every other content page on this site (about,
+    Bandcamp release, grouped into dated editions (newest first, see
+    NEW_RELEASE_GROUPS above), each with its own embedded player. Public,
+    no login needed, same as every other content page on this site (about,
     venues, artists).
     """
     return render_template(
         "new_releases.html",
-        releases=_build_releases(),
-        subtitle=NEW_RELEASES_SUBTITLE,
+        groups=_build_release_groups(),
     )
 
 
