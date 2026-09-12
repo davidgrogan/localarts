@@ -10,27 +10,146 @@ Optional `venue.scrape_config` (JSON):
         calendar feeds mix real events in with operational notices (e.g.
         "CLOSED", "Bar Open 4-11pm") that aren't shows -- this filters
         that noise out before it ever reaches the review queue.
+    months_ahead: int -- WordPress "The Events Calendar"'s own `?ical=1`
+        export is scoped to whatever month is currently on screen: hit
+        plain ".../events/?ical=1" and you only get the events visible in
+        *this* month's grid (plus that grid's leading/trailing days from
+        the adjacent months) -- nothing further out, no matter how much
+        the venue has already published. That's easy to miss because nothing
+        ever looks "broken": every scheduled run succeeds and the feed's
+        far edge just quietly creeps forward one day at a time as "today"
+        does. Confirmed on Luthier's Co-Op (venue slug luthiers-co-op):
+        their own site lets you page forward to see months of listed
+        shows, but our feed was topping out a few weeks out. Setting
+        months_ahead=N also fetches N additional months' exports (via
+        ".../events/YYYY-MM/?ical=1", the same URL pattern "The Events
+        Calendar" itself uses for its "« prev / next »" month links) and
+        merges their VEVENTs into the base month's calendar before
+        handing off to parse() below, which is otherwise unchanged.
+        Left unset (default 0), behavior is exactly what it always was --
+        this only kicks in for a venue that opts in.
 """
+import calendar
 import json
+import re
+import time
 from datetime import datetime, date
+from urllib.parse import urlsplit, urlunsplit
 
 import requests
 from icalendar import Calendar
 
 from app.scrapers.base import ScrapedEvent, ScrapeError
+from app.utils import local_now
 
 USER_AGENT = "Mozilla/5.0 (compatible; LocalMusicSitePOC/0.1)"
+
+# The extra monthly requests months_ahead adds make this feed hit a
+# flaky venue server more often per scrape; a real WordPress "The Events
+# Calendar" install (Luthier's Co-Op) was observed intermittently
+# returning 503s on this exact endpoint even though it was reachable
+# moments before/after. One quick retry absorbs that without giving up
+# on an otherwise-working month.
+_RETRY_ATTEMPTS = 2
+_RETRY_DELAY_SECONDS = 2
+
+_VEVENT_RE = re.compile(r"BEGIN:VEVENT.*?END:VEVENT", re.DOTALL)
+_UID_RE = re.compile(r"^UID:(.*)$", re.MULTILINE)
+
+
+def _get(url):
+    last_exc = None
+    for attempt in range(_RETRY_ATTEMPTS):
+        try:
+            resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=15)
+            resp.raise_for_status()
+            return resp.text
+        except requests.RequestException as exc:
+            last_exc = exc
+            if attempt + 1 < _RETRY_ATTEMPTS:
+                time.sleep(_RETRY_DELAY_SECONDS)
+    raise ScrapeError(f"Failed to fetch {url}: {last_exc}") from last_exc
+
+
+def _month_url(base_url, year, month):
+    """Build "the same URL, but for a different month" the way The Events
+    Calendar's own month-view "« prev / next »" links do: a /YYYY-MM/
+    path segment inserted right before the page's own query string (here,
+    always just "?ical=1")."""
+    parts = urlsplit(base_url)
+    path = parts.path if parts.path.endswith("/") else parts.path + "/"
+    new_path = f"{path}{year:04d}-{month:02d}/"
+    return urlunsplit((parts.scheme, parts.netloc, new_path, parts.query, parts.fragment))
+
+
+def _add_months(year, month, delta):
+    total = (year * 12 + (month - 1)) + delta
+    return total // 12, total % 12 + 1
+
+
+def _merge_extra_months(primary_raw, venue, months_ahead):
+    """Fetch `months_ahead` additional monthly exports beyond whatever
+    `primary_raw` already covers, and splice their VEVENT blocks into it.
+    Reuses primary_raw's own VTIMEZONE/VCALENDAR wrapper rather than
+    building a fresh one -- same venue, same timezone, every month --
+    and dedupes on UID in case a month's leading/trailing grid days
+    already showed up in a neighboring month's export.
+
+    A month that fails to fetch (after _get's own retry) is silently
+    skipped rather than failing the whole scrape -- partial forward
+    coverage beats none, and it'll very likely succeed on next
+    scheduled run anyway. Nothing here can go in the merged raw ics
+    text itself to note a skip: icalendar's from_ical() walks every
+    content line in the string, including any after END:VCALENDAR, so
+    even a trailing HTML/ICS comment there is enough to make parse()
+    reject the whole feed as invalid.
+    """
+    seen_uids = set(_UID_RE.findall(primary_raw))
+    new_blocks = []
+
+    today = local_now().date()
+    for i in range(1, months_ahead + 1):
+        year, month = _add_months(today.year, today.month, i)
+        url = _month_url(venue.events_url, year, month)
+        try:
+            month_raw = _get(url)
+        except ScrapeError:
+            continue
+        for block in _VEVENT_RE.findall(month_raw):
+            uid_match = _UID_RE.search(block)
+            uid = uid_match.group(1).strip() if uid_match else None
+            if uid and uid in seen_uids:
+                continue
+            if uid:
+                seen_uids.add(uid)
+            new_blocks.append(block)
+
+    if not new_blocks:
+        return primary_raw
+
+    idx = primary_raw.rfind("END:VCALENDAR")
+    if idx == -1:
+        # Malformed/unexpected wrapper -- fall back to the unmerged
+        # primary feed rather than silently dropping it.
+        return primary_raw
+    insertion = "\n" + "\n".join(new_blocks) + "\n"
+    return primary_raw[:idx] + insertion + primary_raw[idx:]
 
 
 def fetch_raw(venue):
     if not venue.events_url:
         raise ScrapeError("Venue has no events_url (.ics feed) configured.")
+    raw = _get(venue.events_url)
+
     try:
-        resp = requests.get(venue.events_url, headers={"User-Agent": USER_AGENT}, timeout=15)
-        resp.raise_for_status()
-    except requests.RequestException as exc:
-        raise ScrapeError(f"Failed to fetch {venue.events_url}: {exc}") from exc
-    return resp.text
+        config = json.loads(venue.scrape_config or "{}")
+    except json.JSONDecodeError:
+        config = {}
+    months_ahead = int(config.get("months_ahead", 0) or 0)
+    if months_ahead > 0:
+        raw = _merge_extra_months(raw, venue, months_ahead)
+
+    return raw
 
 
 def _to_datetime(value):

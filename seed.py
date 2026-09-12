@@ -265,7 +265,14 @@ def main():
             # before they ever reach the review queue. Recurring
             # Open Mic / Karaoke entries are kept -- those are real
             # weekly entertainment, not just operating hours.
-            scrape_config='{"title_exclude": ["CLOSED", "BackStage Bar Open"]}',
+            #
+            # months_ahead: this venue's own ?ical=1 export only ever
+            # covers whatever month is currently on screen (see
+            # ical_feed.py's module docstring) -- without this, the feed
+            # tops out a few weeks ahead even though the venue's own site
+            # has months more listed already. 3 fetches the current month
+            # plus the next three.
+            scrape_config='{"title_exclude": ["CLOSED", "BackStage Bar Open"], "months_ahead": 3}',
             default_event_type=music_tag,
         )
 
