@@ -751,6 +751,17 @@ NEW_RELEASE_GROUPS = [
             {"artist": "Problem With Dragons", "title": "Deeply Divided", "released": "September 11, 2026", "track_id": "2906098078", "bandcamp_url": "https://problemwithdragons.bandcamp.com/track/deeply-divided"},
             {"artist": "Into the Maw of Charybdis", "title": "These Damned Ancient Ruins", "released": "September 11, 2026", "track_id": "2617845030", "bandcamp_url": "https://intothemawofcharybdis.bandcamp.com/track/these-damned-ancient-ruins"},
             {"artist": "Cloudbelly", "title": "Poppa", "released": "September 9, 2026", "track_id": "2436863028", "bandcamp_url": "https://cloudbelly.bandcamp.com/track/poppa-2"},
+            # Not out yet as of when this was added (Sept 13, 2026) --
+            # its own Bandcamp page reads "from Tales, Tall and Dove,
+            # releases October 2, 2026" (future tense: a pre-order single,
+            # not "released <date>" like every other entry here). David
+            # confirmed he wants it listed now regardless, so `upcoming`
+            # tells new_releases.html to render `released` as its own
+            # full label ("Releases October 2, 2026") instead of the
+            # usual "released {{ r.released }}" -- otherwise the page
+            # would read the self-contradicting "released Releases
+            # October 2, 2026" and misstate it as already out.
+            {"artist": "Erin Morse", "title": "Clover", "released": "Releases October 2, 2026", "upcoming": True, "track_id": "3802832104", "bandcamp_url": "https://erinmorse.bandcamp.com/track/clover"},
         ],
     },
     {

@@ -32,7 +32,11 @@
                 {% else %}
                   {{ r.artist }}
                 {% endif %}
-                &middot; released {{ r.released }}
+                {# `upcoming` entries carry their own full label (e.g.
+                   "Releases October 2, 2026") since it isn't out yet --
+                   see NEW_RELEASE_GROUPS in app/routes/main.py. Otherwise
+                   `released` is just the date and gets the usual prefix. #}
+                &middot; {% if r.upcoming %}{{ r.released }}{% else %}released {{ r.released }}{% endif %}
               </p>
               <h3 class="release-title">{{ r.title }}</h3>
             </div>
