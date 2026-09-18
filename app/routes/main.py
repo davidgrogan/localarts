@@ -762,6 +762,7 @@ NEW_RELEASE_GROUPS = [
             # would read the self-contradicting "released Releases
             # October 2, 2026" and misstate it as already out.
             {"artist": "Erin Morse", "title": "Clover", "released": "Releases October 2, 2026", "upcoming": True, "track_id": "3802832104", "bandcamp_url": "https://erinmorse.bandcamp.com/track/clover"},
+            {"artist": "Perennial", "title": "Ready! Steady! Go!", "released": "September 18, 2026", "track_id": "2661920597", "bandcamp_url": "https://perennialtheband.bandcamp.com/track/ready-steady-go-2"},
         ],
     },
     {
