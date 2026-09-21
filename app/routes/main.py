@@ -763,6 +763,16 @@ NEW_RELEASE_GROUPS = [
             # October 2, 2026" and misstate it as already out.
             {"artist": "Erin Morse", "title": "Clover", "released": "Releases October 2, 2026", "upcoming": True, "track_id": "3802832104", "bandcamp_url": "https://erinmorse.bandcamp.com/track/clover"},
             {"artist": "Perennial", "title": "Ready! Steady! Go!", "released": "September 18, 2026", "track_id": "2661920597", "bandcamp_url": "https://perennialtheband.bandcamp.com/track/ready-steady-go-2"},
+            # A genuinely new release, not the "old song, new compilation"
+            # trap this list has been burned by before (see the big
+            # comment above): (Drone Variations) Vol. VII is a full album
+            # of newly reworked drone remixes of Off Land's earlier
+            # Unknown Frequencies tracks, itself dated "released
+            # September 18, 2026" on its own album page -- not just this
+            # one track's page repeating an older date.
+            {"artist": "Off Land", "title": "(Cassini)", "released": "September 18, 2026", "track_id": "2179439532", "bandcamp_url": "https://offland.bandcamp.com/track/cassini-2"},
+            {"artist": "Boy Harsher", "title": "Ronny", "released": "September 18, 2026", "track_id": "2866557303", "bandcamp_url": "https://boyharsher.bandcamp.com/track/ronny"},
+            {"artist": "Beetsblog", "title": "New to Love 1", "released": "September 6, 2026", "track_id": "3696828116", "bandcamp_url": "https://beetsblog.bandcamp.com/track/new-to-love-1-2"},
         ],
     },
     {
