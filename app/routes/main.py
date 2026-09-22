@@ -773,6 +773,7 @@ NEW_RELEASE_GROUPS = [
             {"artist": "Off Land", "title": "(Cassini)", "released": "September 18, 2026", "track_id": "2179439532", "bandcamp_url": "https://offland.bandcamp.com/track/cassini-2"},
             {"artist": "Boy Harsher", "title": "Ronny", "released": "September 18, 2026", "track_id": "2866557303", "bandcamp_url": "https://boyharsher.bandcamp.com/track/ronny"},
             {"artist": "Beetsblog", "title": "New to Love 1", "released": "September 6, 2026", "track_id": "3696828116", "bandcamp_url": "https://beetsblog.bandcamp.com/track/new-to-love-1-2"},
+            {"artist": "Boy Harsher", "title": "Jeans", "released": "September 18, 2026", "track_id": "748933878", "bandcamp_url": "https://boyharsher.bandcamp.com/track/jeans"},
         ],
     },
     {
