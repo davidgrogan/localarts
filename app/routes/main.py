@@ -773,7 +773,17 @@ NEW_RELEASE_GROUPS = [
             {"artist": "Off Land", "title": "(Cassini)", "released": "September 18, 2026", "track_id": "2179439532", "bandcamp_url": "https://offland.bandcamp.com/track/cassini-2"},
             {"artist": "Boy Harsher", "title": "Ronny", "released": "September 18, 2026", "track_id": "2866557303", "bandcamp_url": "https://boyharsher.bandcamp.com/track/ronny"},
             {"artist": "Beetsblog", "title": "New to Love 1", "released": "September 6, 2026", "track_id": "3696828116", "bandcamp_url": "https://beetsblog.bandcamp.com/track/new-to-love-1-2"},
-            {"artist": "Boy Harsher", "title": "Jeans", "released": "September 18, 2026", "track_id": "748933878", "bandcamp_url": "https://boyharsher.bandcamp.com/track/jeans"},
+            # Wallace Field's Fantasy album (released September 22, 2026) mixes
+            # genuinely new songs with two older ones repackaged in -- "Fantasy"
+            # itself (already listed above, in the July/August group, dated
+            # August 11) and "July" (its own page reads "released July 14,
+            # 2026", well before this album). "The Commons," "The Wedding
+            # Gown," and "This Time Around" all read "released September 22,
+            # 2026" on their own individual pages, confirming they're new;
+            # "The Commons" (track 1) is used here as the album's
+            # representative single, same "first track" convention as every
+            # other multi-track release on this page.
+            {"artist": "Wallace Field", "title": "The Commons", "released": "September 22, 2026", "track_id": "1007668530", "bandcamp_url": "https://wallacefield.bandcamp.com/track/the-commons"},
         ],
     },
     {
