@@ -746,11 +746,20 @@ def feed_rss():
 # track page before treating it as qualifying.
 NEW_RELEASE_GROUPS = [
     {
+        # Sorted newest first by actual (or announced) release date -- an
+        # `upcoming` entry's future date still counts for this ordering, so
+        # a not-yet-out pre-order can sit above an already-released track
+        # from earlier in the month.
         "subtitle": "September/October 2026: New tracks from local artists.",
         "releases": [
-            {"artist": "Problem With Dragons", "title": "Deeply Divided", "released": "September 11, 2026", "track_id": "2906098078", "bandcamp_url": "https://problemwithdragons.bandcamp.com/track/deeply-divided"},
-            {"artist": "Into the Maw of Charybdis", "title": "These Damned Ancient Ruins", "released": "September 11, 2026", "track_id": "2617845030", "bandcamp_url": "https://intothemawofcharybdis.bandcamp.com/track/these-damned-ancient-ruins"},
-            {"artist": "Cloudbelly", "title": "Poppa", "released": "September 9, 2026", "track_id": "2436863028", "bandcamp_url": "https://cloudbelly.bandcamp.com/track/poppa-2"},
+            # A second Cloudbelly upload of "Oh, Antarctica!" (distinct from
+            # the already-released version below in the July/August group,
+            # track/oh-antarctica, released August 21) -- this one's own
+            # page reads "releases November 13, 2026" (future tense: a
+            # pre-order, not out yet). Flagged to David; kept in pending
+            # `upcoming` form like Erin Morse's Clover below rather than
+            # silently merged with the older same-titled entry.
+            {"artist": "Cloudbelly", "title": "Oh, Antarctica!", "released": "Releases November 13, 2026", "upcoming": True, "track_id": "2775786107", "bandcamp_url": "https://cloudbelly.bandcamp.com/track/oh-antarctica-2"},
             # Not out yet as of when this was added (Sept 13, 2026) --
             # its own Bandcamp page reads "from Tales, Tall and Dove,
             # releases October 2, 2026" (future tense: a pre-order single,
@@ -762,17 +771,15 @@ NEW_RELEASE_GROUPS = [
             # would read the self-contradicting "released Releases
             # October 2, 2026" and misstate it as already out.
             {"artist": "Erin Morse", "title": "Clover", "released": "Releases October 2, 2026", "upcoming": True, "track_id": "3802832104", "bandcamp_url": "https://erinmorse.bandcamp.com/track/clover"},
-            {"artist": "Perennial", "title": "Ready! Steady! Go!", "released": "September 18, 2026", "track_id": "2661920597", "bandcamp_url": "https://perennialtheband.bandcamp.com/track/ready-steady-go-2"},
-            # A genuinely new release, not the "old song, new compilation"
-            # trap this list has been burned by before (see the big
-            # comment above): (Drone Variations) Vol. VII is a full album
-            # of newly reworked drone remixes of Off Land's earlier
-            # Unknown Frequencies tracks, itself dated "released
-            # September 18, 2026" on its own album page -- not just this
-            # one track's page repeating an older date.
-            {"artist": "Off Land", "title": "(Cassini)", "released": "September 18, 2026", "track_id": "2179439532", "bandcamp_url": "https://offland.bandcamp.com/track/cassini-2"},
-            {"artist": "Boy Harsher", "title": "Ronny", "released": "September 18, 2026", "track_id": "2866557303", "bandcamp_url": "https://boyharsher.bandcamp.com/track/ronny"},
-            {"artist": "Beetsblog", "title": "New to Love 1", "released": "September 6, 2026", "track_id": "3696828116", "bandcamp_url": "https://beetsblog.bandcamp.com/track/new-to-love-1-2"},
+            {"artist": "Jeff Coyne", "title": "Cousin Bobby", "released": "September 27, 2026", "track_id": "3680258484", "bandcamp_url": "https://jeffcoyne.bandcamp.com/track/cousin-bobby"},
+            # A second Gentle Hen track also titled "Comfort Zone" (distinct
+            # from the already-listed one in the July/August group below,
+            # track/comfort-zone-2, released August 21) -- this one's own
+            # page (track/comfort-zone, no "-2") reads "from Wink, released
+            # September 25, 2026," a different upload/date for what appears
+            # to be the same song. Flagged to David; added here as its own
+            # entry rather than merged with or replacing the older one.
+            {"artist": "Gentle Hen", "title": "Comfort Zone", "released": "September 25, 2026", "track_id": "2065484003", "bandcamp_url": "https://gentlehen.bandcamp.com/track/comfort-zone"},
             # Wallace Field's Fantasy album (released September 22, 2026) mixes
             # genuinely new songs with two older ones repackaged in -- "Fantasy"
             # itself (already listed above, in the July/August group, dated
@@ -784,6 +791,21 @@ NEW_RELEASE_GROUPS = [
             # representative single, same "first track" convention as every
             # other multi-track release on this page.
             {"artist": "Wallace Field", "title": "The Commons", "released": "September 22, 2026", "track_id": "1007668530", "bandcamp_url": "https://wallacefield.bandcamp.com/track/the-commons"},
+            {"artist": "Perennial", "title": "Ready! Steady! Go!", "released": "September 18, 2026", "track_id": "2661920597", "bandcamp_url": "https://perennialtheband.bandcamp.com/track/ready-steady-go-2"},
+            # A genuinely new release, not the "old song, new compilation"
+            # trap this list has been burned by before (see the big
+            # comment above): (Drone Variations) Vol. VII is a full album
+            # of newly reworked drone remixes of Off Land's earlier
+            # Unknown Frequencies tracks, itself dated "released
+            # September 18, 2026" on its own album page -- not just this
+            # one track's page repeating an older date.
+            {"artist": "Off Land", "title": "(Cassini)", "released": "September 18, 2026", "track_id": "2179439532", "bandcamp_url": "https://offland.bandcamp.com/track/cassini-2"},
+            {"artist": "Boy Harsher", "title": "Ronny", "released": "September 18, 2026", "track_id": "2866557303", "bandcamp_url": "https://boyharsher.bandcamp.com/track/ronny"},
+            {"artist": "Perennial", "title": "Modernism", "released": "September 18, 2026", "track_id": "959949820", "bandcamp_url": "https://perennialtheband.bandcamp.com/track/modernism-2"},
+            {"artist": "Problem With Dragons", "title": "Deeply Divided", "released": "September 11, 2026", "track_id": "2906098078", "bandcamp_url": "https://problemwithdragons.bandcamp.com/track/deeply-divided"},
+            {"artist": "Into the Maw of Charybdis", "title": "These Damned Ancient Ruins", "released": "September 11, 2026", "track_id": "2617845030", "bandcamp_url": "https://intothemawofcharybdis.bandcamp.com/track/these-damned-ancient-ruins"},
+            {"artist": "Cloudbelly", "title": "Poppa", "released": "September 9, 2026", "track_id": "2436863028", "bandcamp_url": "https://cloudbelly.bandcamp.com/track/poppa-2"},
+            {"artist": "Beetsblog", "title": "New to Love 1", "released": "September 6, 2026", "track_id": "3696828116", "bandcamp_url": "https://beetsblog.bandcamp.com/track/new-to-love-1-2"},
         ],
     },
     {
